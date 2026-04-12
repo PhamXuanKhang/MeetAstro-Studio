@@ -1,0 +1,134 @@
+# AI Meeting Assistant — Context for AI Agents
+
+> This file provides structured context for AI coding agents (Claude Code, Cursor, Copilot, Codex, etc.) working on this project.
+> Updated: 2026-04-12
+
+## What This Project Does
+
+AI Meeting Assistant converts meeting audio recordings into structured action items (Epic → Task → Subtask) and pushes them to Jira. Pipeline: Audio upload → Whisper transcribe → GPT-4o analyze → Export (MD/JSON/CSV) or Push to Jira.
+
+## Tech Stack
+
+- Python 3.9+ / Streamlit 1.32+ / OpenAI API (GPT-4o + Whisper) / SQLite / Jira REST API v3
+- Package management: uv + pyproject.toml (editable install required)
+- Testing: pytest (85 tests, 9 files)
+- Linting: flake8 (max-line-length=100) + mypy
+
+## Project Structure
+
+```
+src/
+  app.py                    → Streamlit UI entry point
+  schema.py                 → Dataclasses: Priority, ActionItem, Subtask, Task, Epic, MeetingAnalysis, MeetingRecord
+  config.py                 → Centralized config (env vars) + logging setup
+  providers/
+    base_analyzer.py        → ABC interface for AI analyzers
+    base_transcriber.py     → ABC interface for transcription providers
+    openai_analyzer.py      → GPT-4o structured output (JSON mode, retry 3x)
+    openai_transcriber.py   → Whisper API transcription
+    local_transcriber.py    → Local Whisper fallback
+  services/
+    transcription_service.py → Fallback chain: Whisper API → Local Whisper
+    analysis_service.py     → Orchestrates analyzer selection
+  modules/
+    database.py             → SQLite CRUD for MeetingRecord (sqlite3 stdlib)
+    exporter.py             → Export to Markdown / JSON / CSV (pure functions)
+    jira_client.py          → Jira REST API v3 client (auto stub mode if no credentials)
+  prompts/
+    extract_action_items.md → Vietnamese system prompt for GPT-4o
+tests/                      → 9 test files, 85 tests total
+docs/                       → Product, technical, and evaluation documentation
+```
+
+## Key Design Patterns
+
+1. **Strategy Pattern**: All AI providers extend ABC (`BaseAnalyzer`, `BaseTranscriber`). New providers MUST implement the corresponding ABC.
+2. **Fallback Chain**: `transcription_service.transcribe()` tries OpenAI Whisper API first, falls back to Local Whisper on failure.
+3. **Structured Output**: GPT-4o uses JSON mode. Output schema: `{summary, epics: [{summary, description, tasks: [{summary, assignee, deadline, priority, context, subtasks}]}]}`.
+4. **Stub Pattern**: `JiraClient` auto-detects missing credentials → returns fake keys + logs warning.
+
+## Core Interfaces
+
+```python
+# Providers
+class BaseAnalyzer(ABC):
+    def analyze(self, transcript: str) -> MeetingAnalysis: ...
+
+class BaseTranscriber(ABC):
+    def transcribe(self, audio_path: str, language: str = "vi") -> str: ...
+
+# Services
+def transcribe(audio_path: str, language: str = "vi") -> str  # fallback chain
+def analyze(transcript: str) -> MeetingAnalysis
+
+# Database
+def init_db(db_path=None) -> None
+def create_meeting(record: MeetingRecord, db_path=None) -> int
+def get_meeting(meeting_id: int, db_path=None) -> MeetingRecord | None
+def list_meetings(db_path=None) -> list[MeetingRecord]
+def update_meeting(record: MeetingRecord, db_path=None) -> None
+def delete_meeting(meeting_id: int, db_path=None) -> None
+
+# Export
+def export_markdown(analysis: MeetingAnalysis) -> str
+def export_json(analysis: MeetingAnalysis) -> str
+def export_csv(analysis: MeetingAnalysis) -> str
+
+# Jira
+class JiraClient:
+    def create_epic(self, epic: Epic) -> str
+    def create_task(self, task: Task, epic_key: str) -> str
+    def create_subtask(self, subtask: Subtask, task_key: str) -> str
+```
+
+## Data Schema
+
+```python
+Priority: Critical | High | Medium | Low
+ActionItem: summary, assignee?, deadline?, priority, context
+Subtask(ActionItem): inherits all fields
+Task(ActionItem): + subtasks: list[Subtask]
+Epic: summary, description, tasks: list[Task]
+MeetingAnalysis: epics: list[Epic], summary, created_at
+MeetingRecord: id?, title, audio_path?, transcript, analysis?, created_at, updated_at
+```
+
+## Commands
+
+```bash
+source .venv/Scripts/activate    # Activate venv (Windows)
+streamlit run src/app.py         # Run app
+pytest tests/ -v                 # Run tests
+flake8 . --max-line-length=100   # Lint
+mypy . --ignore-missing-imports  # Typecheck
+uv pip install -e .              # Editable install (required for imports)
+```
+
+## Rules for AI Agents
+
+- ALWAYS run `pytest tests/ -v` after modifying `providers/` or `services/`.
+- ALWAYS verify structured output matches Jira schema after modifying prompts or analyzer.
+- New providers MUST extend ABC + have dedicated test file.
+- External API calls MUST have error handling + retry logic.
+- Use `from src.config import get_logger` for logging. NEVER use `print()`.
+- Type hints: Python 3.9+ style (`list[str]`, not `List[str]`).
+- snake_case for functions/variables, PascalCase for classes.
+- On Windows: use `python` (not `python3`).
+- Database tests: use `tmp_path` fixture (file-based SQLite), NOT `:memory:`.
+
+## Environment Variables
+
+Required: OPENAI_API_KEY
+Optional: OPENAI_MODEL (gpt-4o), WHISPER_LOCAL_MODEL (base), DATABASE_URL (sqlite:///data/meetings.db), JIRA_BASE_URL, JIRA_API_TOKEN, JIRA_PROJECT_KEY, LOG_LEVEL (INFO)
+
+## Current Status (as of 2026-04-12)
+
+- MVP Phase 1 complete: full pipeline working (transcribe + analyze + export + DB + Jira stub)
+- 85/85 unit tests passing
+- Pending: E2E smoke test with real audio, Jira sandbox integration, cloud deployment
+
+## Documentation
+
+- Product docs: docs/product/ (canvas, spec, roadmap)
+- Technical docs: docs/technical/ (architecture, data-flow, api-reference, deployment)
+- Evaluation docs: docs/evaluation/ (eval-metrics, test-plan)
