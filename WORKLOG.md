@@ -138,7 +138,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 **Fix:**
 1. Sửa `.git/hooks/pre-push`: `python3` → `python`
 2. Sửa `scripts/setup_hooks.sh`: tương tự, để lần setup sau không tạo lại bug
-3. Trích xuất conversation history từ Claude Code local storage (`~/.claude/projects/*/\*.jsonl`), chuyển sang format session.jsonl, append vào file
+3. Trích xuất conversation history từ Claude Code local storage (`~/.claude/projects/*/*.jsonl`), chuyển sang format session.jsonl, append vào file
 4. Chạy `python scripts/submit_log.py` thủ công → submit 49 entries thành công (server trả 202)
 
 **Học được:** Trên Windows luôn dùng `python` (không `python3`). Luôn test hook bằng cách chạy script trực tiếp trước.

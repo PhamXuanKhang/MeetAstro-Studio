@@ -8,7 +8,7 @@ Tech stack: Python 3.9+ / Streamlit 1.32+ / OpenAI API (GPT-4o + Whisper) / Post
 ## Commands
 ```
 pip install -r requirements.txt    # Install
-streamlit run app.py               # Run app
+streamlit run src/app.py               # Run app
 pytest tests/ -v                   # Test all
 pytest tests/test_X.py -v          # Test single
 flake8 . --max-line-length=100     # Lint
