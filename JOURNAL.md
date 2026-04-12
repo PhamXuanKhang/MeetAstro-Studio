@@ -32,76 +32,53 @@ Ghi lại hành trình xây dựng sản phẩm mỗi tuần — những gì đ�
 -
 ```
 
+
 ---
 
-## Ví dụ
+### Tuần 1 — 12/04/2026
 
-### Tuần 1 — 31/03/2026
-
-**Thành viên:** Nguyễn Văn A, Trần Thị B, Lê Văn C
+**Thành viên:** Phạm Xuân Khang
 
 #### Đã làm
-- Setup project TypeScript + cấu hình `.env`
-- Xây dựng agent loop cơ bản: nhận input → gọi Claude API → in output
-- Thêm tool `search_web` đầu tiên (dùng Brave Search API)
-- Viết README cho repo nhóm
+- Xóa legacy code (`agent.py`, `tools.py`) — starter template không liên quan tới Meeting Assistant
+- Build toàn bộ kiến trúc mới theo CLAUDE.md spec:
+  - `src/schema.py`: dataclasses Priority, ActionItem, Subtask, Task, Epic, MeetingAnalysis, MeetingRecord
+  - `src/providers/`: Strategy Pattern — ABC base + 3 providers (OpenAI Analyzer, OpenAI Transcriber, Local Transcriber)
+  - `src/services/`: Fallback chain transcription (Whisper API → Local Whisper), analysis orchestration
+  - `src/modules/`: SQLite CRUD (database.py), export Markdown/JSON/CSV (exporter.py), Jira stub client (jira_client.py)
+  - `src/prompts/extract_action_items.md`: Vietnamese prompt cho GPT-4o structured output
+  - `src/app.py`: Streamlit UI — upload audio → transcribe → analyze → export/save/push Jira
+- Viết 85 unit tests (9 test files), tất cả pass
+- Setup `pyproject.toml` + editable install để giải quyết `ModuleNotFoundError` khi chạy Streamlit
+- Sửa pre-push hook (`python3` → `python`) để submit log hoạt động trên Windows
+- Trích xuất conversation history từ Claude Code local storage → submit 49 log entries lên server
 
 #### Khó nhất tuần này
-- Tool call response của Claude trả về sai format — mất 2 tiếng debug mới phát hiện ra thiếu `"type": "tool_result"` trong message history.
-- Lần đầu dùng TypeScript nên type error khá nhiều, phải học cách dùng `as` và generic.
+- SQLite `:memory:` không dùng được cho tests vì mỗi `sqlite3.connect(":memory:")` tạo DB mới → init_db tạo bảng ở connection A nhưng test query ở connection B → bảng không tồn tại. Phải đổi sang `tmp_path` fixture (file-based SQLite).
+- `python3` trên Windows là alias Microsoft Store (mở Store thay vì chạy Python) → pre-push hook chạy `python3 scripts/submit_log.py` fail im lặng, log không bao giờ được submit. Mất thời gian để phát hiện vì `exit 0` che lỗi.
+- `streamlit run src/app.py` không tìm được module `src` vì Python path không có project root → giải quyết bằng `pyproject.toml` + `uv pip install -e .`
 
 #### AI tool đã dùng
 | Tool | Dùng để làm gì | Kết quả |
 |---|---|---|
-| Claude Code | Giải thích Anthropic tool use API, debug message format | Giải quyết được bug trong 15 phút |
-| Cursor | Autocomplete TypeScript types | Tiết kiệm khoảng 30% thời gian gõ |
+| Claude Code (Opus) | Survey codebase vs spec, tạo refactor plan chi tiết (Bước 1-4) | Plan chính xác, phát hiện 100% gap giữa code hiện tại và spec |
+| Claude Code (Sonnet) | Implement toàn bộ plan: tạo 20+ files, viết 85 tests | Build thành công trong 1 session, 85/85 tests pass |
+| Claude Code (Opus) | Debug submit_log, trích xuất conversation history, viết JOURNAL/WORKLOG | Phát hiện root cause python3 Windows issue, submit 49 entries thành công |
 
 #### Học được
-- Tool use trong Claude hoạt động theo vòng lặp: model gọi tool → app trả kết quả → model tiếp tục. Cần giữ đúng message history.
-- `zod` rất hữu ích để validate tool input schema.
-- Nên đặt timeout cho API call ngay từ đầu, không để sau mới thêm.
+- Strategy Pattern (ABC) giúp swap provider dễ dàng — chỉ cần implement `analyze()` hoặc `transcribe()` theo interface
+- Fallback chain cần log warning khi switch provider — không im lặng, phải trace được
+- SQLite `sqlite3.connect()` tạo connection mới mỗi lần gọi — cần cùng file path chứ không dùng `:memory:` cho tests nhiều hàm
+- `pyproject.toml` + editable install (`uv pip install -e .`) là cách chuẩn để Python biết về package structure
+- Git hook trên Windows phải dùng `python` (không phải `python3`) — luôn kiểm tra `which python3` trước khi dùng
 
 #### Nếu làm lại, sẽ làm khác
-- Setup TypeScript strict mode ngay từ đầu thay vì thêm sau (refactor mệt hơn).
-- Viết unit test cho `parseToolCall()` trước khi tích hợp vào agent loop.
+- Chạy `setup_hooks.sh` và test submit log ngay từ ngày đầu, không để đến đầu tuần 2 mới phát hiện lỗi
+- Setup `pyproject.toml` trước khi bắt đầu code, thay vì sau khi gặp import error
+- Dùng `tmp_path` fixture cho SQLite tests ngay từ đầu thay vì thử `:memory:` rồi debug
 
 #### Kế hoạch tuần tới
-- Thêm tool `read_file` và `write_file`
-- Implement memory: lưu conversation history vào file JSON
-- Thử chạy agent giải 1 bài tập thực tế
-
----
-
-### Tuần 2 — 07/04/2026
-
-**Thành viên:** Nguyễn Văn A, Trần Thị B, Lê Văn C
-
-#### Đã làm
-- Thêm tool `read_file`, `write_file`, `list_dir`
-- Agent có thể tự đọc file trong repo và đề xuất refactor
-- Implement conversation memory: lưu 20 message gần nhất
-- Thử nghiệm: cho agent tự fix 3 bug đơn giản → thành công 2/3
-
-#### Khó nhất tuần này
-- Memory bị lỗi khi conversation quá dài (vượt context window). Phải implement sliding window: chỉ giữ system prompt + 20 message gần nhất.
-- Agent đôi khi loop vô hạn khi tool trả lỗi — chưa có stop condition tốt.
-
-#### AI tool đã dùng
-| Tool | Dùng để làm gì | Kết quả |
-|---|---|---|
-| Claude Code | Thiết kế sliding window memory, review code agent loop | Phát hiện thêm edge case khi tool throw exception |
-| Gemini CLI | So sánh approach lưu memory: file JSON vs SQLite | Tư vấn dùng JSON cho prototype, SQLite khi cần query |
-
-#### Học được
-- Context window là resource có hạn — cần thiết kế memory strategy từ sớm.
-- Stop condition quan trọng không kém gì agent logic: `max_iterations`, `no_new_tool_calls`, `explicit_done`.
-- AI agent review code của mình rất có ích: Claude Code tìm ra 2 potential null pointer mà mình bỏ sót.
-
-#### Nếu làm lại, sẽ làm khác
-- Viết interface `Memory` trước, rồi implement sau — thay vì hard-code array từ đầu.
-- Log tất cả tool call ra file ngay từ đầu để debug dễ hơn.
-
-#### Kế hoạch tuần tới
-- Fix vòng lặp vô hạn: thêm `max_iterations = 10`
-- Thêm tool `run_tests` để agent tự kiểm tra code sau khi sửa
-- Demo cho instructor cuối tuần
+- Smoke test Streamlit app end-to-end với audio thật
+- Tìm hiểu model detect giọng từng người để extract action items tốt hơn
+- Nghiên cứu việc chunking để transcribe realtime
+- Test Jira integration với Atlassian sandbox (nếu có)
