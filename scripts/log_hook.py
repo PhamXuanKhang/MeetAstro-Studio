@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from pathlib import Path
 
 VN_TZ = timezone(timedelta(hours=7))
@@ -41,7 +42,7 @@ def detect_tool(data: dict) -> str:
     return "unknown"
 
 
-def normalize(data: dict, tool: str) -> dict | None:
+def normalize(data: dict, tool: str) -> Optional[dict]:
     """Normalize tool-specific payload to common log entry."""
     event = data.get("hook_event_name") or data.get("event", "")
     ts = datetime.now(VN_TZ).isoformat()
