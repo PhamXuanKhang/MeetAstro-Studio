@@ -85,6 +85,7 @@ with col_upload:
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
         tmp.write(uploaded_file.read())
         tmp.flush()
+        tmp.close()
         st.session_state.audio_path = tmp.name
         st.audio(uploaded_file)
         st.caption(f"File: {uploaded_file.name} ({uploaded_file.size // 1024} KB)")
