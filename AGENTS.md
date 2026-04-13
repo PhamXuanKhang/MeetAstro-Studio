@@ -60,3 +60,7 @@ If you are an AI coding agent (Claude Code, Cursor, Copilot, Codex, Gemini, etc.
 ### 6. Secrets and credentials
 
 - **DO NOT** commit API keys, passwords, or other secrets. Use `.env` locally (gitignored) and document required variables in `.env.example` only.
+
+### 7. Scope of work
+
+- Keep changes limited to what the user asked for. Avoid unrelated refactors, drive-by cleanups, or extra files unless they are required to deliver the request.
