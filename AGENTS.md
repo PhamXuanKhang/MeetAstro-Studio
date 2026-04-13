@@ -55,4 +55,8 @@ If you are an AI coding agent (Claude Code, Cursor, Copilot, Codex, Gemini, etc.
 
 ### 5. Project-specific rules
 
-- Extend this file with team conventions when add workflows, tools, or policies that agents should follow.
+- Extend this file with team conventions when you add workflows, tools, or policies that agents should follow.
+
+### 6. Secrets and credentials
+
+- **DO NOT** commit API keys, passwords, or other secrets. Use `.env` locally (gitignored) and document required variables in `.env.example` only.
