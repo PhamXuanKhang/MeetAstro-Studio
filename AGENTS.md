@@ -76,4 +76,4 @@ If you are an AI coding agent (Claude Code, Cursor, Copilot, Codex, Gemini, etc.
 
 ### 10. Keep docs and commands accurate
 
-- When changing entrypoints, scripts, or setup commands, update `README.md` and related docs in the same PR so onboarding instructions stay correct on both Windows and Unix-like environments.
+- When changing entrypoints, scripts, or setup commands, update `README.md` and related docs in the same PR. If commands differ by OS, document Windows and Unix-like variants side by side.
