@@ -3,6 +3,7 @@
 Shared AI hook logger — works with Claude Code, Gemini CLI, Codex, Cursor, Copilot.
 Reads JSON from stdin, normalizes to common format, appends to .ai-log/session.jsonl
 """
+import io
 import json
 import os
 import sys
@@ -14,6 +15,28 @@ from pathlib import Path
 VN_TZ = timezone(timedelta(hours=7))
 
 
+def _configure_utf8_stdio() -> None:
+    """Use UTF-8 for stdout/stderr so Windows consoles do not choke on Vietnamese or ensure_ascii=False JSON."""
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            continue
+        try:
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            elif hasattr(stream, "buffer"):
+                wrapper = io.TextIOWrapper(
+                    stream.buffer,
+                    encoding="utf-8",
+                    errors="replace",
+                    line_buffering=(name == "stdout"),
+                    write_through=True,
+                )
+                setattr(sys, name, wrapper)
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
 def git(cmd):
     try:
         return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
@@ -22,8 +45,15 @@ def git(cmd):
 
 
 def detect_tool(data: dict) -> str:
-    """Detect which AI tool sent this hook event."""
-    tool_env = os.environ.get("AI_TOOL_NAME", "").lower()
+    """Detect which AI tool sent this hook event.
+
+    Prefer argv (works on Windows CMD/PowerShell); then AI_TOOL_NAME (Unix VAR=value); then payload heuristics.
+    """
+    if len(sys.argv) > 1:
+        name = sys.argv[1].strip().lower()
+        if name:
+            return name
+    tool_env = os.environ.get("AI_TOOL_NAME", "").strip().lower()
     if tool_env:
         return tool_env
     # Heuristics
@@ -129,6 +159,7 @@ def normalize(data: dict, tool: str) -> Optional[dict]:
 
 
 def main():
+    _configure_utf8_stdio()
     # Cursor on Windows may prefix JSON with a UTF-8 BOM; utf-8-sig strips it so json.loads works.
     raw_bytes = sys.stdin.buffer.read()
     if not raw_bytes.strip():

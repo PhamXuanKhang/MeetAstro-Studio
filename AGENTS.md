@@ -68,3 +68,8 @@ If you are an AI coding agent (Claude Code, Cursor, Copilot, Codex, Gemini, etc.
 ### 8. Shared hook logger
 
 - `scripts/log_hook.py` is used by every tool listed in section 1. When reading hook JSON from stdin, decode with `utf-8-sig` so a UTF-8 BOM (e.g. from Cursor on Windows) does not break `json.loads`.
+- Pass the tool name as the first CLI argument (e.g. `python scripts/log_hook.py cursor`). The `AI_TOOL_NAME=value` prefix is Unix-only and fails on Windows CMD/PowerShell; the script still accepts `AI_TOOL_NAME` as a fallback for older configs.
+
+### 9. Keeping hook configs in sync
+
+- If you add a tool, change hook commands, or change how `log_hook.py` is invoked, update the table in section 1 and every matching config under `.claude/`, `.cursor/`, `.codex/`, `.gemini/`, and `.github/hooks/` so all environments behave the same.
