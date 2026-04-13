@@ -129,7 +129,11 @@ def normalize(data: dict, tool: str) -> Optional[dict]:
 
 
 def main():
-    raw = sys.stdin.read().strip()
+    # Cursor on Windows may prefix JSON with a UTF-8 BOM; utf-8-sig strips it so json.loads works.
+    raw_bytes = sys.stdin.buffer.read()
+    if not raw_bytes.strip():
+        sys.exit(0)
+    raw = raw_bytes.decode("utf-8-sig").strip()
     if not raw:
         sys.exit(0)
 

@@ -64,3 +64,7 @@ If you are an AI coding agent (Claude Code, Cursor, Copilot, Codex, Gemini, etc.
 ### 7. Scope of work
 
 - Keep changes limited to what the user asked for. Avoid unrelated refactors, drive-by cleanups, or extra files unless they are required to deliver the request.
+
+### 8. Shared hook logger
+
+- `scripts/log_hook.py` is used by every tool listed in section 1. When reading hook JSON from stdin, decode with `utf-8-sig` so a UTF-8 BOM (e.g. from Cursor on Windows) does not break `json.loads`.
