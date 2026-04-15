@@ -3,8 +3,9 @@ Jira REST API client — stub mode nếu thiếu credentials.
 Tạo Epic → Task → Subtask qua Jira REST API v3.
 """
 import requests
+from requests.auth import HTTPBasicAuth
 
-from src.config import JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_PROJECT_KEY, get_logger
+from src.config import JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_EMAIL, JIRA_PROJECT_KEY, get_logger
 from src.schema import Epic, Subtask, Task
 
 logger = get_logger(__name__)
@@ -18,13 +19,15 @@ class JiraClient:
     def __init__(
         self,
         base_url: str = JIRA_BASE_URL,
+        email: str = JIRA_EMAIL,
         token: str = JIRA_API_TOKEN,
         project_key: str = JIRA_PROJECT_KEY,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._email = email
         self._token = token
         self._project_key = project_key
-        self._stub = not (base_url and token and project_key)
+        self._stub = not (base_url and email and token and project_key)
         if self._stub:
             logger.warning("Jira credentials thiếu — đang chạy STUB mode (không gửi API thật).")
 
@@ -34,7 +37,6 @@ class JiraClient:
 
     def _headers(self) -> dict:
         return {
-            "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
@@ -42,7 +44,19 @@ class JiraClient:
     def _post(self, payload: dict) -> str:
         """Gửi POST tới Jira Issues API. Trả về issue key."""
         url = f"{self._base_url}/rest/api/3/issue"
-        response = requests.post(url, json=payload, headers=self._headers(), timeout=10)
+        response = requests.post(
+            url,
+            json=payload,
+            headers=self._headers(),
+            auth=HTTPBasicAuth(self._email, self._token),
+            timeout=10,
+        )
+        if not response.ok:
+            logger.error(
+                "Jira API trả về lỗi %s: %s",
+                response.status_code,
+                response.text,
+            )
         response.raise_for_status()
         return response.json().get("key", _STUB_KEY)
 
@@ -62,6 +76,7 @@ class JiraClient:
                     "content": [{"type": "paragraph", "content": [{"type": "text", "text": epic.description}]}],
                 },
                 "issuetype": {"name": "Epic"},
+                # CẢNH BÁO: ID của customfield này (Epic Name/Link) có thể thay đổi tùy thuộc vào từng workspace Jira. Cần kiểm tra lại qua API GET /rest/api/3/field nếu bị lỗi 400 Bad Request.
                 "customfield_10014": epic.summary,  # Epic Name field
             }
         }
@@ -80,6 +95,7 @@ class JiraClient:
                 "project": {"key": self._project_key},
                 "summary": task.summary,
                 "issuetype": {"name": "Task"},
+                # CẢNH BÁO: ID của customfield này (Epic Name/Link) có thể thay đổi tùy thuộc vào từng workspace Jira. Cần kiểm tra lại qua API GET /rest/api/3/field nếu bị lỗi 400 Bad Request.
                 "customfield_10014": epic_key,  # Epic Link
                 "priority": {"name": task.priority.value},
                 "duedate": task.deadline,
