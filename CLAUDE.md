@@ -64,7 +64,7 @@ Mỗi cuộc họp extract ra cấu trúc:
 Xem `.env.example`. Keys quan trọng:
 - `OPENAI_API_KEY` — GPT-4o + Whisper API
 - `WHISPER_LOCAL_MODEL` — tiny/base/small/medium/large
-- `JIRA_BASE_URL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` — Jira integration
+- `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` — Jira integration (Basic Auth)
 - `DATABASE_URL` — PostgreSQL connection string
 
 ## Rules

@@ -187,7 +187,7 @@ def export_csv(analysis: MeetingAnalysis) -> str
 
 ```python
 class JiraClient:
-    def __init__(self, base_url: str, token: str, project_key: str) -> None
+  def __init__(self, base_url: str, email: str, token: str, project_key: str) -> None
     @property
     def is_stub(self) -> bool
     def create_epic(self, epic: Epic) -> str        # returns issue key
@@ -197,7 +197,7 @@ class JiraClient:
 
 - Auto stub mode: nếu thiếu credentials → `is_stub = True`, return `"STUB-001"`
 - Jira REST API v3: `POST /rest/api/3/issue`
-- Auth: Bearer token
+- Auth: Basic Auth (`JIRA_EMAIL` + `JIRA_API_TOKEN`)
 
 ---
 
@@ -213,6 +213,7 @@ class JiraClient:
 | `DEFAULT_TRANSCRIPTION_LANGUAGE` | `"vi"` | No | Ngôn ngữ transcription |
 | `DATABASE_URL` | `"sqlite:///data/meetings.db"` | No | SQLite connection URL |
 | `JIRA_BASE_URL` | `""` | No* | Jira instance URL |
+| `JIRA_EMAIL` | `""` | No* | Jira account email (for Basic Auth) |
 | `JIRA_API_TOKEN` | `""` | No* | Jira API token |
 | `JIRA_PROJECT_KEY` | `""` | No* | Jira project key |
 | `LOG_LEVEL` | `"INFO"` | No | Logging level |
