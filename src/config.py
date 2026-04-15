@@ -21,6 +21,7 @@ DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///data/meetings.db")
 
 # ── Jira (optional — stub mode nếu thiếu) ────────────────────────────────────
 JIRA_BASE_URL: str = os.getenv("JIRA_BASE_URL", "")
+JIRA_EMAIL: str = os.getenv("JIRA_EMAIL", "")
 JIRA_API_TOKEN: str = os.getenv("JIRA_API_TOKEN", "")
 JIRA_PROJECT_KEY: str = os.getenv("JIRA_PROJECT_KEY", "")
 
