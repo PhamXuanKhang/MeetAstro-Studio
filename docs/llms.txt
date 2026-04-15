@@ -119,7 +119,7 @@ uv pip install -e .              # Editable install (required for imports)
 ## Environment Variables
 
 Required: OPENAI_API_KEY
-Optional: OPENAI_MODEL (gpt-4o), WHISPER_LOCAL_MODEL (base), DATABASE_URL (sqlite:///data/meetings.db), JIRA_BASE_URL, JIRA_API_TOKEN, JIRA_PROJECT_KEY, LOG_LEVEL (INFO)
+Optional: OPENAI_MODEL (gpt-4o), WHISPER_LOCAL_MODEL (base), DATABASE_URL (sqlite:///data/meetings.db), JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY, LOG_LEVEL (INFO)
 
 ## Current Status (as of 2026-04-12)
 

@@ -144,6 +144,7 @@ Xem chi tiết: [api-reference.md — Configuration](api-reference.md#configurat
 | `WHISPER_LOCAL_MODEL` | No (default: `base`) | Whisper local model size |
 | `DATABASE_URL` | No (default: `sqlite:///data/meetings.db`) | SQLite path |
 | `JIRA_BASE_URL` | No | Jira instance URL |
+| `JIRA_EMAIL` | No | Jira account email (for Basic Auth) |
 | `JIRA_API_TOKEN` | No | Jira API token |
 | `JIRA_PROJECT_KEY` | No | Jira project key |
 | `LOG_LEVEL` | No (default: `INFO`) | Logging level |
