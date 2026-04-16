@@ -7,8 +7,9 @@ Tech stack: Python 3.9+ / Streamlit 1.32+ / OpenAI API (GPT-4o + Whisper) / Post
 
 ## Commands
 ```
-pip install -r requirements.txt    # Install
-streamlit run src/app.py               # Run app
+pip install -r requirements.txt    # Install dependencies
+pip install -e .                   # Run this to avoid ModuleNotFoundError for 'src'
+streamlit run src/app.py           # Run app
 pytest tests/ -v                   # Test all
 pytest tests/test_X.py -v          # Test single
 flake8 . --max-line-length=100     # Lint

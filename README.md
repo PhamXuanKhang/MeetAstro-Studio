@@ -1,19 +1,25 @@
-# Starter Code App
+# AI Meeting Assistant
 
-A template for building AI Agents in Python.
+Ứng dụng chuyển đổi audio cuộc họp thành biên bản hoàn chỉnh và action items có cấu trúc (Epic → Task → Subtask) để tích hợp tự động vào Jira.
 
 ## Structure
 
 ```
 ├── src/
-│   ├── agent.py        # Main agent loop
-│   ├── tools.py        # Tool definitions
-│   └── config.py       # Configuration
+│   ├── app.py          # Streamlit UI
+│   ├── config.py       # Configuration
+│   ├── schema.py       # Data Models
+│   ├── modules/        # Database, Exporter, Jira client
+│   ├── providers/      # Strategy pattern cho AI (Whisper, GPT)
+│   └── services/       # Orchestration (Analyze, Transcribe, Jira)
+├── tests/              # Unit tests
+├── docs/               # System documentation
 ├── scripts/
 │   ├── setup_hooks.sh  # One-time hook installer
 │   ├── log_hook.py     # AI tool hook handler
 │   └── submit_log.py   # Submits logs on git push
 ├── requirements.txt
+├── prompt_notes/       # Ghi chú prompt từ Instructor
 ├── .env.example
 ├── AGENTS.md           # Rules for using AI coding agents
 ├── JOURNAL.md          # Weekly journal — product journey & learnings
@@ -38,7 +44,7 @@ bash scripts/setup_hooks.sh
 cp .env.example .env
 ```
 
-Open `.env` and fill in your `ANTHROPIC_API_KEY`. The `AI_LOG_*` variables are pre-filled.
+Mở `.env` và điền các khóa `OPENAI_API_KEY`, cấu hình Jira (`JIRA_BASE_URL`...), và DB config.
 
 ### 3. Run
 
@@ -48,7 +54,8 @@ source venv/bin/activate       # Linux/Mac
 # or: venv\Scripts\activate    # Windows
 
 pip install -r requirements.txt
-python -m src.agent
+pip install -e .               # Cài đặt module 'src' để chạy Streamlit
+streamlit run src/app.py
 ```
 
 ## Weekly Journal

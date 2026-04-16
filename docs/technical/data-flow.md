@@ -87,7 +87,7 @@ Audio File (.wav/.mp3/.m4a)
 | Export JSON | `MeetingAnalysis` | `export_json()` → `to_dict()` + `json.dumps` | `str` (JSON) |
 | Export CSV | `MeetingAnalysis` | `export_csv()` → flatten Epic/Task/Subtask | `str` (CSV) |
 | Save DB | `MeetingRecord` | `create_meeting()` → `analysis.to_json()` → INSERT | `int` (new id) |
-| Push Jira | `MeetingAnalysis` | `JiraClient.create_epic/task/subtask()` → REST POST | `str` (issue keys) |
+| Push Jira | `MeetingAnalysis` | `jira_service.push_analysis_to_jira()` → `JiraClient.create_*()` → REST POST | `JiraPushResult` |
 
 ---
 
@@ -132,3 +132,13 @@ CREATE TABLE meetings (
 | Jira REST v3 | `POST /rest/api/3/issue` | Basic Auth (`JIRA_EMAIL` + `JIRA_API_TOKEN`) | Issue fields (project, summary, type, priority, parent) | `{"key": "MEET-1"}` |
 
 Tất cả API calls có error handling + retry logic (xem [architecture.md](architecture.md)).
+
+---
+
+## Jira upload flow (chi tiết)
+
+Luồng đẩy Jira đã được nối trực tiếp trong UI tại `src/app.py` (nút `🚀 Đẩy lên Jira`).
+
+Đọc chi tiết thứ tự gọi API, payload mapping, STUB mode, và các rủi ro vận hành tại:
+
+- [jira-upload-flow.md](jira-upload-flow.md)
