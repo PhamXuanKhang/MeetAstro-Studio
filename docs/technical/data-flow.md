@@ -129,6 +129,6 @@ CREATE TABLE meetings (
 |-----|----------|------|---------|----------|
 | OpenAI Whisper | `audio.transcriptions.create` | Bearer `OPENAI_API_KEY` | audio file + `model="whisper-1"` | `str` (transcript) |
 | OpenAI GPT-4o | `chat.completions.create` | Bearer `OPENAI_API_KEY` | system prompt + transcript, `response_format=json_object` | JSON string → parse |
-| Jira REST v3 | `POST /rest/api/3/issue` | Bearer `JIRA_API_TOKEN` | Issue fields (project, summary, type, priority, parent) | `{"key": "MEET-1"}` |
+| Jira REST v3 | `POST /rest/api/3/issue` | Basic Auth (`JIRA_EMAIL` + `JIRA_API_TOKEN`) | Issue fields (project, summary, type, priority, parent) | `{"key": "MEET-1"}` |
 
 Tất cả API calls có error handling + retry logic (xem [architecture.md](architecture.md)).

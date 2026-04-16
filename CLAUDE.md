@@ -1,7 +1,7 @@
 # AI Meeting Assistant
 
 ## Overview
-Ứng dụng chuyển đổi audio cuộc họp thành action items có cấu trúc (Epic → Task → Subtask) và tích hợp tự động vào Jira. Workflow: Ghi âm → Whisper transcribe → LLM phân tích → Xuất Jira tickets.
+Ứng dụng chuyển đổi audio cuộc họp thành biên bản hoàn chỉnh và action items có cấu trúc (Epic → Task → Subtask) để tích hợp tự động vào Jira. Workflow mới: File âm thanh MP3 → xử lý song song STT + diarization → alignment timestamp/người nói → LLM bước 1 (cleaning & formatting) → LLM bước 2 (extraction & summary) → xuất Jira tickets.
 
 Tech stack: Python 3.9+ / Streamlit 1.32+ / OpenAI API (GPT-4o + Whisper) / PostgreSQL / Jira REST API.
 
@@ -39,6 +39,9 @@ tests/                  → pytest files
 
 ## Key Patterns
 - **Strategy Pattern**: Mỗi AI provider kế thừa ABC (`base_analyzer.py`, `base_transcriber.py`). Provider mới PHẢI implement ABC tương ứng.
+- **Parallel Pipeline**: STT và diarization chạy song song từ cùng một input audio để tối ưu thời gian xử lý.
+- **Timestamp Alignment**: Kết quả STT và speaker labels được hợp nhất bằng bước alignment để tạo diarized transcript có người nói gắn đúng với từng đoạn.
+- **Two-stage LLM Post-processing**: LLM bước 1 dùng để cleaning & formatting, LLM bước 2 dùng để extraction & summary.
 - **Fallback Chain**: `transcription_service.py` tự fallback Whisper API → Local khi lỗi.
 - **Structured Output**: OpenAI dùng JSON mode cho action items extraction. Output cuối phải map được sang Jira schema: Epic → Task → Subtask với assignee, deadline, priority.
 - **State**: Streamlit `session_state` cho UI state; PostgreSQL cho persistent data.
@@ -61,7 +64,7 @@ Mỗi cuộc họp extract ra cấu trúc:
 Xem `.env.example`. Keys quan trọng:
 - `OPENAI_API_KEY` — GPT-4o + Whisper API
 - `WHISPER_LOCAL_MODEL` — tiny/base/small/medium/large
-- `JIRA_BASE_URL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` — Jira integration
+- `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` — Jira integration (Basic Auth)
 - `DATABASE_URL` — PostgreSQL connection string
 
 ## Agent Behavior

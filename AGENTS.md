@@ -73,3 +73,7 @@ If you are an AI coding agent (Claude Code, Cursor, Copilot, Codex, Gemini, etc.
 ### 9. Keeping hook configs in sync
 
 - If you add a tool, change hook commands, or change how `log_hook.py` is invoked, update the table in section 1 and every matching config under `.claude/`, `.cursor/`, `.codex/`, `.gemini/`, and `.github/hooks/` so all environments behave the same.
+
+### 10. Keep docs and commands accurate
+
+- When changing entrypoints, scripts, or setup commands, update `README.md` and related docs in the same PR. If commands differ by OS, document Windows and Unix-like variants side by side.
