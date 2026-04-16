@@ -67,6 +67,20 @@ Xem `.env.example`. Keys quan trọng:
 - `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` — Jira integration (Basic Auth)
 - `DATABASE_URL` — PostgreSQL connection string
 
+## Agent Behavior
+
+**Think Before Coding** — Nêu rõ assumptions trước khi implement. Nếu có nhiều cách diễn giải, trình bày tất cả thay vì tự chọn im lặng. Nếu có hướng đơn giản hơn, nói ra. Nếu không rõ yêu cầu, dừng lại và hỏi.
+
+**Simplicity First** — Viết lượng code tối thiểu giải quyết đúng vấn đề. Không thêm feature, abstraction, hay "flexibility" ngoài yêu cầu. Nếu 200 dòng có thể viết lại thành 50, hãy làm vậy.
+
+**Surgical Changes** — Chỉ chạm vào những gì cần thiết. Không "cải thiện" code lân cận, không refactor code không bị hỏng. Giữ đúng style hiện có. Xóa import/biến/hàm mà chính thay đổi của mình tạo ra — không xóa dead code có sẵn trừ khi được yêu cầu.
+
+**Goal-Driven Execution** — Biến task thành tiêu chí kiểm chứng được. Với task nhiều bước, nêu kế hoạch ngắn trước khi làm:
+```
+1. [Bước] → verify: [kiểm tra]
+2. [Bước] → verify: [kiểm tra]
+```
+
 ## Rules
 - LUÔN chạy `pytest tests/ -v` sau khi sửa logic trong `providers/` hoặc `services/`.
 - LUÔN verify structured output match Jira schema (Epic/Task/Subtask) sau khi sửa prompts hoặc analyzer.
