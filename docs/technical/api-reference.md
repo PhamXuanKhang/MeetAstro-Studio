@@ -153,6 +153,19 @@ def analyze(transcript: str) -> MeetingAnalysis
 Validate input → OpenAIAnalyzer → return MeetingAnalysis.
 Raises: `ValueError` (empty transcript).
 
+### jira_service
+
+```python
+def push_analysis_to_jira(
+  analysis: MeetingAnalysis,
+  client: JiraClient | None = None,
+) -> JiraPushResult
+```
+
+- Orchestrate theo thứ tự: Epic → Task → Subtask
+- Trả về `JiraPushResult` gồm: `is_stub`, `epic_keys`, `epic_count`, `task_count`, `subtask_count`
+- Raises: `ValueError` (analysis không có epics), `RuntimeError` (lỗi khi tạo issue)
+
 ---
 
 ## Modules — `src/modules/`
@@ -198,6 +211,7 @@ class JiraClient:
 - Auto stub mode: nếu thiếu credentials → `is_stub = True`, return `"STUB-001"`
 - Jira REST API v3: `POST /rest/api/3/issue`
 - Auth: Basic Auth (`JIRA_EMAIL` + `JIRA_API_TOKEN`)
+- Luồng runtime từ UI + sequence Epic → Task → Subtask: xem `jira-upload-flow.md`
 
 ---
 

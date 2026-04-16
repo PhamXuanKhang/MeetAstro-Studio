@@ -96,6 +96,7 @@ MeetingRecord (dataclass) ─── id, title, audio_path, transcript, analysis,
 |------|----------|-------|
 | `transcription_service.py` | `transcribe(audio_path, language)` | Fallback chain: `OpenAITranscriber` → (nếu fail + log warning) → `LocalTranscriber` → (nếu cả hai fail) → raise `RuntimeError` |
 | `analysis_service.py` | `analyze(transcript)` | Validate input → `OpenAIAnalyzer().analyze()` → log kết quả |
+| `jira_service.py` | `push_analysis_to_jira(analysis)` | Orchestrate Jira push theo thứ tự Epic → Task → Subtask, trả về summary counts |
 
 ### `src/modules/` — Persistence & Integration
 
