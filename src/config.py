@@ -25,6 +25,14 @@ JIRA_EMAIL: str = os.getenv("JIRA_EMAIL", "")
 JIRA_API_TOKEN: str = os.getenv("JIRA_API_TOKEN", "")
 JIRA_PROJECT_KEY: str = os.getenv("JIRA_PROJECT_KEY", "")
 
+# ── Audio Recording ───────────────────────────────────────────────────────
+AUDIO_SAMPLE_RATE: int = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
+AUDIO_CHANNELS: int = int(os.getenv("AUDIO_CHANNELS", "1"))
+AUDIO_MIC_ENABLED: bool = os.getenv("AUDIO_MIC_ENABLED", "true").lower() == "true"
+AUDIO_MIC_GAIN: float = float(os.getenv("AUDIO_MIC_GAIN", "3.0"))
+AUDIO_SYS_GAIN: float = float(os.getenv("AUDIO_SYS_GAIN", "0.5"))
+AUDIO_OUTPUT_DIR: str = os.getenv("AUDIO_OUTPUT_DIR", "data/recordings")
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
