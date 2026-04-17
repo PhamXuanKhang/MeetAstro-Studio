@@ -7,9 +7,13 @@ pydantic>=2.0.0
 python-dotenv>=1.0.0
 requests>=2.31.0
 streamlit>=1.32.0
+numpy>=1.26.0
+sounddevice>=0.5.0
 
 # Development dependencies
 flake8>=7.0.0
 mypy>=1.8.0
 pytest>=8.0.0
 pytest-mock>=3.12.0
+
+pysysaudio==0.1.3

@@ -1,8 +1,9 @@
 """
 AI Meeting Assistant — Streamlit UI entry point.
-Workflow: Upload audio → Transcribe → Analyze → Export / Save / Push to Jira
+Workflow: Upload/Record audio → Transcribe → Analyze → Export / Save / Push to Jira
 """
 import tempfile
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -12,6 +13,12 @@ from src.modules.database import create_meeting, init_db, list_meetings
 from src.modules.exporter import export_csv, export_json, export_markdown
 from src.schema import MeetingRecord
 from src.services.analysis_service import analyze
+from src.services.recording_service import (
+    elapsed_seconds,
+    is_recording,
+    start_recording,
+    stop_recording,
+)
 from src.services.jira_service import push_analysis_to_jira
 from src.services.transcription_service import transcribe
 
@@ -69,30 +76,76 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 col_upload, col_transcript, col_analysis = st.columns([1, 1.2, 1.5])
 
-# ── Cột 1: Upload audio ───────────────────────────────────────────────────────
+# ── Cột 1: Audio Input ────────────────────────────────────────────────────────
 with col_upload:
-    st.subheader("1️⃣ Upload Audio")
-    uploaded_file = st.file_uploader(
-        "Chọn file ghi âm",
-        type=["wav", "mp3", "m4a", "ogg", "flac"],
-        help="Hỗ trợ WAV, MP3, M4A, OGG, FLAC",
-    )
+    st.subheader("1️⃣ Audio Input")
     meeting_title = st.text_input("Tên cuộc họp", placeholder="Vd: Họp sprint planning 15/01")
 
-    if uploaded_file is not None:
-        # Lưu tạm file để gửi cho transcriber
-        suffix = Path(uploaded_file.name).suffix
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        tmp.write(uploaded_file.read())
-        tmp.flush()
-        tmp.close()
-        st.session_state.audio_path = tmp.name
-        st.audio(uploaded_file)
-        st.caption(f"File: {uploaded_file.name} ({uploaded_file.size // 1024} KB)")
+    audio_mode = st.radio(
+        "Chọn nguồn audio",
+        ["📁 Upload File", "🔴 Record System Audio"],
+        horizontal=True,
+    )
+
+    if audio_mode == "📁 Upload File":
+        # ── Existing upload flow ──────────────────────────────────────────
+        uploaded_file = st.file_uploader(
+            "Chọn file ghi âm",
+            type=["wav", "mp3", "m4a", "ogg", "flac"],
+            help="Hỗ trợ WAV, MP3, M4A, OGG, FLAC",
+        )
+
+        if uploaded_file is not None:
+            suffix = Path(uploaded_file.name).suffix
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            tmp.write(uploaded_file.read())
+            tmp.flush()
+            tmp.close()
+            st.session_state.audio_path = tmp.name
+            st.audio(uploaded_file)
+            st.caption(f"File: {uploaded_file.name} ({uploaded_file.size // 1024} KB)")
+
+    else:
+        # ── Record System Audio flow ──────────────────────────────────────
+        recording_active = is_recording()
+
+        if not recording_active:
+            if st.button("⏺️ Bắt đầu ghi âm", use_container_width=True, type="primary"):
+                try:
+                    wav_path = start_recording()
+                    st.session_state.audio_path = wav_path
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Lỗi bắt đầu ghi âm: {exc}")
+                    logger.error("start_recording failed: %s", exc)
+        else:
+            # Show elapsed time
+            elapsed = elapsed_seconds()
+            mins, secs = divmod(int(elapsed), 60)
+            st.markdown(
+                f"### 🔴 Đang ghi âm: `{mins:02d}:{secs:02d}`"
+            )
+
+            if st.button("⏹️ Dừng ghi âm", use_container_width=True, type="primary"):
+                try:
+                    wav_path = stop_recording()
+                    st.session_state.audio_path = wav_path
+                    st.success(f"Đã lưu: {wav_path}")
+                except Exception as exc:
+                    st.error(f"Lỗi dừng ghi âm: {exc}")
+                    logger.error("stop_recording failed: %s", exc)
+            else:
+                # Auto-refresh to update the timer display
+                time.sleep(1)
+                st.rerun()
+
+        # Show current recording path if set
+        if st.session_state.audio_path and not recording_active:
+            st.caption(f"📂 File: {st.session_state.audio_path}")
 
     transcribe_btn = st.button(
         "🎤 Transcribe",
-        disabled=uploaded_file is None,
+        disabled=(st.session_state.audio_path is None) or is_recording(),
         use_container_width=True,
         type="primary",
     )

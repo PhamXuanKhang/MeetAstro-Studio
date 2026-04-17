@@ -17,3 +17,7 @@ build/
 
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
+capture_system_audio_to_wav.py
+uv.lock
+data/meetings.db
+data/meetings.db
