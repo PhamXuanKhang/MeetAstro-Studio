@@ -57,7 +57,7 @@ class JiraClient:
                 response.status_code,
                 response.text,
             )
-        response.raise_for_status()
+            raise RuntimeError(f"{response.status_code} Client Error: {response.text}")
         return response.json().get("key", _STUB_KEY)
 
     def create_epic(self, epic: Epic) -> str:
@@ -76,10 +76,10 @@ class JiraClient:
                     "content": [{"type": "paragraph", "content": [{"type": "text", "text": epic.description}]}],
                 },
                 "issuetype": {"name": "Epic"},
-                # CẢNH BÁO: ID của customfield này (Epic Name/Link) có thể thay đổi tùy thuộc vào từng workspace Jira. Cần kiểm tra lại qua API GET /rest/api/3/field nếu bị lỗi 400 Bad Request.
-                "customfield_10014": epic.summary,  # Epic Name field
             }
         }
+        # Thử thêm customfield_10011 nếu Jira bắt buộc trường "Epic Name" trên Jira cũ
+        # payload["fields"]["customfield_10011"] = epic.summary
         key = self._post(payload)
         logger.info("Đã tạo Epic %s: '%s'.", key, epic.summary)
         return key
@@ -95,11 +95,8 @@ class JiraClient:
                 "project": {"key": self._project_key},
                 "summary": task.summary,
                 "issuetype": {"name": "Task"},
-                # CẢNH BÁO: ID của customfield này (Epic Name/Link) có thể thay đổi tùy thuộc vào từng workspace Jira. Cần kiểm tra lại qua API GET /rest/api/3/field nếu bị lỗi 400 Bad Request.
-                "customfield_10014": epic_key,  # Epic Link
+                "parent": {"key": epic_key},  # Dùng parent thay cho Epic Link (Jira Cloud API mới)
                 "priority": {"name": task.priority.value},
-                "duedate": task.deadline,
-                "assignee": {"name": task.assignee} if task.assignee else None,
                 "description": {
                     "type": "doc",
                     "version": 1,
@@ -107,6 +104,15 @@ class JiraClient:
                 },
             }
         }
+        
+        # Chỉ truyền duedate nếu là format hợp lệ
+        if task.deadline and task.deadline not in ("N/A", "TBD", "None") and "-" in task.deadline:
+            payload["fields"]["duedate"] = task.deadline
+            
+        # Chỉ truyền assignee nếu có giá trị thực
+        if task.assignee and task.assignee not in ("N/A", "TBD", "None"):
+            # Lưu ý: Jira Cloud dùng accountId, không dùng name. Nếu lỗi tiếp, cần mapping lại assignee.
+            payload["fields"]["assignee"] = {"name": task.assignee}
         key = self._post(payload)
         logger.info("Đã tạo Task %s: '%s'.", key, task.summary)
         return key
@@ -124,10 +130,16 @@ class JiraClient:
                 "issuetype": {"name": "Subtask"},
                 "parent": {"key": task_key},
                 "priority": {"name": subtask.priority.value},
-                "duedate": subtask.deadline,
-                "assignee": {"name": subtask.assignee} if subtask.assignee else None,
             }
         }
+        
+        # Chỉ truyền duedate nếu là format hợp lệ
+        if subtask.deadline and subtask.deadline not in ("N/A", "TBD", "None") and "-" in subtask.deadline:
+            payload["fields"]["duedate"] = subtask.deadline
+            
+        # Chỉ truyền assignee nếu có giá trị thực
+        if subtask.assignee and subtask.assignee not in ("N/A", "TBD", "None"):
+            payload["fields"]["assignee"] = {"name": subtask.assignee}
         key = self._post(payload)
         logger.info("Đã tạo Subtask %s: '%s'.", key, subtask.summary)
         return key

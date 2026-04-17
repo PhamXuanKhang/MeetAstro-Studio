@@ -11,7 +11,6 @@ import streamlit as st
 from src.config import get_logger
 from src.modules.database import create_meeting, init_db, list_meetings
 from src.modules.exporter import export_csv, export_json, export_markdown
-from src.modules.jira_client import JiraClient
 from src.schema import MeetingRecord
 from src.services.analysis_service import analyze
 from src.services.recording_service import (
@@ -20,6 +19,7 @@ from src.services.recording_service import (
     start_recording,
     stop_recording,
 )
+from src.services.jira_service import push_analysis_to_jira
 from src.services.transcription_service import transcribe
 
 from dotenv import load_dotenv
@@ -286,18 +286,15 @@ if st.session_state.analysis:
         if st.button("🚀 Đẩy lên Jira", use_container_width=True):
             with st.spinner("Đang đẩy lên Jira..."):
                 try:
-                    client = JiraClient()
-                    results = []
-                    for epic in analysis.epics:
-                        epic_key = client.create_epic(epic)
-                        for task in epic.tasks:
-                            task_key = client.create_task(task, epic_key)
-                            for subtask in task.subtasks:
-                                client.create_subtask(subtask, task_key)
-                        results.append(epic_key)
-                    if client.is_stub:
+                    jira_result = push_analysis_to_jira(analysis)
+                    if jira_result.is_stub:
                         st.warning("Jira STUB mode — chưa gửi API thật. Cấu hình JIRA_* trong .env.")
                     else:
-                        st.success(f"Đẩy lên Jira thành công! Epics: {', '.join(results)}")
+                        st.success(
+                            "Đẩy lên Jira thành công! "
+                            f"Epics: {', '.join(jira_result.epic_keys)} | "
+                            f"Tasks: {jira_result.task_count} | "
+                            f"Subtasks: {jira_result.subtask_count}"
+                        )
                 except Exception as exc:
                     st.error(f"Lỗi Jira: {exc}")

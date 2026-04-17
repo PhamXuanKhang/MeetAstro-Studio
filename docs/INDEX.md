@@ -20,6 +20,7 @@ docs/
 │   ├── architecture.md         ← System architecture + module map
 │   ├── data-flow.md            ← Luồng dữ liệu end-to-end
 │   ├── api-reference.md        ← Public interfaces & schemas
+│   ├── jira-upload-flow.md     ← Luồng upload Epic/Task/Subtask lên Jira
 │   └── deployment.md           ← Setup, cài đặt, chạy app
 │
 └── evaluation/                 ← Evaluation — QA & Review đọc
@@ -34,7 +35,7 @@ docs/
 | Vai trò | Đọc trước | Tham khảo thêm |
 |---------|-----------|-----------------|
 | **PM / Stakeholder** | `product/canvas.md` → `product/spec.md` | `product/roadmap.md` |
-| **Developer** | `technical/architecture.md` → `technical/api-reference.md` | `technical/data-flow.md`, `technical/deployment.md` |
+| **Developer** | `technical/architecture.md` → `technical/api-reference.md` | `technical/data-flow.md`, `technical/jira-upload-flow.md`, `technical/deployment.md` |
 | **AI Agent** | `llms.txt` (auto-loaded) | `technical/architecture.md`, `technical/api-reference.md` |
 | **QA / Reviewer** | `evaluation/eval-metrics.md` → `evaluation/test-plan.md` | `product/spec.md` (failure modes) |
 
