@@ -147,6 +147,14 @@ Xem chi tiết: [api-reference.md — Configuration](api-reference.md#configurat
 | `JIRA_EMAIL` | No | Jira account email (for Basic Auth) |
 | `JIRA_API_TOKEN` | No | Jira API token |
 | `JIRA_PROJECT_KEY` | No | Jira project key |
+| `AUDIO_SAMPLE_RATE` | No (default: `16000`) | Sample rate cho audio recording |
+| `AUDIO_CHANNELS` | No (default: `1`) | Số kênh audio |
+| `AUDIO_MIC_ENABLED` | No (default: `true`) | Bật/tắt mic mixing |
+| `AUDIO_MIC_GAIN` | No (default: `3.0`) | Gain cho mic input |
+| `AUDIO_SYS_GAIN` | No (default: `0.5`) | Gain cho system audio |
+| `AUDIO_OUTPUT_DIR` | No (default: `data/recordings`) | Thư mục lưu recordings |
+| `APP_SECRET_KEY` | No | Fernet key cho credential encryption |
+| `TRANSCRIPTION_CHUNK_SECONDS` | No (default: `60`) | Độ dài chunk audio (giây) |
 | `LOG_LEVEL` | No (default: `INFO`) | Logging level |
 
 ---
@@ -156,20 +164,38 @@ Xem chi tiết: [api-reference.md — Configuration](api-reference.md#configurat
 ```
 A20-App-089/
 ├── src/
-│   ├── app.py                  ← Entry point (Streamlit)
-│   ├── schema.py               ← Data models
-│   ├── config.py               ← Config + logging
-│   ├── providers/              ← Strategy Pattern (AI providers)
-│   ├── services/               ← Orchestration (fallback chain)
-│   ├── modules/                ← DB, export, Jira
-│   └── prompts/                ← Prompt templates
-├── tests/                      ← pytest (85 tests)
-├── docs/                       ← Tài liệu (bạn đang ở đây)
-├── scripts/                    ← Hooks, log submission
-├── pyproject.toml              ← Package config
-├── requirements.txt            ← Dependencies
-├── .env.example                ← Template environment
-├── CLAUDE.md                   ← AI agent instructions
-├── JOURNAL.md                  ← Weekly journal
-└── WORKLOG.md                  ← Technical decisions log
+│   ├── app.py                      ← Entry point (Streamlit)
+│   ├── schema.py                   ← Pydantic models
+│   ├── config.py                   ← Config + logging (pydantic-settings)
+│   ├── providers/
+│   │   ├── base_analyzer.py        ← ABC cho analyzers
+│   │   ├── base_transcriber.py     ← ABC cho transcribers
+│   │   ├── openai_analyzer.py      ← GPT-4o analyzer
+│   │   ├── openai_transcriber.py   ← Whisper API
+│   │   ├── local_transcriber.py    ← Local Whisper
+│   │   └── mock_analyzer.py        ← Mock cho testing
+│   ├── services/
+│   │   ├── analysis_service.py     ← AI analysis orchestration
+│   │   ├── transcription_service.py ← Fallback chain
+│   │   ├── jira_service.py         ← Jira push
+│   │   ├── recording_service.py    ← Audio recording
+│   │   ├── extraction_service.py   ← Rule-based extraction
+│   │   ├── validation_service.py   ← Cross-validation
+│   │   └── summarization_service.py ← Async summary
+│   ├── modules/
+│   │   ├── database.py             ← SQLite CRUD
+│   │   ├── exporter.py             ← MD/JSON/CSV export
+│   │   ├── jira_client.py          ← Jira REST client
+│   │   ├── audio_recorder.py       ← System audio capture
+│   │   └── credential_vault.py     ← Fernet encryption
+│   └── prompts/                    ← Prompt templates
+├── tests/                          ← pytest (14 test files)
+├── docs/                           ← Tài liệu (bạn đang ở đây)
+├── scripts/                        ← Hooks, log submission
+├── pyproject.toml                  ← Package config
+├── requirements.txt                ← Dependencies
+├── .env.example                    ← Template environment
+├── CLAUDE.md                       ← AI agent instructions
+├── JOURNAL.md                      ← Weekly journal
+└── WORKLOG.md                      ← Technical decisions log
 ```

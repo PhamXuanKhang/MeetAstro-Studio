@@ -60,21 +60,21 @@ Hệ thống chia thành 4 layers, mỗi layer chỉ phụ thuộc layer dưới
 
 ## Module map
 
-### `src/schema.py` — Data Models
+### `src/schema.py` — Pydantic Models
 
 ```
 Priority (Enum) ─── Critical | High | Medium | Low
     │
-ActionItem (dataclass) ─── summary, assignee, deadline, priority, context
-    ├── Subtask (extends ActionItem)
-    └── Task (extends ActionItem) ─── subtasks: list[Subtask]
+ActionItem (BaseModel) ─── summary, assignee, deadline, priority, context
+    ├── Subtask (extends ActionItem) ─── confidence, validation_notes
+    └── Task (extends ActionItem) ─── subtasks: list[Subtask], confidence, validation_notes
 
-Epic (dataclass) ─── summary, description, tasks: list[Task]
+Epic (BaseModel) ─── summary, description, tasks: list[Task]
 
-MeetingAnalysis (dataclass) ─── epics: list[Epic], summary, created_at
+MeetingAnalysis (BaseModel) ─── epics, summary, key_decisions, discussion_points, parking_lot, created_at
     └── to_dict() / from_dict() / to_json() / from_json()
 
-MeetingRecord (dataclass) ─── id, title, audio_path, transcript, analysis, timestamps
+MeetingRecord (BaseModel) ─── id, title, audio_path, transcript, analysis, created_at, updated_at
     └── to_dict()
 ```
 
@@ -87,6 +87,7 @@ MeetingRecord (dataclass) ─── id, title, audio_path, transcript, analysis,
 | `openai_analyzer.py` | `OpenAIAnalyzer` | extends BaseAnalyzer | `analyze()` | GPT-4o + JSON mode, retry 3x exponential backoff |
 | `openai_transcriber.py` | `OpenAITranscriber` | extends BaseTranscriber | `transcribe()` | Whisper API |
 | `local_transcriber.py` | `LocalTranscriber` | extends BaseTranscriber | `transcribe()` | Local Whisper model (`base` default) |
+| `mock_analyzer.py` | `MockAnalyzer` | extends BaseAnalyzer | `analyze()` | Mock data cho testing/fallback offline |
 
 **Thêm provider mới:** Tạo class kế thừa ABC tương ứng + test file riêng.
 
@@ -97,14 +98,21 @@ MeetingRecord (dataclass) ─── id, title, audio_path, transcript, analysis,
 | `transcription_service.py` | `transcribe(audio_path, language)` | Fallback chain: `OpenAITranscriber` → (nếu fail + log warning) → `LocalTranscriber` → (nếu cả hai fail) → raise `RuntimeError` |
 | `analysis_service.py` | `analyze(transcript)` | Validate input → `OpenAIAnalyzer().analyze()` → log kết quả |
 | `jira_service.py` | `push_analysis_to_jira(analysis)` | Orchestrate Jira push theo thứ tự Epic → Task → Subtask, trả về summary counts |
+| `recording_service.py` | `start_recording()`, `stop_recording()`, `is_recording()` | Orchestrate `AudioRecorder` singleton cho Streamlit |
+| `extraction_service.py` | `rule_based_extraction(transcript)` | Regex-based action item extraction để cross-validate với AI |
+| `validation_service.py` | `validate_action_items(ai_items, rule_items, transcript)` | Cross-validate AI vs rule-based, trả về confidence scores |
+| `summarization_service.py` | `generate_summary(transcript)`, `generate_summary_stream()` | Async OpenAI call để tạo summary + key_decisions + parking_lot |
 
 ### `src/modules/` — Persistence & Integration
 
 | File | Functions | Notes |
 |------|-----------|-------|
 | `database.py` | `init_db()`, `create_meeting()`, `get_meeting()`, `list_meetings()`, `update_meeting()`, `delete_meeting()` | SQLite stdlib, analysis serialize → JSON column |
+| `database.py` | `get_provider_config()`, `set_provider_config()`, `list_provider_configs()`, `delete_provider_config()` | Provider configs CRUD với encryption |
 | `exporter.py` | `export_markdown()`, `export_json()`, `export_csv()` | Stateless pure functions |
 | `jira_client.py` | `JiraClient.create_epic()`, `.create_task()`, `.create_subtask()` | REST API v3, auto stub mode khi thiếu credentials |
+| `audio_recorder.py` | `AudioRecorder.start()`, `.stop()`, `.is_recording`, `.get_completed_chunks()` | System audio capture (pysysaudio) + optional mic mixing, chunk rotation |
+| `credential_vault.py` | `encrypt()`, `decrypt()` | Fernet symmetric encryption cho provider credentials |
 
 ### `src/config.py` — Configuration
 
