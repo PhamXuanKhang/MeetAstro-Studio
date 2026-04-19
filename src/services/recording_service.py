@@ -69,3 +69,9 @@ def elapsed_seconds() -> float:
     """Seconds elapsed since recording started."""
     recorder = get_recorder()
     return recorder.elapsed_seconds
+
+
+def get_completed_chunks() -> list:
+    """Trả về list đường dẫn các chunk WAV đã hoàn thành."""
+    recorder = get_recorder()
+    return recorder.get_completed_chunks()

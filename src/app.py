@@ -2,6 +2,7 @@
 AI Meeting Assistant — Streamlit UI entry point.
 Workflow: Upload/Record audio → Transcribe → Analyze → Export / Save / Push to Jira
 """
+import asyncio
 import tempfile
 import time
 from pathlib import Path
@@ -9,7 +10,15 @@ from pathlib import Path
 import streamlit as st
 
 from src.config import get_logger
-from src.modules.database import create_meeting, init_db, list_meetings
+from src.modules.database import (
+    create_meeting,
+    delete_provider_config,
+    get_provider_config,
+    init_db,
+    list_meetings,
+    list_provider_configs,
+    set_provider_config,
+)
 from src.modules.exporter import export_csv, export_json, export_markdown
 from src.schema import MeetingRecord
 from src.services.analysis_service import analyze
@@ -20,6 +29,7 @@ from src.services.recording_service import (
     stop_recording,
 )
 from src.services.jira_service import push_analysis_to_jira
+from src.services.summarization_service import generate_summary_stream
 from src.services.transcription_service import transcribe
 
 from dotenv import load_dotenv
@@ -47,9 +57,29 @@ if "analysis" not in st.session_state:
     st.session_state.analysis = None
 if "audio_path" not in st.session_state:
     st.session_state.audio_path = None
+if "streaming_summary" not in st.session_state:
+    st.session_state.streaming_summary = ""
+
+
+# ── Helper: confidence badge ──────────────────────────────────────────────────
+def _confidence_badge(confidence: float) -> str:
+    """Render inline HTML badge với màu theo ngưỡng confidence."""
+    pct = f"{confidence:.0%}"
+    if confidence >= 0.7:
+        color = "#2ecc71"  # green
+    elif confidence >= 0.4:
+        color = "#f39c12"  # yellow/orange
+    else:
+        color = "#e74c3c"  # red
+    return (
+        f'<span style="background:{color};color:#fff;padding:1px 6px;'
+        f'border-radius:4px;font-size:0.75em;font-weight:600">'
+        f'confidence: {pct}</span>'
+    )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR — lịch sử cuộc họp
+# SIDEBAR — lịch sử cuộc họp + Integrations
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.header("📋 Lịch sử cuộc họp")
@@ -71,6 +101,72 @@ with st.sidebar:
     except Exception as exc:
         st.error(f"Lỗi tải lịch sử: {exc}")
 
+    # ── Integrations ──────────────────────────────────────────────────────
+    st.divider()
+    with st.expander("⚙️ Integrations", expanded=False):
+        _PROVIDERS = ["jira", "trello", "notion", "slack", "teams"]
+
+        try:
+            _configured = {row["provider_name"] for row in list_provider_configs()}
+        except Exception:
+            _configured = set()
+
+        selected_provider = st.selectbox(
+            "Provider",
+            _PROVIDERS,
+            format_func=lambda p: f"{'✓ ' if p in _configured else ''}{p.capitalize()}",
+        )
+
+        if selected_provider in _configured:
+            st.success(f"✓ {selected_provider.capitalize()} đã được cấu hình")
+            if st.button(f"Xóa cấu hình {selected_provider.capitalize()}", use_container_width=True):
+                try:
+                    delete_provider_config(selected_provider)
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Lỗi xóa config: {exc}")
+        else:
+            st.caption(f"{selected_provider.capitalize()} chưa được cấu hình")
+
+        with st.form(f"provider_form_{selected_provider}"):
+            st.markdown(f"**Cấu hình {selected_provider.capitalize()}**")
+
+            if selected_provider == "jira":
+                f_url = st.text_input("Base URL", placeholder="https://yourcompany.atlassian.net")
+                f_email = st.text_input("Email")
+                f_token = st.text_input("API Token", type="password")
+                f_project = st.text_input("Project Key", placeholder="PROJ")
+                config_fields = {"url": f_url, "email": f_email, "token": f_token, "project_key": f_project}
+            elif selected_provider == "trello":
+                f_key = st.text_input("API Key")
+                f_token = st.text_input("Token", type="password")
+                f_board = st.text_input("Board ID")
+                config_fields = {"api_key": f_key, "token": f_token, "board_id": f_board}
+            elif selected_provider == "notion":
+                f_token = st.text_input("Integration Token", type="password")
+                f_db = st.text_input("Database ID")
+                config_fields = {"token": f_token, "database_id": f_db}
+            elif selected_provider == "slack":
+                f_token = st.text_input("Bot Token", type="password")
+                f_channel = st.text_input("Channel ID", placeholder="#meeting-notes")
+                config_fields = {"token": f_token, "channel": f_channel}
+            else:  # teams
+                f_webhook = st.text_input("Webhook URL", type="password")
+                config_fields = {"webhook_url": f_webhook}
+
+            submitted = st.form_submit_button("💾 Lưu cấu hình", use_container_width=True)
+            if submitted:
+                non_empty = {k: v for k, v in config_fields.items() if v and v.strip()}
+                if not non_empty:
+                    st.warning("Vui lòng điền ít nhất một trường.")
+                else:
+                    try:
+                        set_provider_config(selected_provider, non_empty)
+                        st.success(f"Đã lưu cấu hình {selected_provider.capitalize()}!")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Lỗi lưu config: {exc}")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN — 3 cột: Upload / Transcript / Analysis
 # ══════════════════════════════════════════════════════════════════════════════
@@ -88,7 +184,7 @@ with col_upload:
     )
 
     if audio_mode == "📁 Upload File":
-        # ── Existing upload flow ──────────────────────────────────────────
+        # ── Existing upload flow ──────────────────────────────────────
         uploaded_file = st.file_uploader(
             "Chọn file ghi âm",
             type=["wav", "mp3", "m4a", "ogg", "flac"],
@@ -106,7 +202,7 @@ with col_upload:
             st.caption(f"File: {uploaded_file.name} ({uploaded_file.size // 1024} KB)")
 
     else:
-        # ── Record System Audio flow ──────────────────────────────────────
+        # ── Record System Audio flow ──────────────────────────────────
         recording_active = is_recording()
 
         if not recording_active:
@@ -185,10 +281,33 @@ with col_analysis:
     st.subheader("3️⃣ Kết quả phân tích")
 
     if analyze_btn and transcript_text.strip():
-        with st.spinner("Đang phân tích bằng GPT-4o..."):
+        # Streaming summary trước khi analyze() chạy đầy đủ
+        summary_placeholder = st.empty()
+        summary_placeholder.markdown("*Đang tạo tóm tắt...*")
+        st.session_state.streaming_summary = ""
+
+        async def _stream_summary() -> str:
+            accumulated = ""
+            async for token in generate_summary_stream(transcript_text):
+                accumulated += token
+                summary_placeholder.markdown(f"**Tóm tắt (đang tạo...):** {accumulated}▌")
+            return accumulated
+
+        try:
+            streamed = asyncio.run(_stream_summary())
+            st.session_state.streaming_summary = streamed
+        except Exception as exc:
+            logger.warning("Streaming summary lỗi: %s", exc)
+            summary_placeholder.empty()
+
+        with st.spinner("Đang phân tích cấu trúc bằng GPT-4o..."):
             try:
                 analysis = analyze(transcript_text)
+                # Gán lại summary từ streaming nếu analyze() không trả về summary
+                if not analysis.summary and st.session_state.streaming_summary:
+                    object.__setattr__(analysis, "summary", st.session_state.streaming_summary)
                 st.session_state.analysis = analysis
+                summary_placeholder.empty()
                 st.success(f"Phân tích xong: {len(analysis.epics)} epics!")
             except Exception as exc:
                 st.error(f"Lỗi phân tích: {exc}")
@@ -197,7 +316,22 @@ with col_analysis:
     if st.session_state.analysis:
         analysis = st.session_state.analysis
 
-        st.markdown(f"**Tóm tắt:** {analysis.summary}")
+        # Hiển thị summary
+        if analysis.summary:
+            st.markdown(f"**Tóm tắt:** {analysis.summary}")
+
+        # Key decisions
+        if analysis.key_decisions:
+            with st.expander("📌 Quyết định chính", expanded=False):
+                for decision in analysis.key_decisions:
+                    st.markdown(f"- {decision}")
+
+        # Parking lot
+        if analysis.parking_lot:
+            with st.expander("🅿️ Parking Lot", expanded=False):
+                for item in analysis.parking_lot:
+                    st.markdown(f"- {item}")
+
         st.divider()
 
         for i, epic in enumerate(analysis.epics, 1):
@@ -205,18 +339,25 @@ with col_analysis:
                 if epic.description:
                     st.caption(epic.description)
                 for j, task in enumerate(epic.tasks, 1):
+                    badge_html = _confidence_badge(task.confidence) if task.confidence > 0 else ""
                     st.markdown(
-                        f"**Task {i}.{j}:** {task.summary}  \n"
+                        f"**Task {i}.{j}:** {task.summary} {badge_html}  \n"
                         f"👤 {task.assignee or 'TBD'} | "
                         f"📅 {task.deadline or 'N/A'} | "
-                        f"🔥 {task.priority.value}"
+                        f"🔥 {task.priority.value}",
+                        unsafe_allow_html=True,
                     )
                     if task.context:
                         st.caption(f"💬 {task.context}")
+                    if task.validation_notes:
+                        st.caption(f"📋 {' | '.join(task.validation_notes)}")
                     for k, subtask in enumerate(task.subtasks, 1):
+                        sub_badge = _confidence_badge(subtask.confidence) if subtask.confidence > 0 else ""
                         st.markdown(
-                            f"&nbsp;&nbsp;&nbsp;&nbsp;↳ **Subtask {i}.{j}.{k}:** {subtask.summary}  "
-                            f"({subtask.assignee or 'TBD'} | {subtask.priority.value})"
+                            f"&nbsp;&nbsp;&nbsp;&nbsp;↳ **Subtask {i}.{j}.{k}:** "
+                            f"{subtask.summary} {sub_badge}  "
+                            f"({subtask.assignee or 'TBD'} | {subtask.priority.value})",
+                            unsafe_allow_html=True,
                         )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -288,7 +429,7 @@ if st.session_state.analysis:
                 try:
                     jira_result = push_analysis_to_jira(analysis)
                     if jira_result.is_stub:
-                        st.warning("Jira STUB mode — chưa gửi API thật. Cấu hình JIRA_* trong .env.")
+                        st.warning("Jira STUB mode — chưa gửi API thật. Cấu hình JIRA_* trong .env hoặc Integrations sidebar.")
                     else:
                         st.success(
                             "Đẩy lên Jira thành công! "

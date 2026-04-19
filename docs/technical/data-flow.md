@@ -7,9 +7,29 @@ Luồng dữ liệu end-to-end từ audio input đến output cuối cùng.
 ## Pipeline tổng quan
 
 ```
+┌────────────────────────────────────────┐
+│ 0. AUDIO INPUT (2 options)             │
+│                                        │
+│  Option A: Upload file                 │
+│    st.file_uploader → tempfile         │
+│                                        │
+│  Option B: Record system audio         │
+│    recording_service.start_recording() │
+│         │                              │
+│    AudioRecorder (background thread)   │
+│    • System audio capture (pysysaudio) │
+│    • Optional mic mixing (sounddevice) │
+│    • Chunk rotation mỗi N giây         │
+│         │                              │
+│    recording_service.stop_recording()  │
+│         │                              │
+│    WAV file path                       │
+└────────────────────────────────────────┘
+                     │
+                     ▼
 Audio File (.wav/.mp3/.m4a)
     │
-    │  st.file_uploader → tempfile
+    │  (from upload or recording)
     ▼
 ┌────────────────────────────────────────┐
 │ 1. TRANSCRIPTION                       │
@@ -51,12 +71,37 @@ Audio File (.wav/.mp3/.m4a)
 │         │                              │
 │    MeetingAnalysis                     │
 │      ├── summary: str                  │
+│      ├── key_decisions: list[str]      │
+│      ├── discussion_points: list[str]  │
+│      ├── parking_lot: list[str]        │
 │      ├── epics: list[Epic]             │
 │      │    └── tasks: list[Task]        │
 │      │         └── subtasks: list      │
 │      └── created_at: datetime          │
 └────────────────────┬───────────────────┘
                      │ MeetingAnalysis
+                     ▼
+┌────────────────────────────────────────┐
+│ 2.5 VALIDATION (optional)              │
+│                                        │
+│    extraction_service.rule_based_      │
+│         extraction(transcript)         │
+│         │                              │
+│    rule_items: list[dict]              │
+│         │                              │
+│    validation_service.validate_        │
+│         action_items(ai_items,         │
+│                      rule_items,       │
+│                      transcript)       │
+│         │                              │
+│    validated_items với confidence      │
+│    scores + validation_notes           │
+│         │                              │
+│    metrics: cross_validation_score,    │
+│             context_coherence_score,   │
+│             structural_validation_score│
+└────────────────────┬───────────────────┘
+                     │ MeetingAnalysis (với confidence)
                      ▼
 ┌────────────────────────────────────────┐
 │ 3. OUTPUT (user chọn)                  │
@@ -79,10 +124,14 @@ Audio File (.wav/.mp3/.m4a)
 
 | Stage | Input | Transform | Output |
 |-------|-------|-----------|--------|
+| Record | User action | `recording_service.start/stop()` → `AudioRecorder` | `audio_path: str` (WAV) |
 | Upload | `UploadedFile` (Streamlit) | `tempfile.NamedTemporaryFile` | `audio_path: str` |
 | Transcribe | `audio_path: str` | Whisper API / Local Whisper | `transcript: str` |
 | User edit | `transcript: str` | `st.text_area` | `transcript: str` (edited) |
 | Analyze | `transcript: str` | GPT-4o JSON mode → `from_dict()` | `MeetingAnalysis` |
+| Rule extract | `transcript: str` | `extraction_service.rule_based_extraction()` | `list[dict]` (rule_items) |
+| Validate | AI items + rule items + transcript | `validation_service.validate_action_items()` | `(validated_items, metrics)` |
+| Summarize | `transcript: str` | `summarization_service.generate_summary()` | `dict` (summary, key_decisions, etc.) |
 | Export MD | `MeetingAnalysis` | `export_markdown()` | `str` (Markdown) |
 | Export JSON | `MeetingAnalysis` | `export_json()` → `to_dict()` + `json.dumps` | `str` (JSON) |
 | Export CSV | `MeetingAnalysis` | `export_csv()` → flatten Epic/Task/Subtask | `str` (CSV) |
@@ -93,15 +142,19 @@ Audio File (.wav/.mp3/.m4a)
 
 ## State management
 
-Streamlit `session_state` giữ 3 biến xuyên suốt session:
+Streamlit `session_state` giữ các biến xuyên suốt session:
 
 | Key | Type | Khởi tạo | Cập nhật khi |
 |-----|------|----------|-------------|
 | `transcript` | `str` | `""` | Sau transcribe, hoặc user edit text area |
 | `analysis` | `MeetingAnalysis \| None` | `None` | Sau analyze thành công |
-| `audio_path` | `str \| None` | `None` | Sau upload file |
+| `audio_path` | `str \| None` | `None` | Sau upload file hoặc recording |
+| `is_recording` | `bool` | `False` | Khi start/stop recording |
+| `validation_metrics` | `dict \| None` | `None` | Sau validation service chạy |
 
 > **Lưu ý:** Streamlit re-run toàn bộ script mỗi khi user tương tác. `session_state` là cách duy nhất giữ data giữa các re-runs.
+
+> **Recording state:** `AudioRecorder` là module-level singleton trong `recording_service.py` để giữ state giữa Streamlit reruns.
 
 ---
 

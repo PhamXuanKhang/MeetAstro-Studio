@@ -30,7 +30,11 @@ Base class cho Task và Subtask.
 
 ### Subtask (extends ActionItem)
 
-Kế thừa toàn bộ fields từ ActionItem.
+| Field | Type | Description |
+|-------|------|-------------|
+| *(kế thừa ActionItem)* | | |
+| `confidence` | `float` | Confidence score từ validation (0.0–1.0) |
+| `validation_notes` | `list[str]` | Ghi chú từ validation service |
 
 Methods: `to_dict() → dict`, `from_dict(data: dict) → Subtask`
 
@@ -40,6 +44,8 @@ Methods: `to_dict() → dict`, `from_dict(data: dict) → Subtask`
 |-------|------|-------------|
 | *(kế thừa ActionItem)* | | |
 | `subtasks` | `list[Subtask]` | Danh sách subtasks (default: `[]`) |
+| `confidence` | `float` | Confidence score từ validation (0.0–1.0) |
+| `validation_notes` | `list[str]` | Ghi chú từ validation service |
 
 Methods: `to_dict() → dict`, `from_dict(data: dict) → Task`
 
@@ -59,6 +65,9 @@ Methods: `to_dict() → dict`, `from_dict(data: dict) → Epic`
 |-------|------|-------------|
 | `epics` | `list[Epic]` | Các chủ đề / quyết định lớn |
 | `summary` | `str` | Tóm tắt cuộc họp |
+| `key_decisions` | `list[str]` | Các quyết định chính đã chốt |
+| `discussion_points` | `list[str]` | Các điểm thảo luận chính |
+| `parking_lot` | `list[str]` | Các vấn đề tạm gác, chưa giải quyết |
 | `created_at` | `datetime` | Thời điểm phân tích |
 
 Methods:
@@ -166,6 +175,63 @@ def push_analysis_to_jira(
 - Trả về `JiraPushResult` gồm: `is_stub`, `epic_keys`, `epic_count`, `task_count`, `subtask_count`
 - Raises: `ValueError` (analysis không có epics), `RuntimeError` (lỗi khi tạo issue)
 
+### recording_service
+
+```python
+def start_recording(output_path: str | None = None) -> str
+def stop_recording() -> str
+def is_recording() -> bool
+def elapsed_seconds() -> float
+def get_completed_chunks() -> list[str]
+```
+
+- Orchestrate `AudioRecorder` singleton cho Streamlit
+- `start_recording()` trả về WAV output path
+- `get_completed_chunks()` trả về list đường dẫn các chunk đã hoàn thành
+
+### extraction_service
+
+```python
+def rule_based_extraction(transcript: str) -> list[dict[str, Any]]
+```
+
+- Regex-based extraction để cross-validate với AI output
+- Trả về list dicts với keys: `title`, `description`, `assignee`, `deadline`, `priority`, `context`
+
+### validation_service
+
+```python
+def validate_action_items(
+  ai_items: list[dict[str, Any]],
+  rule_items: list[dict[str, Any]],
+  transcript: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]
+```
+
+- Cross-validate AI items vs rule-based items
+- Trả về `(validated_items_with_confidence, metrics_dict)`
+- Metrics: `cross_validation_score`, `context_coherence_score`, `structural_validation_score`, `overall_confidence`
+
+### summarization_service
+
+```python
+async def generate_summary(
+  transcript: str,
+  api_key: str = OPENAI_API_KEY,
+  model: str = OPENAI_MODEL,
+) -> dict[str, Any]
+
+async def generate_summary_stream(
+  transcript: str,
+  api_key: str = OPENAI_API_KEY,
+  model: str = OPENAI_MODEL,
+) -> AsyncIterator[str]
+```
+
+- Async OpenAI call để sinh summary
+- `generate_summary()` trả về dict: `summary`, `key_decisions`, `discussion_points`, `parking_lot_items`
+- `generate_summary_stream()` yield từng token cho streaming UI
+
 ---
 
 ## Modules — `src/modules/`
@@ -173,17 +239,25 @@ def push_analysis_to_jira(
 ### database
 
 ```python
+# Meeting CRUD
 def init_db(db_path: str | None = None) -> None
 def create_meeting(record: MeetingRecord, db_path: str | None = None) -> int
 def get_meeting(meeting_id: int, db_path: str | None = None) -> MeetingRecord | None
 def list_meetings(db_path: str | None = None) -> list[MeetingRecord]
 def update_meeting(record: MeetingRecord, db_path: str | None = None) -> None
 def delete_meeting(meeting_id: int, db_path: str | None = None) -> None
+
+# Provider Configs CRUD (encrypted)
+def get_provider_config(provider_name: str, user_id: str = "default_user", db_path: str | None = None) -> dict | None
+def set_provider_config(provider_name: str, config_dict: dict, user_id: str = "default_user", db_path: str | None = None) -> None
+def list_provider_configs(user_id: str = "default_user", db_path: str | None = None) -> list[str]
+def delete_provider_config(provider_name: str, user_id: str = "default_user", db_path: str | None = None) -> None
 ```
 
 - SQLite stdlib (`sqlite3`)
 - `db_path` parameter cho testing (override `DATABASE_URL`)
 - `analysis` column: JSON string via `MeetingAnalysis.to_json()`
+- Provider configs được encrypt bằng Fernet trước khi lưu
 
 ### exporter
 
@@ -213,6 +287,52 @@ class JiraClient:
 - Auth: Basic Auth (`JIRA_EMAIL` + `JIRA_API_TOKEN`)
 - Luồng runtime từ UI + sequence Epic → Task → Subtask: xem `jira-upload-flow.md`
 
+### audio_recorder
+
+```python
+class AudioRecorder:
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        channels: int = 1,
+        mic_enabled: bool = True,
+        mic_gain: float = 3.0,
+        sys_gain: float = 0.5,
+        output_dir: str = "data/recordings",
+        chunk_seconds: int = 60,
+        on_chunk_complete: Callable[[str], None] | None = None,
+    ) -> None
+
+    @property
+    def is_recording(self) -> bool
+    @property
+    def elapsed_seconds(self) -> float
+    @property
+    def output_path(self) -> str | None
+    @property
+    def error(self) -> str | None
+
+    def start(self, output_path: str | None = None) -> str
+    def stop(self) -> str
+    def get_completed_chunks(self) -> list[str]
+```
+
+- Capture system audio via `pysysaudio`
+- Optional mic mixing via `sounddevice`
+- Chunk rotation mỗi `chunk_seconds` giây
+- Background thread recording
+
+### credential_vault
+
+```python
+def encrypt(plaintext: str) -> str
+def decrypt(ciphertext: str) -> str
+```
+
+- Fernet symmetric encryption
+- Key từ `APP_SECRET_KEY` trong config
+- Dùng để encrypt provider credentials trong database
+
 ---
 
 ## Configuration — `src/config.py`
@@ -230,9 +350,18 @@ class JiraClient:
 | `JIRA_EMAIL` | `""` | No* | Jira account email (for Basic Auth) |
 | `JIRA_API_TOKEN` | `""` | No* | Jira API token |
 | `JIRA_PROJECT_KEY` | `""` | No* | Jira project key |
+| `AUDIO_SAMPLE_RATE` | `16000` | No | Sample rate cho audio recording |
+| `AUDIO_CHANNELS` | `1` | No | Số kênh audio (mono/stereo) |
+| `AUDIO_MIC_ENABLED` | `true` | No | Bật/tắt mic mixing |
+| `AUDIO_MIC_GAIN` | `3.0` | No | Gain cho mic input |
+| `AUDIO_SYS_GAIN` | `0.5` | No | Gain cho system audio |
+| `AUDIO_OUTPUT_DIR` | `"data/recordings"` | No | Thư mục lưu file recording |
+| `APP_SECRET_KEY` | `None` | No** | Fernet key cho credential encryption |
+| `TRANSCRIPTION_CHUNK_SECONDS` | `60` | No | Độ dài chunk audio (giây) |
 | `LOG_LEVEL` | `"INFO"` | No | Logging level |
 
 *\* Thiếu Jira vars → JiraClient chạy stub mode.*
+*\*\* Thiếu APP_SECRET_KEY → credential_vault raise ValueError.*
 
 ### Logger
 

@@ -82,3 +82,59 @@ Ghi lại hành trình xây dựng sản phẩm mỗi tuần — những gì đ�
 - Tìm hiểu model detect giọng từng người để extract action items tốt hơn
 - Nghiên cứu việc chunking để transcribe realtime
 - Test Jira integration với Atlassian sandbox (nếu có)
+
+---
+
+### Tuần 2 — 19/04/2026
+
+**Thành viên:** Phạm Xuân Khang, Vthuc, Duypt
+
+#### Đã làm
+- **Audio Recording (Vthuc):**
+  - `audio_recorder.py`: System audio capture via pysysaudio + optional mic mixing via sounddevice
+  - Chunk rotation mỗi N giây (configurable via `TRANSCRIPTION_CHUNK_SECONDS`)
+  - Background thread recording với thread-safe chunk queue
+  - `recording_service.py`: Orchestration singleton cho Streamlit
+- **Validation & Extraction (Khang):**
+  - `extraction_service.py`: Rule-based regex extraction để cross-validate với AI
+  - `validation_service.py`: Cross-validation scoring (cross_validation, context_coherence, structural)
+  - Confidence scores + validation_notes cho mỗi action item
+- **Summarization (Khang):**
+  - `summarization_service.py`: Async OpenAI call cho summary + key_decisions + parking_lot
+  - Streaming mode (`generate_summary_stream()`) cho real-time UI
+- **Schema & Config (Khang):**
+  - Migrate từ dataclasses → Pydantic models (validation, serialization tốt hơn)
+  - Thêm fields: `key_decisions`, `discussion_points`, `parking_lot`, `confidence`, `validation_notes`
+  - `config.py`: Migrate sang pydantic-settings với validation
+  - Thêm `MockAnalyzer` cho testing/fallback
+- **Security (Khang):**
+  - `credential_vault.py`: Fernet symmetric encryption cho provider credentials
+  - `database.py`: Provider configs CRUD với encryption
+- **Docs (Duypt):**
+  - `jira-upload-flow.md`: Document chi tiết luồng upload Epic → Task → Subtask
+
+#### Khó nhất tuần này
+- Audio recording trên Windows: pysysaudio cần setup đặc biệt, mic device selection heuristic phức tạp
+- Pydantic migration: cần giữ backward-compat với `to_dict/from_dict` API cũ
+- Async summarization trong Streamlit: cần careful handling để không block UI
+
+#### AI tool đã dùng
+| Tool | Dùng để làm gì | Kết quả |
+|---|---|---|
+| Claude Code (Opus) | Rà soát docs vs code, tạo plan cập nhật tài liệu | Phát hiện 6+ file docs cần cập nhật |
+| Claude Code (Sonnet) | Implement validation service, extraction service | Cross-validation scoring hoạt động |
+
+#### Học được
+- Pydantic `model_dump(mode="json")` tự động convert enum → string, datetime → ISO — không cần custom encoder
+- Fernet key derivation: nếu key không đúng format, dùng SHA256 hash + base64 encode
+- `pysysaudio` + `sounddevice` có thể mix system audio + mic trong real-time
+
+#### Nếu làm lại, sẽ làm khác
+- Migrate sang Pydantic sớm hơn (Phase 1) thay vì dataclasses — Pydantic có validation built-in
+- Design validation service trước khi có AI output format — giúp define confidence metrics rõ hơn
+
+#### Kế hoạch tuần tới
+- Smoke test E2E với audio thật
+- Integrate validation scores vào UI
+- Test Jira với Atlassian sandbox
+- Deploy lên cloud

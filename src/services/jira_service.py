@@ -2,6 +2,7 @@
 Jira service — orchestration luồng đẩy MeetingAnalysis lên Jira.
 """
 from dataclasses import dataclass, field
+from typing import Optional
 
 from src.config import get_logger
 from src.modules.jira_client import JiraClient
@@ -23,7 +24,7 @@ class JiraPushResult:
 
 def push_analysis_to_jira(
     analysis: MeetingAnalysis,
-    client: JiraClient | None = None,
+    client: Optional[JiraClient] = None,
 ) -> JiraPushResult:
     """Đẩy toàn bộ Epic -> Task -> Subtask từ MeetingAnalysis lên Jira."""
     if not analysis.epics:

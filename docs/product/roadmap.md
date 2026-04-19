@@ -1,6 +1,6 @@
 # Roadmap & Milestones
 
-**Cập nhật lần cuối:** 12/04/2026
+**Cập nhật lần cuối:** 19/04/2026
 
 ---
 
@@ -21,16 +21,17 @@
 
 | Deliverable | Status |
 |-------------|--------|
-| Schema dataclasses (Priority, ActionItem, Task, Epic, MeetingAnalysis, MeetingRecord) | ✅ |
-| Strategy Pattern: ABC base + 3 providers (OpenAI Analyzer, OpenAI Transcriber, Local Transcriber) | ✅ |
+| Pydantic models (Priority, ActionItem, Task, Epic, MeetingAnalysis, MeetingRecord) | ✅ |
+| Strategy Pattern: ABC base + 4 providers (OpenAI Analyzer, Mock Analyzer, OpenAI Transcriber, Local Transcriber) | ✅ |
 | Fallback chain transcription (Whisper API → Local Whisper) | ✅ |
-| SQLite CRUD (database.py) | ✅ |
+| SQLite CRUD (database.py) + provider_configs | ✅ |
 | Export Markdown / JSON / CSV (exporter.py) | ✅ |
 | Jira stub client (mock mode khi thiếu credentials) | ✅ |
 | Vietnamese prompt cho GPT-4o structured output | ✅ |
 | Streamlit UI 3-column layout | ✅ |
-| 85 unit tests (9 test files), all passing | ✅ |
+| Unit tests (14 test files), all passing | ✅ |
 | pyproject.toml + editable install | ✅ |
+| Config với pydantic-settings | ✅ |
 
 **ADRs liên quan:** ADR-1 (xóa legacy, build mới), ADR-2 (SQLite cho MVP), ADR-3 (pyproject.toml), ADR-5 (Jira stub)
 → Xem chi tiết: [WORKLOG.md](../../WORKLOG.md)
@@ -43,6 +44,16 @@
 
 | Deliverable | Owner | Status |
 |-------------|-------|--------|
+| Audio recording (system audio + mic mixing) | Vthuc | ✅ |
+| Recording service orchestration cho Streamlit | Vthuc | ✅ |
+| Chunked transcription (chunk rotation mỗi N giây) | Vthuc | ✅ |
+| Rule-based extraction service (cross-validate với AI) | Khang | ✅ |
+| Validation service (confidence scores) | Khang | ✅ |
+| Async summarization service (streaming) | Khang | ✅ |
+| Credential vault (Fernet encryption) | Khang | ✅ |
+| Provider configs CRUD | Khang | ✅ |
+| Schema mở rộng (key_decisions, discussion_points, parking_lot) | Khang | ✅ |
+| Jira upload flow documentation | Duypt | ✅ |
 | Smoke test Streamlit app E2E với audio thật | Khang | ⬜ |
 | Test Jira integration với Atlassian sandbox | Khang | ⬜ |
 | Chạy flake8 + mypy clean | Khang | ⬜ |
@@ -57,6 +68,7 @@
 
 | Deliverable | Owner | Status |
 |-------------|-------|--------|
+| Confidence scoring (cross-validation AI vs rule-based) | Khang | ✅ |
 | Eval pipeline: so sánh AI output vs human-labeled ground truth | [TBD] | ⬜ |
 | Thu thập ≥ 5 sample transcripts để eval | [TBD] | ⬜ |
 | Prompt tuning dựa trên eval results (target recall ≥ 85%) | [TBD] | ⬜ |
@@ -75,7 +87,8 @@
 | User authentication (login/session) | Streamlit auth hoặc external OAuth |
 | Analytics dashboard (track adoption, correction rate) | Learning signal từ Canvas |
 | Feedback loop: log corrections → improve prompt | Data flywheel |
-| Real-time transcription (chunking + streaming) | Nghiên cứu Whisper streaming API |
+| Real-time transcription (chunking + streaming) | ✅ Chunking đã có (AudioRecorder) — còn streaming UI |
+| Multi-provider support (Gemini, Claude, etc.) | Credential vault + provider_configs đã sẵn sàng |
 
 ---
 

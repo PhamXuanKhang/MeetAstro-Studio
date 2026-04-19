@@ -1,7 +1,7 @@
 # AI Meeting Assistant — Context for AI Agents
 
 > This file provides structured context for AI coding agents (Claude Code, Cursor, Copilot, Codex, etc.) working on this project.
-> Updated: 2026-04-12
+> Updated: 2026-04-19
 
 ## What This Project Does
 
@@ -10,8 +10,11 @@ AI Meeting Assistant converts meeting audio recordings into structured action it
 ## Tech Stack
 
 - Python 3.9+ / Streamlit 1.32+ / OpenAI API (GPT-4o + Whisper) / SQLite / Jira REST API v3
+- Pydantic + pydantic-settings for schema and config validation
+- pysysaudio + sounddevice for system audio capture + mic mixing
+- cryptography (Fernet) for credential encryption
 - Package management: uv + pyproject.toml (editable install required)
-- Testing: pytest (85 tests, 9 files)
+- Testing: pytest (14 test files)
 - Linting: flake8 (max-line-length=100) + mypy
 
 ## Project Structure
@@ -19,24 +22,32 @@ AI Meeting Assistant converts meeting audio recordings into structured action it
 ```
 src/
   app.py                    → Streamlit UI entry point
-  schema.py                 → Dataclasses: Priority, ActionItem, Subtask, Task, Epic, MeetingAnalysis, MeetingRecord
-  config.py                 → Centralized config (env vars) + logging setup
+  schema.py                 → Pydantic models: Priority, ActionItem, Subtask, Task, Epic, MeetingAnalysis, MeetingRecord
+  config.py                 → pydantic-settings config + logging setup
   providers/
     base_analyzer.py        → ABC interface for AI analyzers
     base_transcriber.py     → ABC interface for transcription providers
     openai_analyzer.py      → GPT-4o structured output (JSON mode, retry 3x)
     openai_transcriber.py   → Whisper API transcription
     local_transcriber.py    → Local Whisper fallback
+    mock_analyzer.py        → Mock analyzer for testing/offline fallback
   services/
     transcription_service.py → Fallback chain: Whisper API → Local Whisper
     analysis_service.py     → Orchestrates analyzer selection
+    jira_service.py         → Jira push orchestration (Epic → Task → Subtask)
+    recording_service.py    → Audio recording orchestration for Streamlit
+    extraction_service.py   → Rule-based regex extraction
+    validation_service.py   → Cross-validation AI vs rule-based, confidence scores
+    summarization_service.py → Async OpenAI summary generation + streaming
   modules/
-    database.py             → SQLite CRUD for MeetingRecord (sqlite3 stdlib)
+    database.py             → SQLite CRUD for MeetingRecord + provider_configs (encrypted)
     exporter.py             → Export to Markdown / JSON / CSV (pure functions)
     jira_client.py          → Jira REST API v3 client (auto stub mode if no credentials)
+    audio_recorder.py       → System audio capture (pysysaudio) + mic mixing (sounddevice)
+    credential_vault.py     → Fernet encryption for provider credentials
   prompts/
     extract_action_items.md → Vietnamese system prompt for GPT-4o
-tests/                      → 9 test files, 85 tests total
+tests/                      → 14 test files
 docs/                       → Product, technical, and evaluation documentation
 ```
 
@@ -60,6 +71,11 @@ class BaseTranscriber(ABC):
 # Services
 def transcribe(audio_path: str, language: str = "vi") -> str  # fallback chain
 def analyze(transcript: str) -> MeetingAnalysis
+def start_recording(output_path: str | None = None) -> str
+def stop_recording() -> str
+def rule_based_extraction(transcript: str) -> list[dict]
+def validate_action_items(ai_items, rule_items, transcript) -> (validated_items, metrics)
+async def generate_summary(transcript: str) -> dict
 
 # Database
 def init_db(db_path=None) -> None
@@ -68,6 +84,8 @@ def get_meeting(meeting_id: int, db_path=None) -> MeetingRecord | None
 def list_meetings(db_path=None) -> list[MeetingRecord]
 def update_meeting(record: MeetingRecord, db_path=None) -> None
 def delete_meeting(meeting_id: int, db_path=None) -> None
+def get_provider_config(provider_name, user_id="default_user") -> dict | None
+def set_provider_config(provider_name, config_dict, user_id="default_user") -> None
 
 # Export
 def export_markdown(analysis: MeetingAnalysis) -> str
@@ -79,17 +97,27 @@ class JiraClient:
     def create_epic(self, epic: Epic) -> str
     def create_task(self, task: Task, epic_key: str) -> str
     def create_subtask(self, subtask: Subtask, task_key: str) -> str
+
+# Audio Recording
+class AudioRecorder:
+    def start(self, output_path: str | None = None) -> str
+    def stop(self) -> str
+    def get_completed_chunks(self) -> list[str]
+
+# Credential Vault
+def encrypt(plaintext: str) -> str
+def decrypt(ciphertext: str) -> str
 ```
 
-## Data Schema
+## Data Schema (Pydantic models)
 
 ```python
 Priority: Critical | High | Medium | Low
 ActionItem: summary, assignee?, deadline?, priority, context
-Subtask(ActionItem): inherits all fields
-Task(ActionItem): + subtasks: list[Subtask]
+Subtask(ActionItem): + confidence, validation_notes
+Task(ActionItem): + subtasks: list[Subtask], confidence, validation_notes
 Epic: summary, description, tasks: list[Task]
-MeetingAnalysis: epics: list[Epic], summary, created_at
+MeetingAnalysis: epics, summary, key_decisions, discussion_points, parking_lot, created_at
 MeetingRecord: id?, title, audio_path?, transcript, analysis?, created_at, updated_at
 ```
 
@@ -119,12 +147,21 @@ uv pip install -e .              # Editable install (required for imports)
 ## Environment Variables
 
 Required: OPENAI_API_KEY
-Optional: OPENAI_MODEL (gpt-4o), WHISPER_LOCAL_MODEL (base), DATABASE_URL (sqlite:///data/meetings.db), JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY, LOG_LEVEL (INFO)
+Optional:
+- OPENAI_MODEL (gpt-4o), WHISPER_LOCAL_MODEL (base)
+- DATABASE_URL (sqlite:///data/meetings.db)
+- JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
+- AUDIO_SAMPLE_RATE (16000), AUDIO_CHANNELS (1), AUDIO_MIC_ENABLED (true)
+- AUDIO_MIC_GAIN (3.0), AUDIO_SYS_GAIN (0.5), AUDIO_OUTPUT_DIR (data/recordings)
+- APP_SECRET_KEY (for credential vault encryption)
+- TRANSCRIPTION_CHUNK_SECONDS (60)
+- LOG_LEVEL (INFO)
 
-## Current Status (as of 2026-04-12)
+## Current Status (as of 2026-04-19)
 
-- MVP Phase 1 complete: full pipeline working (transcribe + analyze + export + DB + Jira stub)
-- 85/85 unit tests passing
+- Phase 1 complete: full pipeline (transcribe + analyze + export + DB + Jira stub)
+- Phase 2 in progress: audio recording, validation service, summarization done
+- 14 test files, all passing
 - Pending: E2E smoke test with real audio, Jira sandbox integration, cloud deployment
 
 ## Documentation
