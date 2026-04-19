@@ -10,9 +10,9 @@ from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
 
 
 def make_analysis() -> MeetingAnalysis:
-    subtask = Subtask("Cài môi trường", "Nam", "2024-01-10", Priority.MEDIUM, "context subtask")
-    task = Task("Triển khai", "Alice", "2024-01-15", Priority.HIGH, "context task", subtasks=[subtask])
-    epic = Epic("Ra mắt Q1", "Chuẩn bị launch.", tasks=[task])
+    subtask = Subtask(summary="Cài môi trường", assignee="Nam", deadline="2024-01-10", priority=Priority.MEDIUM, context="context subtask")
+    task = Task(summary="Triển khai", assignee="Alice", deadline="2024-01-15", priority=Priority.HIGH, context="context task", subtasks=[subtask])
+    epic = Epic(summary="Ra mắt Q1", description="Chuẩn bị launch.", tasks=[task])
     return MeetingAnalysis(epics=[epic], summary="Họp về launch Q1.")
 
 

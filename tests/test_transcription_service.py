@@ -66,3 +66,46 @@ class TestTranscriptionService:
             svc.transcribe("audio.mp3", language="en")
 
         mock_openai.return_value.transcribe.assert_called_once_with("audio.mp3", language="en")
+
+
+class TestTranscribeChunks:
+    def _patch_transcribe(self, return_value="ok"):
+        return patch("src.services.transcription_service.transcribe", return_value=return_value)
+
+    def test_empty_paths_returns_empty_string(self):
+        assert svc.transcribe_chunks([]) == ""
+
+    def test_single_chunk_returns_transcript(self):
+        with self._patch_transcribe("Hello world"):
+            result = svc.transcribe_chunks(["/tmp/chunk000.wav"])
+        assert result == "Hello world"
+
+    def test_multiple_chunks_concatenated(self):
+        texts = ["Hello", "world", "foo"]
+        call_count = iter(texts)
+        with patch("src.services.transcription_service.transcribe", side_effect=texts):
+            result = svc.transcribe_chunks(["/tmp/c0.wav", "/tmp/c1.wav", "/tmp/c2.wav"])
+        assert result == "Hello world foo"
+
+    def test_failed_chunk_is_skipped(self):
+        def _side_effect(path, language="vi"):
+            if "bad" in path:
+                raise RuntimeError("bad chunk")
+            return "good"
+
+        with patch("src.services.transcription_service.transcribe", side_effect=_side_effect):
+            result = svc.transcribe_chunks(["/tmp/good.wav", "/tmp/bad.wav"])
+        assert result == "good"
+
+    def test_large_file_uses_local_transcriber(self, tmp_path):
+        big_file = tmp_path / "big.wav"
+        big_file.write_bytes(b"x" * (26 * 1024 * 1024))  # 26 MB > 25 MB limit
+
+        mock_local = MagicMock()
+        mock_local.return_value.transcribe.return_value = "local result"
+
+        with patch("src.services.transcription_service.LocalTranscriber", mock_local):
+            result = svc.transcribe_chunks([str(big_file)])
+
+        mock_local.return_value.transcribe.assert_called_once()
+        assert result == "local result"

@@ -1,23 +1,41 @@
-"""Tests cho JiraClient — mock requests.post, test stub mode."""
-from unittest.mock import MagicMock, patch
+"""Tests cho JiraClient — mock httpx.AsyncClient, test stub mode."""
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from requests.auth import HTTPBasicAuth
 
 from src.modules.jira_client import JiraClient, _STUB_KEY
 from src.schema import Epic, Priority, Subtask, Task
 
 
 def make_epic() -> Epic:
-    return Epic("Ra mắt Q1", "Chuẩn bị launch Q1.")
+    return Epic(summary="Ra mắt Q1", description="Chuẩn bị launch Q1.")
 
 
 def make_task() -> Task:
-    return Task("Triển khai", "Alice", "2024-01-15", Priority.HIGH, "context")
+    return Task(summary="Triển khai", assignee="Alice", deadline="2024-01-15", priority=Priority.HIGH, context="context")
 
 
 def make_subtask() -> Subtask:
-    return Subtask("Cài môi trường", "Nam", "2024-01-10", Priority.MEDIUM, "context")
+    return Subtask(summary="Cài môi trường", assignee="Nam", deadline="2024-01-10", priority=Priority.MEDIUM, context="context")
+
+
+def _mock_httpx_response(key: str, status_code: int = 200, body: dict = None) -> MagicMock:
+    """Tạo mock httpx.Response."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.json.return_value = body if body is not None else {"key": key}
+    mock_resp.text = ""
+    return mock_resp
+
+
+def _patch_httpx_post(key: str = "TEST-1", status_code: int = 200, body: dict = None):
+    """Context manager patch httpx.AsyncClient.post."""
+    mock_response = _mock_httpx_response(key, status_code, body)
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(return_value=mock_response)
+    return patch("src.modules.jira_client.httpx.AsyncClient", return_value=mock_client), mock_client
 
 
 class TestJiraClientStubMode:
@@ -44,13 +62,14 @@ class TestJiraClientStubMode:
         result = client.create_subtask(make_subtask(), "TASK-1")
         assert result == _STUB_KEY
 
-    def test_stub_does_not_call_requests(self):
+    def test_stub_does_not_call_httpx(self):
         client = JiraClient(base_url="", token="", project_key="")
-        with patch("src.modules.jira_client.requests.post") as mock_post:
+        patcher, mock_client = _patch_httpx_post()
+        with patcher:
             client.create_epic(make_epic())
             client.create_task(make_task(), "EPIC-1")
             client.create_subtask(make_subtask(), "TASK-1")
-        mock_post.assert_not_called()
+        mock_client.post.assert_not_called()
 
 
 class TestJiraClientRealMode:
@@ -62,35 +81,28 @@ class TestJiraClientRealMode:
             project_key="TEST",
         )
 
-    def _mock_post_response(self, key: str) -> MagicMock:
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"key": key}
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.ok = True
-        return mock_resp
-
     def test_not_stub_with_full_credentials(self):
         client = self._make_client()
         assert client.is_stub is False
 
     def test_create_epic_posts_to_jira(self):
         client = self._make_client()
-        with patch("src.modules.jira_client.requests.post",
-                   return_value=self._mock_post_response("TEST-1")) as mock_post:
+        patcher, mock_client = _patch_httpx_post("TEST-1")
+        with patcher:
             key = client.create_epic(make_epic())
 
         assert key == "TEST-1"
-        mock_post.assert_called_once()
-        call_kwargs = mock_post.call_args
-        assert "rest/api/3/issue" in call_kwargs.args[0]
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        assert "rest/api/3/issue" in call_args.args[0]
 
     def test_create_epic_payload_has_correct_fields(self):
         client = self._make_client()
-        with patch("src.modules.jira_client.requests.post",
-                   return_value=self._mock_post_response("TEST-1")) as mock_post:
+        patcher, mock_client = _patch_httpx_post("TEST-1")
+        with patcher:
             client.create_epic(make_epic())
 
-        payload = mock_post.call_args.kwargs["json"]
+        payload = mock_client.post.call_args.kwargs["json"]
         fields = payload["fields"]
         assert fields["summary"] == "Ra mắt Q1"
         assert fields["issuetype"]["name"] == "Epic"
@@ -98,35 +110,29 @@ class TestJiraClientRealMode:
 
     def test_create_task_sends_epic_link(self):
         client = self._make_client()
-        with patch("src.modules.jira_client.requests.post",
-                   return_value=self._mock_post_response("TEST-2")) as mock_post:
+        patcher, mock_client = _patch_httpx_post("TEST-2")
+        with patcher:
             client.create_task(make_task(), "TEST-1")
 
-        payload = mock_post.call_args.kwargs["json"]
+        payload = mock_client.post.call_args.kwargs["json"]
         assert payload["fields"]["customfield_10014"] == "TEST-1"
 
-    def test_create_task_sends_auth_header(self):
+    def test_create_task_sends_auth(self):
         client = self._make_client()
-        with patch("src.modules.jira_client.requests.post",
-                   return_value=self._mock_post_response("TEST-2")) as mock_post:
+        patcher, mock_client = _patch_httpx_post("TEST-2")
+        with patcher:
             client.create_task(make_task(), "TEST-1")
 
-        auth = mock_post.call_args.kwargs["auth"]
-        assert isinstance(auth, HTTPBasicAuth)
-        assert auth.username == "test@example.com"
-        assert auth.password == "test-token"
+        call_kwargs = mock_client.post.call_args.kwargs
+        assert call_kwargs["auth"] == ("test@example.com", "test-token")
 
     def test_create_epic_logs_http_error_details(self, caplog):
         client = self._make_client()
-        mock_resp = self._mock_post_response("TEST-4")
-        mock_resp.ok = False
-        mock_resp.status_code = 400
-        mock_resp.text = '{"errorMessages":["Invalid custom field"]}'
-        mock_resp.raise_for_status.side_effect = Exception("400 Client Error")
-
-        with patch("src.modules.jira_client.requests.post", return_value=mock_resp):
+        error_body = {"errorMessages": ["Invalid custom field"], "errors": {}}
+        patcher, _ = _patch_httpx_post("TEST-4", status_code=400, body=error_body)
+        with patcher:
             with caplog.at_level("ERROR"):
-                with pytest.raises(Exception):
+                with pytest.raises(RuntimeError):
                     client.create_epic(make_epic())
 
         assert "Jira API trả về lỗi 400" in caplog.text
@@ -134,10 +140,10 @@ class TestJiraClientRealMode:
 
     def test_create_subtask_sends_parent_key(self):
         client = self._make_client()
-        with patch("src.modules.jira_client.requests.post",
-                   return_value=self._mock_post_response("TEST-3")) as mock_post:
+        patcher, mock_client = _patch_httpx_post("TEST-3")
+        with patcher:
             client.create_subtask(make_subtask(), "TEST-2")
 
-        payload = mock_post.call_args.kwargs["json"]
+        payload = mock_client.post.call_args.kwargs["json"]
         assert payload["fields"]["parent"]["key"] == "TEST-2"
         assert payload["fields"]["issuetype"]["name"] == "Subtask"
