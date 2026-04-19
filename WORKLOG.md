@@ -142,3 +142,91 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 4. Chạy `python scripts/submit_log.py` thủ công → submit 49 entries thành công (server trả 202)
 
 **Học được:** Trên Windows luôn dùng `python` (không `python3`). Luôn test hook bằng cách chạy script trực tiếp trước.
+
+---
+
+### [ADR-6] Pydantic thay dataclasses cho schema — 18/04/2026
+
+**Bối cảnh:** Schema dùng `dataclasses` không có validation built-in. Khi parse JSON từ GPT-4o, cần validate fields (deadline format, priority enum) thủ công.
+
+**Các lựa chọn đã xem xét:**
+- **Giữ dataclasses + custom validation**: Thêm validation functions. Nhược: code boilerplate, dễ bỏ sót.
+- **Pydantic models**: Built-in validation, serialization, type coercion. Ưu: standard, well-tested.
+
+**Quyết định:** Migrate sang Pydantic. Giữ `to_dict/from_dict/to_json/from_json` API để không break callers.
+
+**Hệ quả:** Cần update tests. `model_dump(mode="json")` tự động handle enum + datetime serialization.
+
+---
+
+### [ADR-7] Validation service với cross-validation scoring — 18/04/2026
+
+**Bối cảnh:** AI có thể hallucinate action items. Cần mechanism để phát hiện và đánh giá confidence.
+
+**Các lựa chọn đã xem xét:**
+- **Human review only**: User tự kiểm tra. Nhược: tốn thời gian, dễ bỏ sót.
+- **Rule-based cross-validation**: Regex extraction → so sánh với AI output → confidence score.
+
+**Quyết định:** Implement dual extraction (AI + rule-based) + cross-validation scoring.
+
+**Scoring formula:**
+- `cross_validation_score` (35%): AI items match với rule items
+- `context_coherence_score` (35%): Action item words xuất hiện trong transcript
+- `structural_validation_score` (30%): Title length, description, action verbs
+
+**Hệ quả:** Mỗi action item có `confidence` score (0.0–1.0) và `validation_notes`. UI có thể highlight low-confidence items.
+
+---
+
+### [ADR-8] Credential vault cho provider configs — 18/04/2026
+
+**Bối cảnh:** Chuẩn bị multi-provider support (Gemini, Claude, etc.). API keys cần lưu trong database nhưng không plaintext.
+
+**Các lựa chọn đã xem xét:**
+- **Plaintext in .env**: Đơn giản nhưng không scale cho nhiều providers, không per-user.
+- **Encrypted in SQLite**: Fernet encryption, key từ `APP_SECRET_KEY`. Per-user, per-provider configs.
+
+**Quyết định:** `credential_vault.py` với Fernet encryption. `database.py` có `provider_configs` table lưu encrypted config JSON.
+
+**Hệ quả:** Cần set `APP_SECRET_KEY` trong `.env`. Nếu key mất, không decrypt được configs cũ.
+
+---
+
+### [ADR-9] Audio recording với chunk rotation — 18/04/2026
+
+**Bối cảnh:** Transcription real-time cần audio chunks thay vì đợi cả file. System audio capture cần mix với mic.
+
+**Các lựa chọn đã xem xét:**
+- **Wait for full recording**: Đơn giản nhưng không real-time.
+- **Chunk rotation**: Mỗi N giây đóng chunk cũ, mở chunk mới. Chunk hoàn thành có thể transcribe ngay.
+
+**Quyết định:** `AudioRecorder` với chunk rotation. `on_chunk_complete` callback cho downstream processing.
+
+**Config:**
+- `TRANSCRIPTION_CHUNK_SECONDS` (default: 60)
+- `AUDIO_MIC_ENABLED`, `AUDIO_MIC_GAIN`, `AUDIO_SYS_GAIN`
+
+**Hệ quả:** Recording folder có nhiều chunk files (`*_chunk000.wav`, `*_chunk001.wav`, ...). `get_completed_chunks()` trả về list paths.
+
+---
+
+### Sprint 2 — 13/04 → 26/04/2026
+
+| Task | Người làm | Deadline | Trạng thái |
+|---|---|---|---|
+| Audio recording module (pysysaudio + mic) | Vthuc | 18/04 | ✅ Xong |
+| Recording service orchestration | Vthuc | 18/04 | ✅ Xong |
+| Chunk rotation + callback | Vthuc | 18/04 | ✅ Xong |
+| Pydantic migration (schema.py) | Khang | 18/04 | ✅ Xong |
+| pydantic-settings migration (config.py) | Khang | 18/04 | ✅ Xong |
+| Rule-based extraction service | Khang | 18/04 | ✅ Xong |
+| Validation service (cross-validation) | Khang | 18/04 | ✅ Xong |
+| Async summarization service | Khang | 18/04 | ✅ Xong |
+| Credential vault (Fernet) | Khang | 18/04 | ✅ Xong |
+| Provider configs CRUD | Khang | 18/04 | ✅ Xong |
+| MockAnalyzer cho testing | Khang | 18/04 | ✅ Xong |
+| Jira upload flow documentation | Duypt | 18/04 | ✅ Xong |
+| Update docs (architecture, api-reference, etc.) | Khang | 19/04 | ✅ Xong |
+| Smoke test E2E | Khang | 26/04 | ⬜ |
+| Test Jira với sandbox | Khang | 26/04 | ⬜ |
+| Deploy cloud | [TBD] | 26/04 | ⬜ |
