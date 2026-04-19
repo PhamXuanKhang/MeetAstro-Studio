@@ -9,8 +9,9 @@ import datetime as dt
 import os
 import queue
 import threading
+import time
 import wave
-from typing import Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 
@@ -21,6 +22,7 @@ from src.config import (
     AUDIO_OUTPUT_DIR,
     AUDIO_SAMPLE_RATE,
     AUDIO_SYS_GAIN,
+    TRANSCRIPTION_CHUNK_SECONDS,
     get_logger,
 )
 
@@ -28,7 +30,11 @@ logger = get_logger(__name__)
 
 
 class AudioRecorder:
-    """Record system audio (+ optional mic) to a WAV file in a background thread."""
+    """Record system audio (+ optional mic) to a WAV file in a background thread.
+
+    Supports chunk rotation every `chunk_seconds` seconds. Completed chunks
+    are added to an internal queue accessible via `get_completed_chunks()`.
+    """
 
     def __init__(
         self,
@@ -38,6 +44,8 @@ class AudioRecorder:
         mic_gain: float = AUDIO_MIC_GAIN,
         sys_gain: float = AUDIO_SYS_GAIN,
         output_dir: str = AUDIO_OUTPUT_DIR,
+        chunk_seconds: int = TRANSCRIPTION_CHUNK_SECONDS,
+        on_chunk_complete: Optional[Callable[[str], None]] = None,
     ) -> None:
         self._sample_rate = sample_rate
         self._channels = channels
@@ -45,6 +53,8 @@ class AudioRecorder:
         self._mic_gain = mic_gain
         self._sys_gain = sys_gain
         self._output_dir = output_dir
+        self._chunk_seconds = chunk_seconds
+        self._on_chunk_complete = on_chunk_complete
 
         # Internal state
         self._stop_event = threading.Event()
@@ -54,6 +64,8 @@ class AudioRecorder:
         self._error: Optional[str] = None
         self._total_frames: int = 0
         self._lock = threading.Lock()
+        self._completed_chunks: List[str] = []
+        self._chunk_index: int = 0
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -65,7 +77,6 @@ class AudioRecorder:
     def elapsed_seconds(self) -> float:
         if self._start_time is None:
             return 0.0
-        import time
         return time.time() - self._start_time
 
     @property
@@ -75,6 +86,11 @@ class AudioRecorder:
     @property
     def error(self) -> Optional[str]:
         return self._error
+
+    def get_completed_chunks(self) -> List[str]:
+        """Trả về danh sách đường dẫn các chunk đã hoàn thành (thread-safe)."""
+        with self._lock:
+            return list(self._completed_chunks)
 
     def start(self, output_path: Optional[str] = None) -> str:
         """
@@ -96,11 +112,13 @@ class AudioRecorder:
         self._stop_event.clear()
         self._error = None
         self._total_frames = 0
+        self._chunk_index = 0
+        with self._lock:
+            self._completed_chunks = []
 
         self._thread = threading.Thread(target=self._record_loop, daemon=True)
         self._thread.start()
 
-        import time
         self._start_time = time.time()
         logger.info("Recording started → %s", self._output_path)
         return self._output_path
@@ -132,8 +150,36 @@ class AudioRecorder:
 
     # ── Recording loop (runs in background thread) ────────────────────────
 
+    def _chunk_path(self, index: int) -> str:
+        """Tính đường dẫn file cho chunk index."""
+        base = os.path.splitext(self._output_path)[0]
+        return f"{base}_chunk{index:03d}.wav"
+
+    def _open_wav(self, path: str, sampwidth: int) -> wave.Wave_write:
+        wf = wave.open(path, "wb")
+        wf.setnchannels(self._channels)
+        wf.setsampwidth(sampwidth)
+        wf.setframerate(self._sample_rate)
+        wf.setcomptype("NONE", "not compressed")
+        return wf
+
+    def _finish_chunk(self, wf: wave.Wave_write, path: str) -> None:
+        """Đóng chunk file và thêm vào danh sách completed."""
+        try:
+            wf.close()
+        except Exception:
+            pass
+        with self._lock:
+            self._completed_chunks.append(path)
+        logger.info("Chunk hoàn tất: %s", path)
+        if self._on_chunk_complete:
+            try:
+                self._on_chunk_complete(path)
+            except Exception as exc:
+                logger.warning("on_chunk_complete callback lỗi: %s", exc)
+
     def _record_loop(self) -> None:  # noqa: C901
-        """Capture system audio, optionally mix mic, write WAV."""
+        """Capture system audio, optionally mix mic, write WAV với chunk rotation."""
         from pysysaudio import SystemAudioRecorder as SysRecorder
 
         sampwidth = 2  # int16
@@ -149,13 +195,12 @@ class AudioRecorder:
         mic_thread: Optional[threading.Thread] = None
 
         wf: Optional[wave.Wave_write] = None
+        current_chunk_path: Optional[str] = None
 
         try:
-            wf = wave.open(self._output_path, "wb")
-            wf.setnchannels(self._channels)
-            wf.setsampwidth(sampwidth)
-            wf.setframerate(self._sample_rate)
-            wf.setcomptype("NONE", "not compressed")
+            current_chunk_path = self._chunk_path(self._chunk_index)
+            wf = self._open_wav(current_chunk_path, sampwidth)
+            chunk_start = time.time()
 
             # Optionally start mic capture
             if self._mic_enabled:
@@ -204,6 +249,14 @@ class AudioRecorder:
                 with self._lock:
                     self._total_frames += len(chunk) // (sampwidth * self._channels)
 
+                # Chunk rotation: khi đủ chunk_seconds, đóng file và mở chunk mới
+                if time.time() - chunk_start >= self._chunk_seconds:
+                    self._finish_chunk(wf, current_chunk_path)
+                    self._chunk_index += 1
+                    current_chunk_path = self._chunk_path(self._chunk_index)
+                    wf = self._open_wav(current_chunk_path, sampwidth)
+                    chunk_start = time.time()
+
         except Exception as exc:
             self._error = str(exc)
             logger.error("Recording thread error: %s", exc)
@@ -219,11 +272,8 @@ class AudioRecorder:
                     mic_thread.join(timeout=1.0)
                 except Exception:
                     pass
-            if wf is not None:
-                try:
-                    wf.close()
-                except Exception:
-                    pass
+            if wf is not None and current_chunk_path is not None:
+                self._finish_chunk(wf, current_chunk_path)
 
     # ── Mic capture helper ────────────────────────────────────────────────
 

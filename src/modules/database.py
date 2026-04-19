@@ -1,11 +1,11 @@
 """
-SQLite CRUD cho MeetingRecord.
+SQLite CRUD cho MeetingRecord + provider_configs.
 Dùng sqlite3 stdlib — không cần ORM bên ngoài.
 """
 import json
 import sqlite3
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from src.config import DATABASE_URL, get_logger
 from src.schema import MeetingAnalysis, MeetingRecord
@@ -15,7 +15,6 @@ logger = get_logger(__name__)
 
 def _db_path() -> str:
     """Trả về đường dẫn file SQLite từ DATABASE_URL."""
-    # SQLite URL: sqlite:///relative/path  hoặc sqlite:////absolute/path
     url = DATABASE_URL
     if url.startswith("sqlite:///"):
         return url[len("sqlite:///"):]
@@ -29,8 +28,35 @@ def _get_conn(db_path: Optional[str] = None) -> sqlite3.Connection:
     return conn
 
 
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Idempotent schema migration — an toàn chạy nhiều lần."""
+    for col, default in [
+        ("status", "'processed'"),
+        ("key_decisions", "'[]'"),
+        ("parking_lot", "'[]'"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE meetings ADD COLUMN {col} TEXT DEFAULT {default}")
+        except sqlite3.OperationalError:
+            pass  # column đã tồn tại
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS provider_configs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      TEXT NOT NULL DEFAULT 'default_user',
+            provider_name TEXT NOT NULL,
+            config_json  TEXT NOT NULL,
+            active       INTEGER DEFAULT 1,
+            created_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL,
+            UNIQUE(user_id, provider_name)
+        )
+    """)
+    conn.commit()
+
+
 def init_db(db_path: Optional[str] = None) -> None:
-    """Tạo bảng meetings nếu chưa tồn tại."""
+    """Tạo bảng meetings + provider_configs nếu chưa tồn tại. Chạy migration."""
     with _get_conn(db_path) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS meetings (
@@ -44,8 +70,11 @@ def init_db(db_path: Optional[str] = None) -> None:
             )
         """)
         conn.commit()
+        _migrate_schema(conn)
     logger.info("Database initialized: %s", db_path or _db_path())
 
+
+# ── Meeting CRUD ─────────────────────────────────────────────────────────────
 
 def create_meeting(record: MeetingRecord, db_path: Optional[str] = None) -> int:
     """Thêm MeetingRecord mới vào DB. Trả về id được tạo."""
@@ -124,3 +153,83 @@ def _row_to_record(row: sqlite3.Row) -> MeetingRecord:
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
     )
+
+
+# ── Provider Configs CRUD ─────────────────────────────────────────────────────
+
+def get_provider_config(
+    provider_name: str,
+    user_id: str = "default_user",
+    db_path: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    """Lấy config dict (đã decrypt) cho provider. Trả về None nếu chưa có."""
+    from src.modules.credential_vault import decrypt
+
+    with _get_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT config_json FROM provider_configs WHERE user_id=? AND provider_name=? AND active=1",
+            (user_id, provider_name),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        decrypted = decrypt(row["config_json"])
+        return json.loads(decrypted)
+    except Exception as exc:
+        logger.warning("Không decrypt được config cho provider '%s': %s", provider_name, exc)
+        return None
+
+
+def set_provider_config(
+    provider_name: str,
+    config_dict: dict[str, Any],
+    user_id: str = "default_user",
+    db_path: Optional[str] = None,
+) -> None:
+    """Lưu (upsert) config dict đã encrypt cho provider."""
+    from src.modules.credential_vault import encrypt
+
+    now = datetime.utcnow().isoformat()
+    encrypted = encrypt(json.dumps(config_dict))
+    with _get_conn(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO provider_configs (user_id, provider_name, config_json, active, created_at, updated_at)
+            VALUES (?, ?, ?, 1, ?, ?)
+            ON CONFLICT(user_id, provider_name) DO UPDATE SET
+                config_json=excluded.config_json,
+                active=1,
+                updated_at=excluded.updated_at
+            """,
+            (user_id, provider_name, encrypted, now, now),
+        )
+        conn.commit()
+    logger.info("Đã lưu config cho provider '%s'.", provider_name)
+
+
+def list_provider_configs(
+    user_id: str = "default_user",
+    db_path: Optional[str] = None,
+) -> list[str]:
+    """Trả về danh sách provider_name đang active."""
+    with _get_conn(db_path) as conn:
+        rows = conn.execute(
+            "SELECT provider_name FROM provider_configs WHERE user_id=? AND active=1",
+            (user_id,),
+        ).fetchall()
+    return [r["provider_name"] for r in rows]
+
+
+def delete_provider_config(
+    provider_name: str,
+    user_id: str = "default_user",
+    db_path: Optional[str] = None,
+) -> None:
+    """Xóa config cho provider."""
+    with _get_conn(db_path) as conn:
+        conn.execute(
+            "DELETE FROM provider_configs WHERE user_id=? AND provider_name=?",
+            (user_id, provider_name),
+        )
+        conn.commit()
+    logger.info("Đã xóa config cho provider '%s'.", provider_name)
