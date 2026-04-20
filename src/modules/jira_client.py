@@ -116,7 +116,7 @@ class JiraClient:
                 "project": {"key": self._project_key},
                 "summary": task.summary,
                 "issuetype": {"name": "Task"},
-                "customfield_10014": epic_key,
+                "parent": {"key": epic_key},
                 "priority": {"name": task.priority.value},
                 "description": {
                     "type": "doc",
