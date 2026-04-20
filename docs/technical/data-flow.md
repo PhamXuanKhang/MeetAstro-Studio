@@ -100,6 +100,7 @@ Audio File (.wav/.mp3/.m4a)
 │    metrics: cross_validation_score,    │
 │             context_coherence_score,   │
 │             structural_validation_score│
+│    (Xem workflows/validation-logic.md) │
 └────────────────────┬───────────────────┘
                      │ MeetingAnalysis (với confidence)
                      ▼
@@ -194,4 +195,4 @@ Luồng đẩy Jira đã được nối trực tiếp trong UI tại `src/app.py
 
 Đọc chi tiết thứ tự gọi API, payload mapping, STUB mode, và các rủi ro vận hành tại:
 
-- [jira-upload-flow.md](jira-upload-flow.md)
+- [workflows/jira-upload-flow.md](workflows/jira-upload-flow.md)
