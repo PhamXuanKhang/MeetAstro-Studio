@@ -22,7 +22,7 @@ from src.providers.base_transcriber import BaseTranscriber
 
 logger = get_logger(__name__)
 
-_MAX_RETRIES = 3
+_MAX_RETRIES = 1  # Tắt retry vì model này rất đắt tiền
 _RETRY_BASE_DELAY = 2.0
 _DIARIZE_MODEL = "gpt-4o-transcribe-diarize"
 
