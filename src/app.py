@@ -30,7 +30,7 @@ from src.services.recording_service import (
 )
 from src.services.jira_service import push_analysis_to_jira
 from src.services.summarization_service import generate_summary_stream
-from src.services.transcription_service import transcribe
+from src.services.transcription_service import transcribe, transcribe_diarized
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -239,6 +239,13 @@ with col_upload:
         if st.session_state.audio_path and not recording_active:
             st.caption(f"📂 File: {st.session_state.audio_path}")
 
+    # Checkbox diarization — hiện luôn vì dùng cùng OPENAI_API_KEY
+    use_diarization = st.checkbox(
+        "👥 Nhận diện người nói (Diarization)",
+        value=False,
+        help="Dùng gpt-4o-transcribe-diarize — chậm hơn ~2-3x nhưng phân biệt rõ ai nói gì.",
+    )
+
     transcribe_btn = st.button(
         "🎤 Transcribe",
         disabled=(st.session_state.audio_path is None) or is_recording(),
@@ -251,11 +258,18 @@ with col_transcript:
     st.subheader("2️⃣ Transcript")
 
     if transcribe_btn and st.session_state.audio_path:
-        with st.spinner("Đang transcribe..."):
+        spinner_msg = "Đang transcribe+diarize..." if use_diarization else "Đang transcribe..."
+        with st.spinner(spinner_msg):
             try:
-                text = transcribe(st.session_state.audio_path)
+                if use_diarization:
+                    text = transcribe_diarized(st.session_state.audio_path)
+                else:
+                    text = transcribe(st.session_state.audio_path)
                 st.session_state.transcript = text
-                st.success("Transcribe thành công!")
+                if use_diarization:
+                    st.success("👥 Transcribe + Diarize thành công!")
+                else:
+                    st.success("Transcribe thành công!")
             except Exception as exc:
                 st.error(f"Lỗi transcribe: {exc}")
                 logger.error("Transcribe thất bại: %s", exc)

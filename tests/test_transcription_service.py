@@ -109,3 +109,57 @@ class TestTranscribeChunks:
 
         mock_local.return_value.transcribe.assert_called_once()
         assert result == "local result"
+
+
+class TestTranscribeDiarized:
+    """Tests cho transcribe_diarized() — success + fallback."""
+
+    def test_returns_diarized_transcript_on_success(self):
+        mock_diarize = MagicMock()
+        mock_diarize.return_value.transcribe.return_value = (
+            "[Speaker 0]: Hôm nay họp\n[Speaker 1]: Vâng đồng ý"
+        )
+
+        with patch("src.services.transcription_service.OpenAIDiarizeTranscriber", mock_diarize):
+            result = svc.transcribe_diarized("audio.mp3")
+
+        assert "[Speaker 0]:" in result
+        assert "[Speaker 1]:" in result
+
+    def test_fallback_to_plain_transcribe_on_failure(self):
+        mock_diarize = MagicMock()
+        mock_diarize.return_value.transcribe.side_effect = RuntimeError("API fail")
+
+        mock_openai = MagicMock()
+        mock_openai.return_value.transcribe.return_value = "plain transcript fallback"
+
+        with patch("src.services.transcription_service.OpenAIDiarizeTranscriber", mock_diarize):
+            with patch("src.services.transcription_service.OpenAITranscriber", mock_openai):
+                result = svc.transcribe_diarized("audio.mp3")
+
+        assert result == "plain transcript fallback"
+
+    def test_fallback_logs_warning(self, caplog):
+        import logging
+
+        mock_diarize = MagicMock()
+        mock_diarize.return_value.transcribe.side_effect = RuntimeError("API fail")
+
+        mock_openai = MagicMock()
+        mock_openai.return_value.transcribe.return_value = "fallback"
+
+        with patch("src.services.transcription_service.OpenAIDiarizeTranscriber", mock_diarize):
+            with patch("src.services.transcription_service.OpenAITranscriber", mock_openai):
+                with caplog.at_level(logging.WARNING, logger="src.services.transcription_service"):
+                    svc.transcribe_diarized("audio.mp3")
+
+        assert any("fallback" in r.message.lower() for r in caplog.records)
+
+    def test_language_passed_through(self):
+        mock_diarize = MagicMock()
+        mock_diarize.return_value.transcribe.return_value = "[Speaker 0]: text"
+
+        with patch("src.services.transcription_service.OpenAIDiarizeTranscriber", mock_diarize):
+            svc.transcribe_diarized("audio.mp3", language="en")
+
+        mock_diarize.return_value.transcribe.assert_called_once_with("audio.mp3", language="en")
