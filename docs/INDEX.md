@@ -20,6 +20,7 @@ docs/
 │   ├── architecture.md         ← System architecture + module map
 │   ├── data-flow.md            ← Luồng dữ liệu end-to-end
 │   ├── api-reference.md        ← Public interfaces & schemas
+│   ├── frontend.md             ← Frontend (Flet desktop) docs
 │   ├── deployment.md           ← Setup, cài đặt, chạy app
 │   └── workflows/              ← (NƠI KIỂM SOÁT LUỒNG QUY TRÌNH CHÍNH)
 │       ├── audio-processing.md ← Luồng xử lý âm thanh & Diarization
