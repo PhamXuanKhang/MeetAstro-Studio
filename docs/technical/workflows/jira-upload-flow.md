@@ -1,33 +1,28 @@
 # Jira Upload Flow
 
-Mô tả chi tiết luồng đẩy action items từ app lên Jira, bao gồm điểm vào UI, mapping payload, chế độ STUB, và các rủi ro hiện tại.
+Detailed flow for pushing action items from the app to Jira, including UI entry points, payload mapping, STUB mode, and risks.
 
 ---
 
-## 1. Điểm vào trong ứng dụng
+## 1. Entry point in the app
 
-Luồng Jira được gọi từ Streamlit UI tại `src/app.py` thông qua service layer:
+The Jira flow is triggered from the Flet UI via the API:
 
-- Action bar chỉ hiển thị khi có `st.session_state.analysis`
-- Người dùng bấm nút `🚀 Đẩy lên Jira`
-- App gọi `push_analysis_to_jira(analysis)` trong `src/services/jira_service.py`
-- Service tạo `JiraClient()` (nếu chưa truyền sẵn client)
-- Service lặp `Epic -> Task -> Subtask` và gọi lần lượt:
-  - `create_epic(epic)`
-  - `create_task(task, epic_key)`
-  - `create_subtask(subtask, task_key)`
-
-Tức là: flow upload Jira đã được nối vào runtime qua UI và đã tách orchestration khỏi UI.
+- Action bar is available after analysis completes.
+- User clicks `Push to Jira`.
+- Client calls `POST /api/v1/meetings/{id}/jira/push`.
+- Worker reconstructs the approved analysis and calls `push_analysis_to_jira()`.
+- Service creates `JiraClient()` and runs `Epic -> Task -> Subtask` calls.
 
 ---
 
-## 2. Trình tự thực thi (runtime sequence)
+## 2. Runtime sequence
 
 ```text
-User click "🚀 Đẩy lên Jira"
-  -> Streamlit spinner: "Đang đẩy lên Jira..."
-  -> jira_result = push_analysis_to_jira(analysis)
-  -> jira_service tạo JiraClient() nếu cần
+User clicks "Push to Jira"
+  -> Flet shows progress: "Pushing to Jira..."
+  -> API queues Celery task
+  -> jira_service creates JiraClient() if needed
   -> jira_service for each epic in analysis.epics:
        epic_key = client.create_epic(epic)
        for each task in epic.tasks:
@@ -39,7 +34,7 @@ User click "🚀 Đẩy lên Jira"
      else:
        show success with summary counts + epic keys
   -> any exception:
-       show st.error("Lỗi Jira: ...")
+       show error message
 ```
 
 Thứ tự phụ thuộc parent-child:

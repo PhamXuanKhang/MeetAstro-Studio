@@ -11,55 +11,62 @@ Luồng dữ liệu end-to-end từ audio input đến output cuối cùng.
 │ 0. AUDIO INPUT (2 options)             │
 │                                        │
 │  Option A: Upload file                 │
-│    st.file_uploader → tempfile         │
+│    Flet file dialog → audio path       │
 │                                        │
-│  Option B: Record system audio         │
+│  Option B: Record system audio (local) │
 │    recording_service.start_recording() │
 │         │                              │
 │    AudioRecorder (background thread)   │
 │    • System audio capture (pysysaudio) │
 │    • Optional mic mixing (sounddevice) │
-│    • Chunk rotation mỗi N giây         │
+│    • Chunk rotation every N seconds    │
 │         │                              │
 │    recording_service.stop_recording()  │
 │         │                              │
-│    WAV file path                       │
+│    WAV file path (local)               │
 └────────────────────────────────────────┘
                      │
                      ▼
 Audio File (.wav/.mp3/.m4a)
     │
-    │  (from upload or recording)
+    │  POST /meetings/{id}/audio (multipart upload)
     ▼
 ┌────────────────────────────────────────┐
-│ 1. TRANSCRIPTION                       │
+│ 1. TRANSCRIPTION (Celery Worker)       │
 │                                        │
-│    audio_path (str)                    │
+│    transcribe_task                     │
 │         │                              │
-│    transcription_service.transcribe()  │
+│    if diarize:                         │
+│    ┌────▼──────────────────────┐       │
+│    │ OpenAIDiarizeTranscriber  │       │
+│    │  • gpt-4o-transcribe-     │       │
+│    │    diarize model          │       │
+│    │  • output: [Speaker 0]:   │       │
+│    └────┬──────────────────────┘       │
+│         │ ❌ fail → fallback           │
+│    else / fallback:                    │
+│    ┌────▼──────────────────────┐       │
+│    │ OpenAITranscriber         │       │
+│    │  • Whisper API            │       │
+│    └────┬──────────────────────┘       │
 │         │                              │
-│    ┌────▼─────────────┐                │
-│    │ OpenAITranscriber │───✅──→ text  │
-│    └────┬─────────────┘        (str)   │
-│         │ ❌ fail                       │
-│    ┌────▼──────────────┐               │
-│    │ LocalTranscriber   │───✅──→ text │
-│    └────┬──────────────┘               │
-│         │ ❌ fail                       │
-│         └──→ RuntimeError              │
+│    → lưu Transcript vào PostgreSQL     │
+│    → update Meeting.status=transcribed │
 └────────────────────┬───────────────────┘
                      │ transcript (str)
                      ▼
           ┌─── User edits text area ───┐
-          │  (optional correction)     │
+          │  PATCH /meetings/{id}/     │
+          │  transcript (optional)     │
           └────────────┬───────────────┘
                        │ transcript (str, possibly edited)
                        ▼
 ┌────────────────────────────────────────┐
-│ 2. ANALYSIS                            │
+│ 2. ANALYSIS (Celery Worker)            │
 │                                        │
-│    analysis_service.analyze()          │
+│    analyze_task                        │
 │         │                              │
+│    analysis_service.analyze()          │
 │    ┌────▼──────────────┐               │
 │    │ OpenAIAnalyzer     │              │
 │    │  • system prompt   │              │
@@ -67,132 +74,124 @@ Audio File (.wav/.mp3/.m4a)
 │    │  • retry 3x        │              │
 │    └────┬──────────────┘               │
 │         │                              │
-│    raw JSON → MeetingAnalysis.from_dict│
+│    raw JSON → MeetingAnalysis          │
 │         │                              │
-│    MeetingAnalysis                     │
-│      ├── summary: str                  │
-│      ├── key_decisions: list[str]      │
-│      ├── discussion_points: list[str]  │
-│      ├── parking_lot: list[str]        │
-│      ├── epics: list[Epic]             │
-│      │    └── tasks: list[Task]        │
-│      │         └── subtasks: list      │
-│      └── created_at: datetime          │
+│    extraction_service (rule-based)     │
+│    validation_service (confidence)     │
+│    summarization_service (summary)     │
+│         │                              │
+│    → lưu AnalysisResult vào PostgreSQL │
+│    → flatten → ReviewItem[] (draft)    │
+│    → update Meeting.status=draft       │
 └────────────────────┬───────────────────┘
-                     │ MeetingAnalysis
+                     │ ReviewItem[] (status=draft)
                      ▼
 ┌────────────────────────────────────────┐
-│ 2.5 VALIDATION (optional)              │
+│ 3. HUMAN-IN-THE-LOOP REVIEW            │
 │                                        │
-│    extraction_service.rule_based_      │
-│         extraction(transcript)         │
+│    GET /meetings/{id}/review           │
 │         │                              │
-│    rule_items: list[dict]              │
+│    Frontend: review_view               │
+│    • Hiển thị từng ReviewItem          │
+│    • User approve / edit / reject      │
+│    • is_flagged items nổi bật          │
 │         │                              │
-│    validation_service.validate_        │
-│         action_items(ai_items,         │
-│                      rule_items,       │
-│                      transcript)       │
-│         │                              │
-│    validated_items với confidence      │
-│    scores + validation_notes           │
-│         │                              │
-│    metrics: cross_validation_score,    │
-│             context_coherence_score,   │
-│             structural_validation_score│
-│    (Xem workflows/validation-logic.md) │
+│    PATCH /meetings/{id}/review/{item}  │
+│    POST  /meetings/{id}/review/{item}  │
+│          /approve                      │
+│    POST  /meetings/{id}/review/        │
+│          approve_all                   │
 └────────────────────┬───────────────────┘
-                     │ MeetingAnalysis (với confidence)
+                     │ approved ReviewItem[]
                      ▼
 ┌────────────────────────────────────────┐
-│ 3. OUTPUT (user chọn)                  │
+│ 4. OUTPUT (user chọn)                  │
 │                                        │
-│  ┌──────────┐  ┌───────┐  ┌─────────┐ │
-│  │ Export    │  │ Save  │  │ Push    │ │
-│  │ MD/JSON/ │  │ to DB │  │ to Jira │ │
-│  │ CSV      │  │       │  │         │ │
-│  └────┬─────┘  └───┬───┘  └────┬────┘ │
-│       │            │           │       │
-│  File download  SQLite      Jira API   │
-│  (browser)     insert       POST       │
-│                             (or stub)  │
+│  ┌──────────┐  ┌───────────────────┐   │
+│  │ Export    │  │ Push to Jira      │   │
+│  │ MD/JSON/ │  │ (approved items   │   │
+│  │ CSV      │  │  only)            │   │
+│  └────┬─────┘  └──────┬────────────┘   │
+│       │               │               │
+│  File download   jira_push_task        │
+│  (browser/disk)  (Celery worker)       │
+│                       │               │
+│                  Jira REST API v3      │
+│                  (stub if no creds)    │
 └────────────────────────────────────────┘
 ```
 
 ---
 
-## Data transformations
+## Data Transformations
 
 | Stage | Input | Transform | Output |
 |-------|-------|-----------|--------|
-| Record | User action | `recording_service.start/stop()` → `AudioRecorder` | `audio_path: str` (WAV) |
-| Upload | `UploadedFile` (Streamlit) | `tempfile.NamedTemporaryFile` | `audio_path: str` |
-| Transcribe | `audio_path: str` | Whisper API / Local Whisper | `transcript: str` |
-| User edit | `transcript: str` | `st.text_area` | `transcript: str` (edited) |
-| Analyze | `transcript: str` | GPT-4o JSON mode → `from_dict()` | `MeetingAnalysis` |
-| Rule extract | `transcript: str` | `extraction_service.rule_based_extraction()` | `list[dict]` (rule_items) |
-| Validate | AI items + rule items + transcript | `validation_service.validate_action_items()` | `(validated_items, metrics)` |
-| Summarize | `transcript: str` | `summarization_service.generate_summary()` | `dict` (summary, key_decisions, etc.) |
-| Export MD | `MeetingAnalysis` | `export_markdown()` | `str` (Markdown) |
-| Export JSON | `MeetingAnalysis` | `export_json()` → `to_dict()` + `json.dumps` | `str` (JSON) |
-| Export CSV | `MeetingAnalysis` | `export_csv()` → flatten Epic/Task/Subtask | `str` (CSV) |
-| Save DB | `MeetingRecord` | `create_meeting()` → `analysis.to_json()` → INSERT | `int` (new id) |
-| Push Jira | `MeetingAnalysis` | `jira_service.push_analysis_to_jira()` → `JiraClient.create_*()` → REST POST | `JiraPushResult` |
+| Record | User action | `recording_service.start/stop()` → `AudioRecorder` | `audio_path: str` (WAV, local) |
+| Upload | File path (Flet) | File dialog | `audio_path: str` |
+| Transcribe | `audio_path` (multipart) | Whisper API / diarize transcriber | `Transcript` (PostgreSQL) |
+| User edit | `transcript.raw_text` | PATCH /transcript | `transcript.raw_text` (updated) |
+| Analyze | `transcript.raw_text` | GPT-4o JSON mode → `from_dict()` | `AnalysisResult` (PostgreSQL) |
+| Rule extract | `transcript.raw_text` | `extraction_service.rule_based_extraction()` | `list[dict]` (rule_items) |
+| Validate | AI items + rule items + transcript | `validation_service.validate_action_items()` | confidence scores + validation_notes |
+| Summarize | `transcript.raw_text` | `summarization_service.generate_summary()` | summary, key_decisions, parking_lot |
+| Review | `AnalysisResult` | flatten Epic/Task/Subtask | `ReviewItem[]` (status=draft) |
+| Approve | `ReviewItem` | PATCH/POST approve | `ReviewItem` (status=approved, edited_* if edited) |
+| Export MD | `AnalysisResult.analysis_json` | `export_markdown()` | `str` (Markdown) |
+| Export JSON | `AnalysisResult.analysis_json` | `export_json()` | `str` (JSON) |
+| Export CSV | `AnalysisResult.analysis_json` | `export_csv()` → flatten | `str` (CSV) |
+| Push Jira | approved `ReviewItem[]` | `jira_push_task` → `JiraClient.create_*()` → REST POST | `JiraPushResult` |
 
 ---
 
-## State management
+## State Management
 
-Streamlit `session_state` giữ các biến xuyên suốt session:
+AppState trong `frontend/core/state.py`:
 
-| Key | Type | Khởi tạo | Cập nhật khi |
-|-----|------|----------|-------------|
-| `transcript` | `str` | `""` | Sau transcribe, hoặc user edit text area |
-| `analysis` | `MeetingAnalysis \| None` | `None` | Sau analyze thành công |
-| `audio_path` | `str \| None` | `None` | Sau upload file hoặc recording |
-| `is_recording` | `bool` | `False` | Khi start/stop recording |
-| `validation_metrics` | `dict \| None` | `None` | Sau validation service chạy |
+| Key | Type | Updated when |
+|-----|------|-------------|
+| `transcript` | `str` | Sau transcription hoặc user edit |
+| `analysis` | `MeetingAnalysis \| None` | Sau analyze hoàn thành |
+| `audio_path` | `str \| None` | Sau upload hoặc recording |
+| `current_meeting_id` | `str \| None` | Sau create meeting (UUID) |
+| `review_items` | `list[ReviewItem]` | Sau load review items |
+| `meeting_status` | `str` | Realtime poll từ server |
 
-> **Lưu ý:** Streamlit re-run toàn bộ script mỗi khi user tương tác. `session_state` là cách duy nhất giữ data giữa các re-runs.
-
-> **Recording state:** `AudioRecorder` là module-level singleton trong `recording_service.py` để giữ state giữa Streamlit reruns.
-
----
-
-## Database schema
-
-```sql
-CREATE TABLE meetings (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    title       TEXT    NOT NULL,
-    audio_path  TEXT,
-    transcript  TEXT    NOT NULL DEFAULT '',
-    analysis    TEXT,           -- JSON string (MeetingAnalysis.to_json())
-    created_at  TEXT    NOT NULL,  -- ISO 8601
-    updated_at  TEXT    NOT NULL   -- ISO 8601
-);
-```
-
-`analysis` column lưu JSON string, deserialize bằng `MeetingAnalysis.from_json()`.
+`AudioRecorder` là module-level singleton trong `recording_service.py` — chạy local trên desktop.
 
 ---
 
-## External API calls
+## Database Schema (PostgreSQL)
+
+5 tables — UUID primary keys, TIMESTAMPTZ timestamps:
+
+| Table | Columns key | Quan hệ |
+|-------|-------------|---------|
+| `meetings` | id, title, audio_path, status, user_id, celery_task_id | parent |
+| `transcripts` | id, meeting_id, raw_text, diarized_text, language, char_count | belongs to meeting |
+| `analysis_results` | id, meeting_id, analysis_json (JSONB), summary, overall_confidence | belongs to meeting |
+| `review_items` | id, meeting_id, item_type, item_index, summary, assignee, deadline, priority, confidence, is_flagged, review_status, edited_* | belongs to meeting |
+| `provider_configs` | id, user_id, provider_name, config_json (encrypted), active | standalone |
+
+Migrations quản lý bằng Alembic (`src/db/migrations/`).
+
+---
+
+## External API Calls
 
 | API | Endpoint | Auth | Payload | Response |
 |-----|----------|------|---------|----------|
 | OpenAI Whisper | `audio.transcriptions.create` | Bearer `OPENAI_API_KEY` | audio file + `model="whisper-1"` | `str` (transcript) |
-| OpenAI GPT-4o | `chat.completions.create` | Bearer `OPENAI_API_KEY` | system prompt + transcript, `response_format=json_object` | JSON string → parse |
-| Jira REST v3 | `POST /rest/api/3/issue` | Basic Auth (`JIRA_EMAIL` + `JIRA_API_TOKEN`) | Issue fields (project, summary, type, priority, parent) | `{"key": "MEET-1"}` |
+| OpenAI Diarize | `audio.transcriptions.create` | Bearer `OPENAI_API_KEY` | audio file + `model="gpt-4o-transcribe-diarize"` | `str` (với speaker labels) |
+| OpenAI GPT-4o | `chat.completions.create` | Bearer `OPENAI_API_KEY` | system prompt + transcript, `response_format=json_object` | JSON → parse |
+| Jira REST v3 | `POST /rest/api/3/issue` | Basic Auth | Issue fields (project, summary, type, priority, parent) | `{"key": "MEET-1"}` |
 
-Tất cả API calls có error handling + retry logic (xem [architecture.md](architecture.md)).
+Tất cả API calls có error handling. Celery tasks có retry logic (`max_retries`, `default_retry_delay`).
 
 ---
 
-## Jira upload flow (chi tiết)
+## Jira Upload Flow
 
-Luồng đẩy Jira đã được nối trực tiếp trong UI tại `src/app.py` (nút `🚀 Đẩy lên Jira`).
+Xem chi tiết: [workflows/jira-upload-flow.md](workflows/jira-upload-flow.md)
 
-Đọc chi tiết thứ tự gọi API, payload mapping, STUB mode, và các rủi ro vận hành tại:
-
-- [workflows/jira-upload-flow.md](workflows/jira-upload-flow.md)
+Tóm tắt: Chỉ approved `ReviewItem[]` (từ human review) mới được push. Task reconstruct `MeetingAnalysis` từ approved items, ưu tiên `edited_*` fields nếu user đã chỉnh sửa.

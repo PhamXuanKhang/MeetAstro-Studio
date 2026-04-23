@@ -185,7 +185,7 @@ def elapsed_seconds() -> float
 def get_completed_chunks() -> list[str]
 ```
 
-- Orchestrate `AudioRecorder` singleton cho Streamlit
+- Orchestrate `AudioRecorder` singleton for local capture
 - `start_recording()` trả về WAV output path
 - `get_completed_chunks()` trả về list đường dẫn các chunk đã hoàn thành
 

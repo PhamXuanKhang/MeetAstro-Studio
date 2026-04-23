@@ -10,7 +10,7 @@ Chiến lược testing cho AI Meeting Assistant.
 |-----------|----------|--------|
 | **Unit tests** | 85 tests, 9 files | ✅ All passing |
 | **Integration tests** | E2E với audio thật | ⬜ Chưa implement |
-| **Manual smoke test** | Streamlit UI + real audio | ⬜ Chưa chạy |
+| **Manual smoke test** | Flet UI + real audio | ⬜ Chưa chạy |
 | **Eval test** | AI quality (recall, precision, WER) | ⬜ Chưa implement |
 
 ---
@@ -86,28 +86,27 @@ Audio file (≤ 2 phút)
 
 ## Manual Smoke Test Checklist
 
-Chạy `streamlit run src/app.py` và kiểm tra:
+Run `python frontend\main.py` (API + worker running) and verify:
 
 ### Upload & Transcribe
-- [ ] Upload file `.wav` → audio player hiển thị
-- [ ] Upload file `.mp3` → audio player hiển thị
-- [ ] Nhấn "Transcribe" → spinner → transcript hiển thị
-- [ ] Transcript text area editable → sửa text → text thay đổi
+- [ ] Upload file `.wav` → file path shown
+- [ ] Upload file `.mp3` → file path shown
+- [ ] Click "Transcribe" → progress banner → transcript shown
+- [ ] Transcript field editable → edits are preserved
 
 ### Analyze
-- [ ] Nhấn "Phân tích" → spinner → Epic/Task/Subtask hiển thị
-- [ ] Mỗi task có: summary, assignee (hoặc TBD), deadline (hoặc N/A), priority
-- [ ] Epic expanders mở được, nested tasks hiển thị đúng
+- [ ] Click "Analyze" → progress banner → Epic/Task/Subtask shown
+- [ ] Each task shows summary, assignee (or TBD), deadline (or N/A), priority
+- [ ] Epics render with nested tasks
 
 ### Export
-- [ ] "Tải Markdown" → download file `.md` → mở được, có nội dung
-- [ ] "Tải JSON" → download file `.json` → valid JSON, có `epics` key
-- [ ] "Tải CSV" → download file `.csv` → mở Excel, có header + data rows
+- [ ] "Export Markdown" → Save As dialog → `.md` opens correctly
+- [ ] "Export JSON" → Save As dialog → valid JSON, has `epics` key
+- [ ] "Export CSV" → Save As dialog → header + data rows
 
 ### Save & Jira
-- [ ] "Lưu vào DB" → success message với ID
-- [ ] Sidebar hiển thị cuộc họp vừa lưu
-- [ ] "Đẩy lên Jira" → warning "STUB mode" (khi thiếu credentials)
+- [ ] Meeting appears in History after analysis
+- [ ] "Push to Jira" → warning "STUB mode" (when credentials are missing)
 
 ### Edge Cases
 - [ ] Transcribe khi chưa upload file → button disabled
