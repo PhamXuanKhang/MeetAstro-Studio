@@ -6,5 +6,5 @@ class BaseTranscriber(ABC):
     """Interface chung cho tất cả transcription providers."""
 
     @abstractmethod
-    def transcribe(self, audio_path: str, language: str = "vi") -> str:
+    def transcribe(self, audio_path: str, language: str = "en") -> str:
         """Chuyển đổi file audio thành văn bản transcript."""
