@@ -23,6 +23,28 @@ class Priority(str, Enum):
     LOW = "Low"
 
 
+class ReviewStatus(str, Enum):
+    """Trạng thái review của một action item (Human-in-the-Loop)."""
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EDITED = "edited"
+
+
+class MeetingStatus(str, Enum):
+    """Trạng thái pipeline của một cuộc họp."""
+
+    PENDING = "pending"
+    TRANSCRIBING = "transcribing"
+    TRANSCRIBED = "transcribed"
+    ANALYZING = "analyzing"
+    DRAFT = "draft"
+    APPROVED = "approved"
+    PUSHED = "pushed"
+    FAILED = "failed"
+
+
 class _BaseSchemaModel(BaseModel):
     """Base class cung cấp API tương thích với dataclass cũ."""
 
@@ -100,8 +122,30 @@ class MeetingRecord(_BaseSchemaModel):
 
     title: str
     transcript: str = ""
-    id: Optional[int] = None
+    id: Optional[str] = None
     audio_path: Optional[str] = None
     analysis: Optional[MeetingAnalysis] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ReviewItem(_BaseSchemaModel):
+    """Item trích xuất từ analysis, chờ human review trước khi push Jira."""
+
+    id: Optional[str] = None
+    meeting_id: str = ""
+    item_type: str = "task"           # epic | task | subtask
+    item_index: str = ""              # "0.1.2"
+    summary: str = ""
+    assignee: Optional[str] = None
+    deadline: Optional[str] = None
+    priority: Priority = Priority.MEDIUM
+    context: str = ""
+    confidence: float = 0.0
+    is_flagged: bool = False
+    review_status: ReviewStatus = ReviewStatus.DRAFT
+    edited_summary: Optional[str] = None
+    edited_assignee: Optional[str] = None
+    edited_deadline: Optional[str] = None
+    edited_priority: Optional[str] = None
+    validation_notes: list[str] = Field(default_factory=list)

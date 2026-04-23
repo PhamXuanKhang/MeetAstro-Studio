@@ -31,13 +31,12 @@ class Settings(BaseSettings):
     openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")
 
     # ── Whisper ──
-    whisper_local_model: str = Field(default="base", alias="WHISPER_LOCAL_MODEL")
     default_transcription_language: str = Field(
-        default="vi", alias="DEFAULT_TRANSCRIPTION_LANGUAGE"
+        default="en", alias="DEFAULT_TRANSCRIPTION_LANGUAGE"
     )
 
     # ── Database ──
-    database_url: str = Field(default="sqlite:///data/meetings.db", alias="DATABASE_URL")
+    postgres_url: str = Field(default="", alias="POSTGRES_URL")
 
     # ── Jira (optional) ──
     jira_base_url: str = Field(default="", alias="JIRA_BASE_URL")
@@ -61,6 +60,19 @@ class Settings(BaseSettings):
         default=60, alias="TRANSCRIPTION_CHUNK_SECONDS"
     )
 
+    # ── Background tasks ──
+    celery_broker_url: str = Field(default="redis://localhost:6379/0", alias="CELERY_BROKER_URL")
+    celery_result_backend: str = Field(
+        default="redis://localhost:6379/1", alias="CELERY_RESULT_BACKEND"
+    )
+
+    # ── Confidence thresholds ──
+    confidence_low_threshold: float = Field(default=0.4, alias="CONFIDENCE_LOW_THRESHOLD")
+    confidence_high_threshold: float = Field(default=0.7, alias="CONFIDENCE_HIGH_THRESHOLD")
+
+    # ── HTTP Backend (Flet → FastAPI) ──
+    api_base_url: str = Field(default="http://localhost:8000", alias="API_BASE_URL")
+
     # ── Logging ──
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
@@ -77,10 +89,7 @@ _settings = get_settings()
 OPENAI_API_KEY: str = _settings.openai_api_key
 OPENAI_MODEL: str = _settings.openai_model
 
-WHISPER_LOCAL_MODEL: str = _settings.whisper_local_model
 DEFAULT_TRANSCRIPTION_LANGUAGE: str = _settings.default_transcription_language
-
-DATABASE_URL: str = _settings.database_url
 
 JIRA_BASE_URL: str = _settings.jira_base_url
 JIRA_EMAIL: str = _settings.jira_email
@@ -98,6 +107,13 @@ APP_SECRET_KEY: Optional[str] = _settings.app_secret_key
 TRANSCRIPTION_CHUNK_SECONDS: int = _settings.transcription_chunk_seconds
 
 LOG_LEVEL: str = _settings.log_level
+
+POSTGRES_URL: str = _settings.postgres_url
+CELERY_BROKER_URL: str = _settings.celery_broker_url
+CELERY_RESULT_BACKEND: str = _settings.celery_result_backend
+CONFIDENCE_LOW_THRESHOLD: float = _settings.confidence_low_threshold
+CONFIDENCE_HIGH_THRESHOLD: float = _settings.confidence_high_threshold
+API_BASE_URL: str = _settings.api_base_url
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
