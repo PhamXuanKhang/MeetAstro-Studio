@@ -2,8 +2,8 @@
 System audio recorder module.
 
 Captures system audio (via pysysaudio) with optional microphone mixing and
-writes the result to a WAV file.  Designed to be started / stopped
-programmatically from the Streamlit UI rather than via Ctrl+C.
+writes the result to a WAV file. Designed to be started / stopped
+programmatically from the desktop UI rather than via Ctrl+C.
 """
 import datetime as dt
 import os

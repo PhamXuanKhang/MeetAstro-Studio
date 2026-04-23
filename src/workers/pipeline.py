@@ -1,0 +1,34 @@
+"""
+Pipeline: chain transcribe → analyze.
+
+Call: run_pipeline.delay(meeting_id, audio_path, diarize=False, language="en")
+"""
+from src.workers.celery_app import celery_app
+from src.workers.tasks.analyze_task import analyze_transcript
+from src.workers.tasks.transcribe_task import transcribe_audio
+
+
+@celery_app.task(name="run_pipeline", queue="default")
+def run_pipeline(
+    meeting_id: str,
+    audio_path: str,
+    *,
+    diarize: bool = False,
+    language: str = "en",
+) -> dict:
+    """
+    Chạy pipeline tuần tự: transcribe → analyze.
+
+    Trả về kết quả của analyze_task.
+    """
+    # Chạy transcribe trước, lấy transcript_id, rồi chạy analyze
+    transcribe_result = transcribe_audio(
+        meeting_id, audio_path, diarize=diarize, language=language
+    )
+    transcript_id = transcribe_result["transcript_id"]
+
+    analyze_result = analyze_transcript(meeting_id, transcript_id)
+    return {
+        "transcribe": transcribe_result,
+        "analyze": analyze_result,
+    }

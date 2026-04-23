@@ -22,7 +22,7 @@ from src.providers.base_transcriber import BaseTranscriber
 
 logger = get_logger(__name__)
 
-_MAX_RETRIES = 1  # Tắt retry vì model này rất đắt tiền
+_MAX_RETRIES = 1  # Single attempt — model is expensive
 _RETRY_BASE_DELAY = 2.0
 _DIARIZE_MODEL = "gpt-4o-transcribe-diarize"
 
@@ -75,7 +75,7 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
                 logger.info(
-                    "Đang transcribe+diarize qua OpenAI (model=%s, attempt %d/%d)...",
+                    "Transcribing+diarizing via OpenAI (model=%s, attempt %d/%d)...",
                     _DIARIZE_MODEL,
                     attempt,
                     _MAX_RETRIES,
@@ -84,6 +84,7 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
                     response = self._client.audio.transcriptions.create(
                         model=_DIARIZE_MODEL,
                         file=audio_file,
+                        language=language,
                         response_format="diarized_json",
                         # chunking_strategy="auto" BẮT BUỘC cho file > 30s
                         chunking_strategy="auto",
@@ -91,7 +92,7 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
 
                 segments = self._parse_response(response)
                 logger.info(
-                    "Diarize thành công: %d segments, %d speakers.",
+                    "Diarize succeeded: %d segments, %d speakers.",
                     len(segments),
                     len({s["speaker"] for s in segments}),
                 )
@@ -101,7 +102,7 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
                 last_error = exc
                 delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
                 logger.warning(
-                    "Diarize API lỗi (attempt %d): %s. Thử lại sau %.1fs.",
+                    "Diarize API error (attempt %d): %s. Retrying in %.1fs.",
                     attempt,
                     exc,
                     delay,
@@ -110,10 +111,10 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
                     time.sleep(delay)
 
             except FileNotFoundError as exc:
-                raise FileNotFoundError(f"Không tìm thấy file audio: {audio_path}") from exc
+                raise FileNotFoundError(f"Audio file not found: {audio_path}") from exc
 
         raise RuntimeError(
-            f"OpenAIDiarizeTranscriber thất bại sau {_MAX_RETRIES} lần thử: {last_error}"
+            f"OpenAIDiarizeTranscriber failed after {_MAX_RETRIES} attempt(s): {last_error}"
         ) from last_error
 
     # ── Private helpers ────────────────────────────────────────────────────────
@@ -121,33 +122,39 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
     def _parse_response(self, response: object) -> list[DiarizedSegment]:
         """Parse response object → list[DiarizedSegment].
 
-        API trả về object có attribute `segments` (hoặc dict tương đương).
+        OpenAI diarized_json returns 'utterances' (not 'segments').
+        Falls back to 'segments' for forward-compatibility.
         """
-        raw_segments = getattr(response, "segments", None)
+        raw = None
+        if isinstance(response, dict):
+            raw = response.get("utterances") or response.get("segments") or []
+        else:
+            raw = getattr(response, "utterances", None) or getattr(response, "segments", None)
 
-        if raw_segments is None:
-            # Fallback: nếu response là dict
-            if isinstance(response, dict):
-                raw_segments = response.get("segments", [])
-            else:
-                logger.warning("Diarize response không có 'segments' — trả về list rỗng.")
-                return []
+        if raw is None:
+            logger.warning("Diarize response has neither 'utterances' nor 'segments' — returning empty list.")
+            return []
 
         result: list[DiarizedSegment] = []
-        for seg in raw_segments:
-            # Hỗ trợ cả object lẫn dict
+        for seg in raw:
             if isinstance(seg, dict):
-                speaker = seg.get("speaker", "Unknown")
+                speaker_raw = seg.get("speaker", "Unknown")
                 start = float(seg.get("start", 0.0))
                 end = float(seg.get("end", 0.0))
                 text = str(seg.get("text", "")).strip()
             else:
-                speaker = str(getattr(seg, "speaker", "Unknown"))
+                speaker_raw = getattr(seg, "speaker", "Unknown")
                 start = float(getattr(seg, "start", 0.0))
                 end = float(getattr(seg, "end", 0.0))
                 text = str(getattr(seg, "text", "")).strip()
 
-            if text:  # bỏ qua segment rỗng
+            # speaker may be int (0, 1, 2) or string — normalise to "Speaker N"
+            if isinstance(speaker_raw, int):
+                speaker = f"Speaker {speaker_raw}"
+            else:
+                speaker = str(speaker_raw)
+
+            if text:
                 result.append(
                     DiarizedSegment(speaker=speaker, start=start, end=end, text=text)
                 )
