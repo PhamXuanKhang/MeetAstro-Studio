@@ -6,59 +6,69 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                    Streamlit UI (app.py)                      │
-│  ┌──────────┐  ┌──────────────┐  ┌─────────────────────────┐ │
-│  │ Upload   │  │  Transcript  │  │  Analysis (Epic/Task/   │ │
-│  │ Audio    │→ │  Text Area   │→ │  Subtask) + Actions     │ │
-│  └──────────┘  └──────────────┘  └─────────────────────────┘ │
-└──────────┬───────────┬───────────────────┬───────────────────┘
-           │           │                   │
-     ┌─────▼─────┐ ┌───▼────────┐   ┌─────▼──────────────┐
-     │ Services  │ │ Modules    │   │ Modules            │
-     │           │ │            │   │                    │
-     │ transcr.  │ │ database   │   │ exporter + jira    │
-     │ analysis  │ │ (SQLite)   │   │ (MD/JSON/CSV/Jira) │
-     └─────┬─────┘ └────────────┘   └────────────────────┘
-           │
-     ┌─────▼──────────────────────┐
-     │ Providers (Strategy)       │
-     │                            │
-     │ ┌────────────────────────┐ │
-     │ │ BaseAnalyzer (ABC)     │ │
-     │ │  └─ OpenAIAnalyzer     │ │
-     │ ├────────────────────────┤ │
-     │ │ BaseTranscriber (ABC)  │ │
-     │ │  ├─ OpenAITranscriber  │ │
-     │ │  └─ LocalTranscriber   │ │
-     │ └────────────────────────┘ │
-     └─────┬──────────────────────┘
-           │
-     ┌─────▼──────────────────────┐
-     │ External APIs              │
-     │  • OpenAI Whisper API      │
-     │  • OpenAI GPT-4o           │
-     │  • Jira REST API v3        │
-     │  • Local Whisper model     │
-     └────────────────────────────┘
+│                  Flet Desktop App (HTTP Client)              │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌─────────┐  │
+│  │ Upload / │  │  Transcript  │  │  Review  │  │ History │  │
+│  │ Record   │→ │  Editor      │→ │  Items   │→ │ + Jira  │  │
+│  └──────────┘  └──────────────┘  └──────────┘  └─────────┘  │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ HTTP (httpx)
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│               FastAPI Server (src/api/)                      │
+│  POST /meetings  POST /audio  GET /review  POST /jira/push   │
+└──────┬─────────────────────────────────────────┬────────────┘
+       │ enqueue task                             │ query/write
+       ▼                                         ▼
+┌─────────────────────┐               ┌──────────────────────┐
+│   Celery Workers    │               │   PostgreSQL DB       │
+│  (src/workers/)     │               │  meetings             │
+│                     │               │  transcripts          │
+│  transcribe_task    │──────────────→│  analysis_results     │
+│  analyze_task       │               │  review_items         │
+│  jira_push_task     │               │  provider_configs     │
+└──────┬──────────────┘               └──────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Providers (Strategy Pattern)                                 │
+│                                                              │
+│  BaseAnalyzer (ABC) → OpenAIAnalyzer (GPT-4o JSON mode)     │
+│  BaseTranscriber (ABC) → OpenAITranscriber (Whisper API)    │
+│                       → OpenAIDiarizeTranscriber            │
+│  MockAnalyzer (testing/offline)                              │
+└──────┬───────────────────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│ External APIs                                                │
+│  • OpenAI Whisper API (transcription)                        │
+│  • OpenAI GPT-4o (analysis, JSON mode)                       │
+│  • Jira REST API v3 (push issues)                            │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+**Infrastructure** (Docker): PostgreSQL 16 + Redis 7 + FastAPI + Celery Worker.
+**Frontend**: Flet desktop app (`.exe`), connect tới server qua `API_BASE_URL`.
 
 ---
 
-## Layer architecture
+## Layer Architecture
 
-Hệ thống chia thành 4 layers, mỗi layer chỉ phụ thuộc layer dưới:
-
-| Layer | Thư mục | Vai trò | Phụ thuộc |
-|-------|---------|---------|-----------|
-| **UI** | `src/app.py` | Streamlit frontend, session state management | Services, Modules |
-| **Services** | `src/services/` | Orchestration logic, fallback chain | Providers |
-| **Modules** | `src/modules/` | Persistence (DB), export (file), integration (Jira) | Schema, Config |
-| **Providers** | `src/providers/` | Strategy Pattern — gọi external AI APIs | External APIs |
+| Layer | Path | Vai trò | Phụ thuộc |
+|-------|------|---------|-----------|
+| **Desktop App** | `frontend/` | Flet HTTP client — UI + local audio recording | FastAPI server |
+| **API** | `src/api/` | FastAPI routers + request validation | Services, DB |
+| **Worker** | `src/workers/` | Celery tasks — transcribe, analyze, jira push | Services, DB |
+| **Services** | `src/services/` | Orchestration logic | Providers, Modules |
+| **Providers** | `src/providers/` | Strategy pattern — OpenAI API calls | External APIs |
+| **DB** | `src/db/` | SQLAlchemy async models + CRUD + Alembic | PostgreSQL |
+| **Modules** | `src/modules/` | Jira client, audio recorder, exporter, vault | External APIs |
 | **Core** | `src/schema.py`, `src/config.py` | Data models, configuration | stdlib |
 
 ---
 
-## Module map
+## Module Map
 
 ### `src/schema.py` — Pydantic Models
 
@@ -75,108 +85,131 @@ MeetingAnalysis (BaseModel) ─── epics, summary, key_decisions, discussion_
     └── to_dict() / from_dict() / to_json() / from_json()
 
 MeetingRecord (BaseModel) ─── id, title, audio_path, transcript, analysis, created_at, updated_at
-    └── to_dict()
+
+ReviewItem (BaseModel) ─── id, meeting_id, item_type, item_index, summary, assignee, deadline,
+                            priority, context, confidence, is_flagged, review_status,
+                            edited_summary, edited_assignee, edited_deadline, edited_priority
 ```
 
 ### `src/providers/` — Strategy Pattern
 
 | File | Class | ABC | Method | Notes |
 |------|-------|-----|--------|-------|
-| `base_analyzer.py` | `BaseAnalyzer` | ✅ (ABC) | `analyze(transcript) → MeetingAnalysis` | Interface |
-| `base_transcriber.py` | `BaseTranscriber` | ✅ (ABC) | `transcribe(audio_path, language) → str` | Interface |
-| `openai_analyzer.py` | `OpenAIAnalyzer` | extends BaseAnalyzer | `analyze()` | GPT-4o + JSON mode, retry 3x exponential backoff |
+| `base_analyzer.py` | `BaseAnalyzer` | ✅ | `analyze(transcript) → MeetingAnalysis` | Interface |
+| `base_transcriber.py` | `BaseTranscriber` | ✅ | `transcribe(audio_path, language) → str` | Interface |
+| `openai_analyzer.py` | `OpenAIAnalyzer` | extends BaseAnalyzer | `analyze()` | GPT-4o JSON mode, retry 3x |
 | `openai_transcriber.py` | `OpenAITranscriber` | extends BaseTranscriber | `transcribe()` | Whisper API |
-| `local_transcriber.py` | `LocalTranscriber` | extends BaseTranscriber | `transcribe()` | Local Whisper model (`base` default) |
-| `mock_analyzer.py` | `MockAnalyzer` | extends BaseAnalyzer | `analyze()` | Mock data cho testing/fallback offline |
+| `openai_diarize_transcriber.py` | `OpenAIDiarizeTranscriber` | extends BaseTranscriber | `transcribe()` | Whisper + speaker labels |
+| `mock_analyzer.py` | `MockAnalyzer` | extends BaseAnalyzer | `analyze()` | Testing / offline fallback |
 
-**Thêm provider mới:** Tạo class kế thừa ABC tương ứng + test file riêng.
+**Thêm provider mới:** Kế thừa ABC tương ứng + tạo test file riêng.
+
+### `src/api/routers/` — FastAPI Endpoints
+
+| Router | Prefix | Key endpoints |
+|--------|--------|---------------|
+| `meetings.py` | `/meetings` | CRUD meetings, upload audio, get transcript |
+| `transcriptions.py` | `/meetings/{id}` | patch transcript |
+| `analysis.py` | `/meetings/{id}` | trigger analysis, get analysis |
+| `reviews.py` | `/meetings/{id}/review` | list, patch, approve, reject items |
+| `jira.py` | `/meetings/{id}/jira` | push approved items |
+| `exports.py` | `/meetings/{id}/export` | markdown, json, csv |
+| `settings.py` | `/settings` | provider config CRUD |
+
+### `src/workers/` — Celery Tasks
+
+| File | Task name | Input | Output |
+|------|-----------|-------|--------|
+| `pipeline.py` | `run_pipeline` | meeting_id, audio_path, diarize, language | transcribe + analyze results |
+| `transcribe_task.py` | `transcribe_audio` | meeting_id, audio_path, diarize | `{transcript_id, char_count}` |
+| `analyze_task.py` | `analyze_transcript` | meeting_id, transcript_id | `{analysis_id, review_item_count, flagged_count}` |
+| `jira_push_task.py` | `push_to_jira` | meeting_id | `{epic_keys, task_count, subtask_count, is_stub}` |
+
+### `src/db/` — Database Layer
+
+| Path | Vai trò |
+|------|---------|
+| `models.py` | SQLAlchemy ORM: Meeting, Transcript, AnalysisResult, ReviewItem, ProviderConfig |
+| `base.py` | DeclarativeBase |
+| `session.py` | Async engine + session factory |
+| `crud/meeting_crud.py` | Async CRUD: Meeting, Transcript, AnalysisResult |
+| `crud/review_crud.py` | Async CRUD: ReviewItem (approve/reject/bulk) |
+| `crud/provider_crud.py` | Async CRUD: ProviderConfig (encrypted) |
+| `migrations/` | Alembic migration scripts |
 
 ### `src/services/` — Orchestration
 
 | File | Function | Logic |
 |------|----------|-------|
-| `transcription_service.py` | `transcribe(audio_path, language)` | Fallback chain: `OpenAITranscriber` → (nếu fail + log warning) → `LocalTranscriber` → (nếu cả hai fail) → raise `RuntimeError` |
-| `analysis_service.py` | `analyze(transcript)` | Validate input → `OpenAIAnalyzer().analyze()` → log kết quả |
-| `jira_service.py` | `push_analysis_to_jira(analysis)` | Orchestrate Jira push theo thứ tự Epic → Task → Subtask, trả về summary counts |
-| `recording_service.py` | `start_recording()`, `stop_recording()`, `is_recording()` | Orchestrate `AudioRecorder` singleton cho Streamlit |
-| `extraction_service.py` | `rule_based_extraction(transcript)` | Regex-based action item extraction để cross-validate với AI |
-| `validation_service.py` | `validate_action_items(ai_items, rule_items, transcript)` | Cross-validate AI vs rule-based, trả về confidence scores |
-| `summarization_service.py` | `generate_summary(transcript)`, `generate_summary_stream()` | Async OpenAI call để tạo summary + key_decisions + parking_lot |
+| `transcription_service.py` | `transcribe()`, `transcribe_diarized()`, `transcribe_chunks()` | OpenAI Whisper API; diarize fallback về plain transcribe |
+| `analysis_service.py` | `analyze(transcript)` | Validate → OpenAIAnalyzer → extraction → validation → summarization |
+| `jira_service.py` | `push_analysis_to_jira(analysis)` | Orchestrate Jira push: Epic → Task → Subtask |
+| `recording_service.py` | `start_recording()`, `stop_recording()` | Orchestrate `AudioRecorder` (local desktop) |
+| `extraction_service.py` | `rule_based_extraction(transcript)` | Regex-based extraction để cross-validate AI |
+| `validation_service.py` | `validate_action_items(...)` | Cross-validate AI vs rule-based, trả về confidence scores |
+| `summarization_service.py` | `generate_summary(transcript)` | Async OpenAI call — summary, key_decisions, parking_lot |
 
 ### `src/modules/` — Persistence & Integration
 
-| File | Functions | Notes |
-|------|-----------|-------|
-| `database.py` | `init_db()`, `create_meeting()`, `get_meeting()`, `list_meetings()`, `update_meeting()`, `delete_meeting()` | SQLite stdlib, analysis serialize → JSON column |
-| `database.py` | `get_provider_config()`, `set_provider_config()`, `list_provider_configs()`, `delete_provider_config()` | Provider configs CRUD với encryption |
-| `exporter.py` | `export_markdown()`, `export_json()`, `export_csv()` | Stateless pure functions |
-| `jira_client.py` | `JiraClient.create_epic()`, `.create_task()`, `.create_subtask()` | REST API v3, auto stub mode khi thiếu credentials |
-| `audio_recorder.py` | `AudioRecorder.start()`, `.stop()`, `.is_recording`, `.get_completed_chunks()` | System audio capture (pysysaudio) + optional mic mixing, chunk rotation |
-| `credential_vault.py` | `encrypt()`, `decrypt()` | Fernet symmetric encryption cho provider credentials |
-
-### `src/config.py` — Configuration
-
-Centralized config từ `.env` + logging setup. Một `get_logger(name)` function cho tất cả modules.
-
-### `src/prompts/` — Prompt Templates
-
 | File | Vai trò |
 |------|---------|
-| `extract_action_items.md` | System prompt tiếng Việt cho GPT-4o — output JSON schema Epic/Task/Subtask |
+| `exporter.py` | `export_markdown()`, `export_json()`, `export_csv()` — pure functions |
+| `jira_client.py` | Jira REST API v3, auto stub mode khi thiếu credentials |
+| `audio_recorder.py` | System audio capture (pysysaudio) + mic mixing, chunk rotation |
+| `credential_vault.py` | `encrypt()` / `decrypt()` — Fernet symmetric encryption |
 
 ---
 
-## Key design patterns
+## Key Design Patterns
 
 ### 1. Strategy Pattern (Providers)
 
 ```python
-# Thêm provider mới:
 class GeminiAnalyzer(BaseAnalyzer):
-    def analyze(self, transcript: str) -> MeetingAnalysis:
-        # ... implement
+    def analyze(self, transcript: str) -> MeetingAnalysis: ...
 ```
 
-Tất cả providers implement cùng ABC interface → services chọn provider tại runtime.
+Tất cả providers implement cùng ABC interface → services/tasks chọn provider tại runtime.
 
-### 2. Fallback Chain (Transcription)
+### 2. Async Worker Pipeline (Celery)
 
 ```
-User upload audio
+POST /meetings/{id}/audio
     │
     ▼
-OpenAITranscriber.transcribe()
+Celery: run_pipeline.delay(meeting_id, audio_path, diarize)
     │
-    ├── ✅ Success → return transcript
+    ├─ transcribe_audio → Whisper API → lưu Transcript
     │
-    └── ❌ Exception → log warning
-                           │
-                           ▼
-                    LocalTranscriber.transcribe()
-                           │
-                           ├── ✅ Success → return transcript
-                           │
-                           └── ❌ Exception → raise RuntimeError
+    └─ analyze_transcript → GPT-4o → lưu AnalysisResult + ReviewItem[]
 ```
 
-### 3. Structured Output (JSON Mode)
+### 3. Human-in-the-Loop Review
 
-GPT-4o nhận system prompt (tiếng Việt) + transcript → trả JSON theo schema:
+```
+ReviewItem (status=draft)
+    │
+    ├─ User approve → status=approved
+    ├─ User edit + approve → edited_* fields + status=approved
+    └─ User reject → status=rejected
+
+POST /jira/push → chỉ push approved items
+```
+
+### 4. Structured Output (JSON Mode)
+
+GPT-4o + JSON mode → `MeetingAnalysis.from_dict()`:
 ```json
 {
   "summary": "...",
   "epics": [{
     "summary": "...", "description": "...",
-    "tasks": [{
-      "summary": "...", "assignee": "...", "deadline": "YYYY-MM-DD",
-      "priority": "High", "context": "trích dẫn transcript",
-      "subtasks": [...]
-    }]
+    "tasks": [{"summary": "...", "assignee": "...", "deadline": "YYYY-MM-DD",
+               "priority": "High", "context": "...", "subtasks": [...]}]
   }]
 }
 ```
-Parse bằng `MeetingAnalysis.from_dict()`.
 
-### 4. Stub Pattern (Jira)
+### 5. Stub Pattern (Jira)
 
-`JiraClient` tự detect thiếu credentials → `is_stub = True` → trả fake key `"STUB-001"` + log warning. Code production-ready, chỉ cần fill `.env`.
+`JiraClient` auto-detect thiếu credentials → `is_stub = True` → fake key `"STUB-001"`.

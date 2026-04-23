@@ -1,64 +1,61 @@
 # Deployment & Setup
 
-Hướng dẫn cài đặt, chạy app, và troubleshoot.
+Stack: Flet desktop app (HTTP client) + FastAPI server + Celery worker + PostgreSQL + Redis.
 
 ---
 
 ## Prerequisites
 
-- Python 3.9+
-- `uv` package manager (khuyến nghị) hoặc `pip`
+- Python 3.9+ (frontend), Python 3.11+ (server/Docker)
+- [uv](https://docs.astral.sh/uv/) — package manager
+- Docker Desktop — chạy PostgreSQL + Redis locally
 - Git
 
 ---
 
-## Cài đặt
+## Local Development Setup
 
-### 1. Clone repo
+### 1) Clone repo
 
 ```bash
 git clone https://github.com/a20-ai-thuc-chien/A20-App-089.git
 cd A20-App-089
 ```
 
-### 2. Tạo virtual environment
+### 2) Tạo virtual environment
 
 ```bash
-python -m venv .venv
-
-# Activate:
-# Linux/macOS:
-source .venv/bin/activate
-
-# Windows (Git Bash):
+uv venv
+# Windows
 source .venv/Scripts/activate
-
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
+# Linux/Mac
+source .venv/bin/activate
 ```
 
-### 3. Install dependencies
+### 3) Cài dependencies
 
 ```bash
-# Với uv (nhanh hơn):
-uv pip install -r requirements.txt
-uv pip install -e .
+# Cài tất cả (local dev — server + frontend + dev tools)
+uv pip install -e ".[all]"
 
-# Với pip:
-pip install -r requirements.txt
-pip install -e .
+# Hoặc chỉ cài từng group cần thiết:
+uv pip install -e ".[server]"    # Backend API + Celery + PostgreSQL
+uv pip install -e ".[frontend]"  # Flet desktop app + audio recording
+uv pip install -e ".[dev]"       # pytest + flake8 + mypy
 ```
 
-> **Quan trọng:** `pip install -e .` (editable install) cần thiết để `from src.xxx import ...` hoạt động trong Streamlit và tests.
-
-### 4. Cấu hình environment
+### 4) Cấu hình environment
 
 ```bash
 cp .env.example .env
-# Sửa .env — điền OPENAI_API_KEY (bắt buộc)
 ```
 
-### 5. Setup git hooks
+Điền vào `.env`:
+- `OPENAI_API_KEY` — bắt buộc
+- `POSTGRES_URL` — URL PostgreSQL (để trống nếu dùng Docker compose mặc định)
+- `APP_SECRET_KEY` — generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+### 5) Setup git hooks (tùy chọn)
 
 ```bash
 bash scripts/setup_hooks.sh
@@ -66,136 +63,100 @@ bash scripts/setup_hooks.sh
 
 ---
 
-## Chạy app
+## Chạy Backend (Docker — Recommended)
+
+Khởi động toàn bộ stack (PostgreSQL + Redis + API server + Celery worker):
 
 ```bash
-# Activate venv trước!
-source .venv/Scripts/activate  # Windows
-streamlit run src/app.py
+docker compose up --build
 ```
 
-App mở tại `http://localhost:8501`.
+Services:
+- **PostgreSQL**: `localhost:5432` (db=ai_meeting_db, user=ai_meeting)
+- **Redis**: `localhost:6379`
+- **API server**: `http://localhost:8000`
+- **Celery worker**: tự khởi động, listen queue `default`
+- **migrate**: tự chạy `alembic upgrade head` trước khi API start
+
+### Chỉ khởi động infrastructure (không build app)
+
+```bash
+docker compose up postgres redis -d
+```
+
+Sau đó chạy API và worker thủ công (dev mode với hot reload):
+
+```bash
+uvicorn src.api.main:app --reload --port 8000
+celery -A src.workers.celery_app worker -Q default --loglevel=info
+```
 
 ---
 
-## Chạy tests
+## Chạy Flet Desktop App
+
+```bash
+python frontend/main.py
+```
+
+App kết nối tới `API_BASE_URL` (mặc định `http://localhost:8000`). Đảm bảo backend đang chạy.
+
+---
+
+## Tests & Verification
 
 ```bash
 pytest tests/ -v
-```
-
-### Verification đầy đủ
-
-```bash
 flake8 . --max-line-length=100 && mypy . --ignore-missing-imports && pytest tests/ -v
 ```
 
 ---
 
-## Troubleshooting
+## Production Deploy (VPS)
 
-### `ModuleNotFoundError: No module named 'src'`
+### Backend (Docker trên VPS)
 
-**Nguyên nhân:** Chưa chạy `pip install -e .` (editable install).
-
-**Fix:**
 ```bash
-source .venv/Scripts/activate
-uv pip install -e .  # hoặc pip install -e .
+# Trên VPS
+git clone ... && cd A20-App-089
+cp .env.example .env  # fill production values
+docker compose up -d --build
 ```
 
-### Streamlit dùng system Python thay vì .venv
+Cần cấu hình thêm:
+- Reverse proxy (nginx) để expose port 8000
+- SSL/TLS certificate
+- Persistent volumes cho PostgreSQL data
 
-**Kiểm tra:**
+### Frontend (Desktop .exe)
+
+Build Flet app thành `.exe` bằng [flet pack](https://flet.dev/docs/publish):
+
 ```bash
-which streamlit
-which python
+uv pip install -e ".[frontend]"
+flet pack frontend/main.py --name "AI Meeting Assistant"
 ```
 
-Nếu `streamlit` trỏ ra ngoài `.venv` → install streamlit vào `.venv`:
-```bash
-uv pip install streamlit
-```
-
-### `python3` không chạy trên Windows
-
-**Nguyên nhân:** `python3` trên Windows là alias Microsoft Store.
-
-**Fix:** Luôn dùng `python` (không phải `python3`). Đã fix trong `scripts/setup_hooks.sh` và `.git/hooks/pre-push`.
-
-### pre-push hook không submit log
-
-**Kiểm tra:**
-```bash
-cat .git/hooks/pre-push  # Phải là "python" không phải "python3"
-python scripts/submit_log.py  # Chạy thủ công để test
-```
+Distribute file `.exe` cho người dùng. Cấu hình `API_BASE_URL` trong `.env` để trỏ về VPS.
 
 ---
 
 ## Environment Variables
 
-Xem chi tiết: [api-reference.md — Configuration](api-reference.md#configuration--srcconfigpy)
+Xem `.env.example` để biết đầy đủ. Các biến quan trọng:
 
-| Variable | Bắt buộc | Mô tả |
-|----------|----------|-------|
-| `OPENAI_API_KEY` | Yes | API key cho GPT-4o + Whisper |
-| `OPENAI_MODEL` | No (default: `gpt-4o`) | Model cho analysis |
-| `WHISPER_LOCAL_MODEL` | No (default: `base`) | Whisper local model size |
-| `DATABASE_URL` | No (default: `sqlite:///data/meetings.db`) | SQLite path |
-| `JIRA_BASE_URL` | No | Jira instance URL |
-| `JIRA_EMAIL` | No | Jira account email (for Basic Auth) |
-| `JIRA_API_TOKEN` | No | Jira API token |
-| `JIRA_PROJECT_KEY` | No | Jira project key |
-| `AUDIO_SAMPLE_RATE` | No (default: `16000`) | Sample rate cho audio recording |
-| `AUDIO_CHANNELS` | No (default: `1`) | Số kênh audio |
-| `AUDIO_MIC_ENABLED` | No (default: `true`) | Bật/tắt mic mixing |
-| `AUDIO_MIC_GAIN` | No (default: `3.0`) | Gain cho mic input |
-| `AUDIO_SYS_GAIN` | No (default: `0.5`) | Gain cho system audio |
-| `AUDIO_OUTPUT_DIR` | No (default: `data/recordings`) | Thư mục lưu recordings |
-| `APP_SECRET_KEY` | No | Fernet key cho credential encryption |
-| `TRANSCRIPTION_CHUNK_SECONDS` | No (default: `60`) | Độ dài chunk audio (giây) |
-| `LOG_LEVEL` | No (default: `INFO`) | Logging level |
-
----
-
-## Project structure
-
-```
-A20-App-089/
-├── src/
-│   ├── app.py                      ← Entry point (Streamlit)
-│   ├── schema.py                   ← Pydantic models
-│   ├── config.py                   ← Config + logging (pydantic-settings)
-│   ├── providers/
-│   │   ├── base_analyzer.py        ← ABC cho analyzers
-│   │   ├── base_transcriber.py     ← ABC cho transcribers
-│   │   ├── openai_analyzer.py      ← GPT-4o analyzer
-│   │   ├── openai_transcriber.py   ← Whisper API
-│   │   ├── local_transcriber.py    ← Local Whisper
-│   │   └── mock_analyzer.py        ← Mock cho testing
-│   ├── services/
-│   │   ├── analysis_service.py     ← AI analysis orchestration
-│   │   ├── transcription_service.py ← Fallback chain
-│   │   ├── jira_service.py         ← Jira push
-│   │   ├── recording_service.py    ← Audio recording
-│   │   ├── extraction_service.py   ← Rule-based extraction
-│   │   ├── validation_service.py   ← Cross-validation
-│   │   └── summarization_service.py ← Async summary
-│   ├── modules/
-│   │   ├── database.py             ← SQLite CRUD
-│   │   ├── exporter.py             ← MD/JSON/CSV export
-│   │   ├── jira_client.py          ← Jira REST client
-│   │   ├── audio_recorder.py       ← System audio capture
-│   │   └── credential_vault.py     ← Fernet encryption
-│   └── prompts/                    ← Prompt templates
-├── tests/                          ← pytest (14 test files)
-├── docs/                           ← Tài liệu (bạn đang ở đây)
-├── scripts/                        ← Hooks, log submission
-├── pyproject.toml                  ← Package config
-├── requirements.txt                ← Dependencies
-├── .env.example                    ← Template environment
-├── CLAUDE.md                       ← AI agent instructions
-├── JOURNAL.md                      ← Weekly journal
-└── WORKLOG.md                      ← Technical decisions log
-```
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | Yes | — | GPT-4o + Whisper API |
+| `POSTGRES_URL` | Yes (server) | — | PostgreSQL connection string |
+| `APP_SECRET_KEY` | Yes | — | Fernet key cho credential encryption |
+| `CELERY_BROKER_URL` | No | `redis://localhost:6379/0` | Redis broker |
+| `CELERY_RESULT_BACKEND` | No | `redis://localhost:6379/1` | Redis result backend |
+| `API_BASE_URL` | No | `http://localhost:8000` | Server URL (Flet client) |
+| `DEFAULT_TRANSCRIPTION_LANGUAGE` | No | `vi` | Ngôn ngữ Whisper |
+| `JIRA_BASE_URL` | No | — | Jira instance URL (stub mode nếu thiếu) |
+| `JIRA_EMAIL` | No | — | Jira Basic Auth email |
+| `JIRA_API_TOKEN` | No | — | Jira API token |
+| `JIRA_PROJECT_KEY` | No | — | Jira project key |
+| `CONFIDENCE_LOW_THRESHOLD` | No | `0.4` | Threshold để flag review items |
+| `LOG_LEVEL` | No | `INFO` | Logging level |

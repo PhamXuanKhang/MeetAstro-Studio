@@ -1,62 +1,109 @@
 # AI Meeting Assistant — Context for AI Agents
 
 > This file provides structured context for AI coding agents (Claude Code, Cursor, Copilot, Codex, etc.) working on this project.
-> Updated: 2026-04-19
+> Updated: 2026-04-22
 
 ## What This Project Does
 
-AI Meeting Assistant converts meeting audio recordings into structured action items (Epic → Task → Subtask) and pushes them to Jira. Pipeline: Audio upload → Whisper transcribe → GPT-4o analyze → Export (MD/JSON/CSV) or Push to Jira.
+AI Meeting Assistant converts meeting audio recordings into structured action items (Epic → Task → Subtask) and pushes them to Jira. Architecture: FastAPI backend + Flet desktop app (HTTP client).
+
+Pipeline:
+1. Desktop app: record audio locally or upload file
+2. POST audio → FastAPI → Celery: Whisper API transcribe (+ optional diarization)
+3. Celery: GPT-4o analyze → extract Epic/Task/Subtask → create ReviewItems (draft)
+4. User reviews in desktop app: approve/edit/reject items (Human-in-the-loop)
+5. POST jira/push → Celery: push approved items → Jira REST API
 
 ## Tech Stack
 
-- Python 3.9+ / Streamlit 1.32+ / OpenAI API (GPT-4o + Whisper) / SQLite / Jira REST API v3
-- Pydantic + pydantic-settings for schema and config validation
-- pysysaudio + sounddevice for system audio capture + mic mixing
-- cryptography (Fernet) for credential encryption
-- Package management: uv + pyproject.toml (editable install required)
-- Testing: pytest (14 test files)
-- Linting: flake8 (max-line-length=100) + mypy
+- **Backend**: Python 3.11 / FastAPI / Celery / Redis / PostgreSQL (SQLAlchemy async + asyncpg + Alembic)
+- **Frontend**: Python 3.9+ / Flet desktop app (.exe) / httpx (HTTP client)
+- **AI**: OpenAI GPT-4o (analysis, JSON mode) + Whisper API (transcription) + diarization
+- **Audio**: pysysaudio + sounddevice (local system audio capture + mic mixing)
+- **Security**: cryptography (Fernet) for credential encryption
+- **Package management**: uv + pyproject.toml optional groups
+- **Testing**: pytest (12+ test files, all external calls mocked)
+- **Linting**: flake8 (max-line-length=100) + mypy
 
 ## Project Structure
 
 ```
+frontend/
+  main.py                       → Flet desktop entry point
+  app.py                        → Flet app factory
+  core/
+    http_backend.py             → HTTP client — all FastAPI calls via httpx
+    backend_factory.py          → factory returning HttpBackend
+    state.py                    → AppState dataclass
+  views/
+    dashboard_view.py           → meeting list
+    new_meeting_view.py         → record/upload → transcribe → analyze
+    results_view.py             → analysis results + export
+    review_view.py              → human-in-the-loop review (approve/edit/reject)
+    history_view.py             → past meetings
+    settings_view.py            → provider config management
+  components/
+    sidebar.py, topbar.py       → layout components
+
 src/
-  app.py                    → Streamlit UI entry point
-  schema.py                 → Pydantic models: Priority, ActionItem, Subtask, Task, Epic, MeetingAnalysis, MeetingRecord
-  config.py                 → pydantic-settings config + logging setup
+  schema.py                     → Pydantic: Priority, ActionItem, Subtask, Task, Epic,
+                                  MeetingAnalysis, MeetingRecord, ReviewItem
+  config.py                     → pydantic-settings Settings + get_logger()
+  api/
+    main.py                     → FastAPI app factory + lifespan (DB init)
+    routers/                    → meetings, transcriptions, analysis, reviews, jira, exports, settings
+    schemas/                    → API request/response Pydantic schemas
+    deps.py                     → FastAPI dependencies (DB session)
+  workers/
+    celery_app.py               → Celery app factory (broker=Redis)
+    pipeline.py                 → run_pipeline task (transcribe + analyze chain)
+    tasks/
+      transcribe_task.py        → transcribe_audio Celery task
+      analyze_task.py           → analyze_transcript Celery task
+      jira_push_task.py         → push_to_jira Celery task
+  db/
+    models.py                   → ORM: Meeting, Transcript, AnalysisResult, ReviewItem, ProviderConfig
+    base.py                     → DeclarativeBase
+    session.py                  → async engine + session factory
+    crud/
+      meeting_crud.py           → async CRUD: Meeting, Transcript, AnalysisResult
+      review_crud.py            → async CRUD: ReviewItem (approve/reject/bulk)
+      provider_crud.py          → async CRUD: ProviderConfig (Fernet encrypted)
+    migrations/                 → Alembic migration scripts
   providers/
-    base_analyzer.py        → ABC interface for AI analyzers
-    base_transcriber.py     → ABC interface for transcription providers
-    openai_analyzer.py      → GPT-4o structured output (JSON mode, retry 3x)
-    openai_transcriber.py   → Whisper API transcription
-    local_transcriber.py    → Local Whisper fallback
-    mock_analyzer.py        → Mock analyzer for testing/offline fallback
+    base_analyzer.py            → ABC: analyze(transcript) → MeetingAnalysis
+    base_transcriber.py         → ABC: transcribe(audio_path, language) → str
+    openai_analyzer.py          → GPT-4o structured output (JSON mode, retry 3x)
+    openai_transcriber.py       → Whisper API transcription
+    openai_diarize_transcriber.py → Whisper + speaker diarization
+    mock_analyzer.py            → Mock analyzer for testing/offline fallback
   services/
-    transcription_service.py → Fallback chain: Whisper API → Local Whisper
-    analysis_service.py     → Orchestrates analyzer selection
-    jira_service.py         → Jira push orchestration (Epic → Task → Subtask)
-    recording_service.py    → Audio recording orchestration for Streamlit
-    extraction_service.py   → Rule-based regex extraction
-    validation_service.py   → Cross-validation AI vs rule-based, confidence scores
-    summarization_service.py → Async OpenAI summary generation + streaming
+    transcription_service.py    → transcribe() / transcribe_diarized() / transcribe_chunks()
+    analysis_service.py         → orchestrates analyzer + extraction + validation + summarization
+    jira_service.py             → Jira push orchestration (Epic → Task → Subtask)
+    recording_service.py        → AudioRecorder singleton (local desktop)
+    extraction_service.py       → rule_based_extraction() — regex cross-validation
+    validation_service.py       → validate_action_items() — confidence scores
+    summarization_service.py    → generate_summary() — async OpenAI
   modules/
-    database.py             → SQLite CRUD for MeetingRecord + provider_configs (encrypted)
-    exporter.py             → Export to Markdown / JSON / CSV (pure functions)
-    jira_client.py          → Jira REST API v3 client (auto stub mode if no credentials)
-    audio_recorder.py       → System audio capture (pysysaudio) + mic mixing (sounddevice)
-    credential_vault.py     → Fernet encryption for provider credentials
+    exporter.py                 → export_markdown() / export_json() / export_csv()
+    jira_client.py              → Jira REST API v3 client (auto stub if no creds)
+    audio_recorder.py           → system audio capture + mic mixing + chunk rotation
+    credential_vault.py         → encrypt() / decrypt() — Fernet
   prompts/
-    extract_action_items.md → Vietnamese system prompt for GPT-4o
-tests/                      → 14 test files
-docs/                       → Product, technical, and evaluation documentation
+    extract_action_items.md     → Vietnamese system prompt for GPT-4o
+
+tests/                          → 12+ test files (all external calls mocked)
+docs/                           → Product, technical, evaluation documentation
 ```
 
 ## Key Design Patterns
 
-1. **Strategy Pattern**: All AI providers extend ABC (`BaseAnalyzer`, `BaseTranscriber`). New providers MUST implement the corresponding ABC.
-2. **Fallback Chain**: `transcription_service.transcribe()` tries OpenAI Whisper API first, falls back to Local Whisper on failure.
-3. **Structured Output**: GPT-4o uses JSON mode. Output schema: `{summary, epics: [{summary, description, tasks: [{summary, assignee, deadline, priority, context, subtasks}]}]}`.
-4. **Stub Pattern**: `JiraClient` auto-detects missing credentials → returns fake keys + logs warning.
+1. **Strategy Pattern**: Providers extend ABC (`BaseAnalyzer`, `BaseTranscriber`). New providers MUST implement the corresponding ABC and have a dedicated test file.
+2. **Async Worker Pipeline**: Celery + Redis handle heavy tasks (STT + GPT-4o) asynchronously. API returns `job_id`, frontend polls `/jobs/{job_id}`.
+3. **Human-in-the-Loop**: `ReviewItem[]` created after analysis with status=draft. Only user-approved items are pushed to Jira.
+4. **Structured Output**: GPT-4o JSON mode output maps to `MeetingAnalysis`. Schema: `{summary, epics: [{summary, description, tasks: [{summary, assignee, deadline, priority, context, subtasks}]}]}`.
+5. **Stub Pattern**: `JiraClient` auto-detects missing credentials → stub mode → returns fake keys + logs warning.
 
 ## Core Interfaces
 
@@ -69,38 +116,34 @@ class BaseTranscriber(ABC):
     def transcribe(self, audio_path: str, language: str = "vi") -> str: ...
 
 # Services
-def transcribe(audio_path: str, language: str = "vi") -> str  # fallback chain
+def transcribe(audio_path: str, language: str = "vi") -> str         # raises RuntimeError on failure
+def transcribe_diarized(audio_path: str, language: str = "vi") -> str  # fallback to plain transcribe
 def analyze(transcript: str) -> MeetingAnalysis
-def start_recording(output_path: str | None = None) -> str
+def push_analysis_to_jira(analysis: MeetingAnalysis) -> JiraPushResult
+def start_recording(output_path: Optional[str] = None) -> str
 def stop_recording() -> str
-def rule_based_extraction(transcript: str) -> list[dict]
-def validate_action_items(ai_items, rule_items, transcript) -> (validated_items, metrics)
-async def generate_summary(transcript: str) -> dict
 
-# Database
-def init_db(db_path=None) -> None
-def create_meeting(record: MeetingRecord, db_path=None) -> int
-def get_meeting(meeting_id: int, db_path=None) -> MeetingRecord | None
-def list_meetings(db_path=None) -> list[MeetingRecord]
-def update_meeting(record: MeetingRecord, db_path=None) -> None
-def delete_meeting(meeting_id: int, db_path=None) -> None
-def get_provider_config(provider_name, user_id="default_user") -> dict | None
-def set_provider_config(provider_name, config_dict, user_id="default_user") -> None
+# Async CRUD (PostgreSQL)
+async def create_meeting(db, title, user_id) -> Meeting
+async def create_transcript(db, meeting_id, raw_text, ...) -> Transcript
+async def create_analysis_result(db, meeting_id, analysis_json, ...) -> AnalysisResult
+async def bulk_create_review_items(db, items) -> None
+async def list_review_items(db, meeting_id, status=None) -> list[ReviewItem]
+
+# Celery Tasks
+run_pipeline.delay(meeting_id, audio_path, diarize=False, language="vi")
+transcribe_audio.delay(meeting_id, audio_path, diarize=False, language="vi")
+analyze_transcript.delay(meeting_id, transcript_id)
+push_to_jira.delay(meeting_id)
 
 # Export
 def export_markdown(analysis: MeetingAnalysis) -> str
 def export_json(analysis: MeetingAnalysis) -> str
 def export_csv(analysis: MeetingAnalysis) -> str
 
-# Jira
-class JiraClient:
-    def create_epic(self, epic: Epic) -> str
-    def create_task(self, task: Task, epic_key: str) -> str
-    def create_subtask(self, subtask: Subtask, task_key: str) -> str
-
-# Audio Recording
+# Audio Recording (local, desktop only)
 class AudioRecorder:
-    def start(self, output_path: str | None = None) -> str
+    def start(self, output_path: Optional[str] = None) -> str
     def stop(self) -> str
     def get_completed_chunks(self) -> list[str]
 
@@ -113,59 +156,86 @@ def decrypt(ciphertext: str) -> str
 
 ```python
 Priority: Critical | High | Medium | Low
-ActionItem: summary, assignee?, deadline?, priority, context
+ActionItem: summary, assignee?, deadline?, priority, context?
 Subtask(ActionItem): + confidence, validation_notes
 Task(ActionItem): + subtasks: list[Subtask], confidence, validation_notes
-Epic: summary, description, tasks: list[Task]
+Epic: summary, description?, tasks: list[Task]
 MeetingAnalysis: epics, summary, key_decisions, discussion_points, parking_lot, created_at
-MeetingRecord: id?, title, audio_path?, transcript, analysis?, created_at, updated_at
+MeetingRecord: id?: str, title, audio_path?, transcript, analysis?, created_at, updated_at
+ReviewItem: id?, meeting_id, item_type (epic|task|subtask), item_index, summary, assignee?,
+            deadline?, priority?, context?, confidence, is_flagged, review_status (draft|approved|rejected),
+            edited_summary?, edited_assignee?, edited_deadline?, edited_priority?
 ```
 
 ## Commands
 
 ```bash
-source .venv/Scripts/activate    # Activate venv (Windows)
-streamlit run src/app.py         # Run app
-pytest tests/ -v                 # Run tests
-flake8 . --max-line-length=100   # Lint
-mypy . --ignore-missing-imports  # Typecheck
-uv pip install -e .              # Editable install (required for imports)
+# Setup
+uv venv && source .venv/Scripts/activate  # Windows
+
+uv pip install -e ".[server]"    # Backend deps
+uv pip install -e ".[frontend]"  # Frontend deps
+uv pip install -e ".[dev]"       # Dev tools
+uv pip install -e ".[all]"       # All-in-one (local dev)
+
+# Run (dev)
+uvicorn src.api.main:app --reload --port 8000
+celery -A src.workers.celery_app worker -Q default --loglevel=info
+python frontend/main.py          # Desktop app
+
+# Docker (full stack)
+docker-compose up --build
+
+# Tests / Lint / Typecheck
+pytest tests/ -v
+flake8 . --max-line-length=100
+mypy . --ignore-missing-imports
 ```
 
 ## Rules for AI Agents
 
 - ALWAYS run `pytest tests/ -v` after modifying `providers/` or `services/`.
 - ALWAYS verify structured output matches Jira schema after modifying prompts or analyzer.
-- New providers MUST extend ABC + have dedicated test file.
+- New providers MUST extend ABC + have a dedicated test file.
 - External API calls MUST have error handling + retry logic.
 - Use `from src.config import get_logger` for logging. NEVER use `print()`.
-- Type hints: Python 3.9+ style (`list[str]`, not `List[str]`).
-- snake_case for functions/variables, PascalCase for classes.
+- Type hints: Python 3.9+ style (`list[str]`, `Optional[str]`, `Union[str, int]` — NOT `str | int`).
+- snake_case for functions/variables, PascalCase for classes, UPPER_CASE for constants.
+- NEVER use Local Whisper. Use OpenAI Whisper API only.
+- NEVER use SQLite. Database is PostgreSQL via `src/db/`.
 - On Windows: use `python` (not `python3`).
-- Database tests: use `tmp_path` fixture (file-based SQLite), NOT `:memory:`.
 
 ## Environment Variables
 
-Required: OPENAI_API_KEY
-Optional:
-- OPENAI_MODEL (gpt-4o), WHISPER_LOCAL_MODEL (base)
-- DATABASE_URL (sqlite:///data/meetings.db)
-- JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
-- AUDIO_SAMPLE_RATE (16000), AUDIO_CHANNELS (1), AUDIO_MIC_ENABLED (true)
-- AUDIO_MIC_GAIN (3.0), AUDIO_SYS_GAIN (0.5), AUDIO_OUTPUT_DIR (data/recordings)
-- APP_SECRET_KEY (for credential vault encryption)
-- TRANSCRIPTION_CHUNK_SECONDS (60)
-- LOG_LEVEL (INFO)
+Required:
+- `OPENAI_API_KEY` — GPT-4o + Whisper API
+- `POSTGRES_URL` — PostgreSQL connection string
 
-## Current Status (as of 2026-04-19)
+Optional (defaults in parentheses):
+- `DEFAULT_TRANSCRIPTION_LANGUAGE` (vi)
+- `OPENAI_MODEL` (gpt-4o)
+- `APP_SECRET_KEY` — Fernet key for credential vault encryption
+- `AUDIO_SAMPLE_RATE` (16000), `AUDIO_CHANNELS` (1), `AUDIO_MIC_ENABLED` (true)
+- `AUDIO_MIC_GAIN` (3.0), `AUDIO_SYS_GAIN` (0.5), `AUDIO_OUTPUT_DIR` (data/recordings)
+- `CELERY_BROKER_URL` (redis://localhost:6379/0)
+- `CELERY_RESULT_BACKEND` (redis://localhost:6379/1)
+- `API_BASE_URL` (http://localhost:8000) — server URL for Flet desktop
+- `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`
+- `CONFIDENCE_LOW_THRESHOLD` (0.4), `CONFIDENCE_HIGH_THRESHOLD` (0.7)
+- `LOG_LEVEL` (INFO)
 
-- Phase 1 complete: full pipeline (transcribe + analyze + export + DB + Jira stub)
-- Phase 2 in progress: audio recording, validation service, summarization done
-- 14 test files, all passing
-- Pending: E2E smoke test with real audio, Jira sandbox integration, cloud deployment
+## Current Status (as of 2026-04-22)
+
+- Architecture: FastAPI + Flet HTTP client + Celery + PostgreSQL — fully implemented.
+- Local Whisper removed — Whisper API only.
+- Human-in-the-loop review: ReviewItem model + review_view + review CRUD.
+- Dependencies: pyproject.toml optional groups (server/frontend/dev/all).
+- Docker: PostgreSQL + Redis + API + Worker via docker-compose.
+- 12+ test files, 91+ tests passing.
+- Pending: E2E smoke test with real audio, Jira sandbox integration, VPS deploy.
 
 ## Documentation
 
-- Product docs: docs/product/ (canvas, spec, roadmap)
-- Technical docs: docs/technical/ (architecture, data-flow, api-reference, deployment)
-- Evaluation docs: docs/evaluation/ (eval-metrics, test-plan)
+- Product docs: `docs/product/` (canvas, spec, roadmap)
+- Technical docs: `docs/technical/` (architecture, data-flow, api-reference, deployment, workflows)
+- Evaluation docs: `docs/evaluation/` (eval-metrics, test-plan)
