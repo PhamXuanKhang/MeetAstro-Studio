@@ -19,7 +19,7 @@ def build_sidebar(
         return ft.Container(
             content=ft.Row(
                 [
-                    ft.Icon(icon=icon, size=18, color=ft.Colors.BLUE_600 if selected else ft.Colors.GREY_700),
+                    ft.Icon(name=icon, size=18, color=ft.Colors.BLUE_600 if selected else ft.Colors.GREY_700),
                     ft.Text(
                         label,
                         size=13,
@@ -35,14 +35,21 @@ def build_sidebar(
             on_click=_click,
         )
 
+    try:
+        from src.config import get_settings
+
+        api_base = get_settings().api_base_url
+    except Exception:
+        api_base = "http://localhost:8000"
+
     profile = ft.Container(
         content=ft.Row(
             [
-                ft.CircleAvatar(content=ft.Text("T"), bgcolor=ft.Colors.PURPLE_400, color=ft.Colors.WHITE),
+                ft.CircleAvatar(content=ft.Text("A"), bgcolor=ft.Colors.TEAL_500, color=ft.Colors.WHITE),
                 ft.Column(
                     [
-                        ft.Text("Thư Nguyễn Văn", size=13, weight=ft.FontWeight.W_700),
-                        ft.Text("Local workspace", size=11, color=ft.Colors.GREY_600),
+                        ft.Text("AI Meeting Assistant", size=13, weight=ft.FontWeight.W_700),
+                        ft.Text("HTTP workspace", size=11, color=ft.Colors.GREY_600),
                     ],
                     spacing=2,
                     tight=True,
@@ -65,7 +72,7 @@ def build_sidebar(
                     padding=ft.padding.symmetric(horizontal=12, vertical=12),
                     content=ft.Column(
                         [
-                            nav_item("Home", "home", ft.Icons.HOME_OUTLINED),
+                            nav_item("Overview", "home", ft.Icons.HOME_OUTLINED),
                             nav_item("New meeting", "new_meeting", ft.Icons.ADD_CIRCLE_OUTLINE),
                             nav_item("History", "history", ft.Icons.HISTORY),
                             nav_item("Settings", "settings", ft.Icons.SETTINGS_OUTLINED),
@@ -78,19 +85,8 @@ def build_sidebar(
                     padding=ft.padding.only(left=14, right=14, bottom=14),
                     content=ft.Column(
                         [
-                            ft.Text("Pro Lite", size=11, color=ft.Colors.GREY_600),
-                            ft.ProgressBar(value=0.14, height=6),
-                            ft.Text("41 of 300 monthly mins used", size=10, color=ft.Colors.GREY_600),
-                            ft.ElevatedButton(
-                                "Get Otter Pro",
-                                icon=ft.Icons.UPGRADE,
-                                style=ft.ButtonStyle(
-                                    bgcolor=ft.Colors.GREY_100,
-                                    color=ft.Colors.GREY_900,
-                                    shape=ft.RoundedRectangleBorder(radius=12),
-                                ),
-                                width=float("inf"),
-                            ),
+                            ft.Text("API connection", size=11, color=ft.Colors.GREY_600),
+                            ft.Text(api_base, size=10, color=ft.Colors.GREY_700),
                         ],
                         spacing=8,
                     ),

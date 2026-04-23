@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from frontend.core.local_backend import LocalBackend
+from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
 from frontend.utils.helpers import fmt_dt
 
@@ -15,7 +15,7 @@ def build_dashboard_view(
     set_busy,
     on_open_results,
 ) -> ft.Control:
-    backend = LocalBackend()
+    backend = get_backend()
 
     def load() -> list:
         try:
@@ -24,7 +24,7 @@ def build_dashboard_view(
             state.cached_meetings = meetings
             return meetings
         except Exception as exc:
-            toast(f"Lỗi tải meetings: {exc}", error=True)
+            toast(f"Failed to load meetings: {exc}", error=True)
             return []
 
     meetings = state.cached_meetings or load()
@@ -45,8 +45,8 @@ def build_dashboard_view(
             width=44,
             height=44,
             border_radius=14,
-            bgcolor=ft.Colors.PURPLE_50,
-            content=ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, color=ft.Colors.PURPLE_400),
+            bgcolor=ft.Colors.TEAL_50,
+            content=ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, color=ft.Colors.TEAL_400),
             alignment=ft.alignment.Alignment(0, 0),
         )
 
@@ -83,8 +83,8 @@ def build_dashboard_view(
             border=ft.border.all(1, ft.Colors.GREY_200),
             content=ft.Column(
                 [
-                    ft.Text("Chưa có meeting nào trong DB.", size=14, weight=ft.FontWeight.W_700),
-                    ft.Text("Hãy vào New meeting để ghi âm / upload và phân tích.", size=12, color=ft.Colors.GREY_700),
+                    ft.Text("No meetings yet.", size=14, weight=ft.FontWeight.W_700),
+                    ft.Text("Start a new meeting to record, upload, and analyze.", size=12, color=ft.Colors.GREY_700),
                 ],
                 spacing=6,
             ),

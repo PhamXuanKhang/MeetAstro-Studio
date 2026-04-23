@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from frontend.core.local_backend import LocalBackend
+from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
 
 
@@ -13,7 +13,7 @@ def build_settings_view(
     toast,
     set_busy,
 ) -> ft.Control:
-    backend = LocalBackend()
+    backend = get_backend()
     providers = ["jira", "trello", "notion", "slack", "teams"]
 
     provider_dd = ft.Dropdown(
@@ -30,13 +30,13 @@ def build_settings_view(
             active = set(backend.list_provider_configs())
             p = provider_dd.value
             if p in active:
-                status_text.value = f"✓ {p} đã được cấu hình"
+                status_text.value = f"✓ {p} configured"
                 status_text.color = ft.Colors.GREEN_700
             else:
-                status_text.value = f"{p} chưa được cấu hình"
+                status_text.value = f"{p} not configured"
                 status_text.color = ft.Colors.GREY_700
         except Exception as exc:
-            status_text.value = f"Lỗi: {exc}"
+            status_text.value = f"Error: {exc}"
             status_text.color = ft.Colors.RED_700
 
     url = ft.TextField(label="Base URL", hint_text="https://yourcompany.atlassian.net", dense=True)
@@ -45,7 +45,7 @@ def build_settings_view(
     project_key = ft.TextField(label="Project Key", hint_text="PROJ", dense=True)
 
     generic_kv = ft.TextField(
-        label="Config JSON (for non-jira providers)",
+        label="Config JSON (for non-Jira providers)",
         hint_text='{"token":"..."}',
         multiline=True,
         min_lines=4,
@@ -84,24 +84,24 @@ def build_settings_view(
             else:
                 cfg = backend.parse_json_or_empty(generic_kv.value or "")
             if not cfg:
-                toast("Vui lòng điền ít nhất một trường.", error=True)
+                toast("Please fill at least one field.", error=True)
                 return
             backend.set_provider_config(p, cfg)
-            toast(f"Đã lưu cấu hình {p}.")
+            toast(f"Saved {p} configuration.")
             refresh_status()
             page.update()
         except Exception as exc:
-            toast(f"Lỗi lưu config: {exc}", error=True)
+            toast(f"Failed to save config: {exc}", error=True)
 
     def delete_config(_e) -> None:
         p = provider_dd.value
         try:
             backend.delete_provider_config(p)
-            toast(f"Đã xóa cấu hình {p}.")
+            toast(f"Deleted {p} configuration.")
             refresh_status()
             page.update()
         except Exception as exc:
-            toast(f"Lỗi xóa config: {exc}", error=True)
+            toast(f"Failed to delete config: {exc}", error=True)
 
     refresh_status()
     render_form()
@@ -114,14 +114,14 @@ def build_settings_view(
         padding=ft.padding.all(18),
         content=ft.Column(
             [
-                ft.Text("Integrations / Settings", size=16, weight=ft.FontWeight.W_800),
+                ft.Text("Integrations", size=16, weight=ft.FontWeight.W_800),
                 ft.Row([ft.Text("Provider", size=12), provider_dd, status_text], spacing=12),
                 ft.Divider(height=1),
                 form_host,
                 ft.Row(
                     [
-                        ft.ElevatedButton("Lưu cấu hình", icon=ft.Icons.SAVE, on_click=save_config),
-                        ft.OutlinedButton("Xóa cấu hình", icon=ft.Icons.DELETE_OUTLINE, on_click=delete_config),
+                        ft.ElevatedButton("Save configuration", icon=ft.Icons.SAVE, on_click=save_config),
+                        ft.OutlinedButton("Delete configuration", icon=ft.Icons.DELETE_OUTLINE, on_click=delete_config),
                     ],
                     spacing=12,
                 ),

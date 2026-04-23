@@ -9,6 +9,7 @@ from frontend.views.dashboard_view import build_dashboard_view
 from frontend.views.history_view import build_history_view
 from frontend.views.new_meeting_view import build_new_meeting_view
 from frontend.views.results_view import build_results_view
+from frontend.views.review_view import build_review_view
 from frontend.views.settings_view import build_settings_view
 
 
@@ -46,14 +47,21 @@ def build_app(page: ft.Page) -> None:
         route = state.route
 
         if route == "home":
-            title = "For you"
+            title = "Overview"
             body = build_dashboard_view(page=page, state=state, toast=toast, set_busy=set_busy, on_open_results=lambda rec: _open_record(rec))
         elif route == "new_meeting":
             title = "New meeting"
             body = build_new_meeting_view(page=page, state=state, toast=toast, set_busy=set_busy, on_open_results=lambda: on_navigate("results"))
         elif route == "results":
             title = "Results"
-            body = build_results_view(page=page, state=state, toast=toast, set_busy=set_busy)
+            body = build_results_view(
+                page=page, state=state, toast=toast, set_busy=set_busy, on_navigate=on_navigate
+            )
+        elif route == "review":
+            title = "Review"
+            body = build_review_view(
+                page=page, state=state, toast=toast, set_busy=set_busy, on_navigate=on_navigate
+            )
         elif route == "history":
             title = "History"
             body = build_history_view(page=page, state=state, toast=toast, set_busy=set_busy, on_open_results=lambda rec: _open_record(rec))
@@ -80,7 +88,7 @@ def build_app(page: ft.Page) -> None:
                 content=ft.Row(
                     [
                         ft.ProgressRing(width=18, height=18, stroke_width=2),
-                        ft.Text(state.progress_text or "Đang xử lý...", size=12, color=ft.Colors.GREY_800),
+                        ft.Text(state.progress_text or "Working...", size=12, color=ft.Colors.GREY_800),
                     ],
                     spacing=10,
                 ),
@@ -104,6 +112,7 @@ def build_app(page: ft.Page) -> None:
         state.analysis = rec.analysis
         state.transcript = rec.transcript or ""
         state.audio_path = rec.audio_path
+        state.current_meeting_id = str(rec.id) if rec.id else None
         on_navigate("results")
 
     render()
