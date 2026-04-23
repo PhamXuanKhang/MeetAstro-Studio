@@ -28,10 +28,10 @@ class TestOpenAITranscriber:
     def test_transcribe_calls_whisper_model(self):
         transcriber, mock_client = _make_transcriber("text")
         with patch("builtins.open", mock_open(read_data=b"audio")):
-            transcriber.transcribe("audio.mp3", language="vi")
+            transcriber.transcribe("audio.mp3", language="en")
         call_kwargs = mock_client.audio.transcriptions.create.call_args
         assert call_kwargs.kwargs["model"] == "whisper-1"
-        assert call_kwargs.kwargs["language"] == "vi"
+        assert call_kwargs.kwargs["language"] == "en"
 
     def test_transcribe_raises_file_not_found(self):
         transcriber, _ = _make_transcriber("text")

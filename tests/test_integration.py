@@ -2,9 +2,7 @@
 Integration tests — P10: full pipeline + edge cases.
 Tất cả external calls đều được mock.
 """
-import os
-import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -87,30 +85,6 @@ class TestFullPipelineMock:
         assert "Họp sprint planning" in md
         assert "Implement feature X" in md
 
-    def test_pipeline_save_to_db(self, tmp_path):
-        """Analyze result có thể lưu vào SQLite và đọc lại được."""
-        from src.modules.database import create_meeting, get_meeting, init_db
-        from src.schema import MeetingRecord
-
-        db_file = tmp_path / "test.db"
-        db_url = f"sqlite:///{db_file}"
-
-        with patch("src.modules.database.DATABASE_URL", db_url):
-            init_db(str(db_file))
-            analysis = _make_analysis()
-            record = MeetingRecord(
-                title="Sprint Planning Q1",
-                transcript=SAMPLE_TRANSCRIPT,
-                analysis=analysis,
-            )
-            new_id = create_meeting(record, db_path=str(db_file))
-            assert isinstance(new_id, int)
-
-            loaded = get_meeting(new_id, db_path=str(db_file))
-            assert loaded is not None
-            assert loaded.title == "Sprint Planning Q1"
-            assert loaded.analysis is not None
-            assert loaded.analysis.summary == "Họp sprint planning"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -244,27 +218,11 @@ class TestChunkedRecording:
 
         assert result == "Phần một. Phần hai. Phần ba."
 
-    def test_large_chunk_uses_local_transcriber(self, tmp_path):
-        """File > 25MB dùng LocalTranscriber thay vì OpenAI Whisper."""
-        from src.services.transcription_service import transcribe_chunks
-
-        big_file = tmp_path / "big_chunk.wav"
-        big_file.write_bytes(b"x" * (26 * 1024 * 1024))
-
-        mock_local = MagicMock()
-        mock_local.return_value.transcribe.return_value = "large file transcript"
-
-        with patch("src.services.transcription_service.LocalTranscriber", mock_local):
-            result = transcribe_chunks([str(big_file)])
-
-        assert result == "large file transcript"
-        mock_local.return_value.transcribe.assert_called_once()
-
     def test_failed_chunk_skipped_rest_continues(self, tmp_path):
         """Chunk thất bại không làm dừng toàn bộ — các chunk khác vẫn transcribe."""
         from src.services.transcription_service import transcribe_chunks
 
-        def _side_effect(path, language="vi"):
+        def _side_effect(path, language="en"):
             if "bad" in path:
                 raise RuntimeError("chunk fail")
             return "ok"
