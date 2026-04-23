@@ -1,0 +1,71 @@
+"""
+Request/Response Pydantic schemas cho meetings API.
+
+Tách biệt với src/schema.py để tránh ô nhiễm domain models.
+"""
+from datetime import datetime
+from typing import Any, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+class MeetingCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    user_id: str = "default_user"
+
+
+class MeetingResponse(BaseModel):
+    id: UUID
+    title: str
+    audio_path: Optional[str] = None
+    status: str
+    user_id: str
+    celery_task_id: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MeetingListResponse(BaseModel):
+    items: list[MeetingResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class TranscriptResponse(BaseModel):
+    id: UUID
+    meeting_id: UUID
+    raw_text: str
+    diarized_text: Optional[str] = None
+    language: str
+    char_count: Optional[int] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TranscriptPatch(BaseModel):
+    raw_text: str = Field(..., min_length=1)
+
+
+class AnalysisResponse(BaseModel):
+    id: UUID
+    meeting_id: UUID
+    analysis_json: dict[str, Any]
+    summary: Optional[str] = None
+    overall_confidence: Optional[float] = None
+    validation_metrics: Optional[dict[str, Any]] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AudioUploadResponse(BaseModel):
+    meeting_id: UUID
+    job_id: str
+    status: str = "queued"
+    message: str = "Pipeline đã được queue. Dùng /jobs/{job_id} để theo dõi tiến trình."
