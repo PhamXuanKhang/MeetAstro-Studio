@@ -1,23 +1,24 @@
 # Frontend (Flet)
 
-UI desktop app cho AI Meeting Assistant (giai đoạn đầu gọi trực tiếp `src.*` trong repo, chưa cần FastAPI).
+Cross-platform desktop UI for the AI Meeting Assistant. The app is **HTTP-only** and talks to the FastAPI backend.
 
-## Cài đặt
+## Install
 
-Tại repo root:
+From the repo root:
 
 ```bash
 python -m venv .venv
-.venv\\Scripts\\activate
-pip install -r frontend\\requirements.txt
-pip install -e .
+.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
+pip install -r frontend\requirements.txt
 ```
 
-## Chạy
+## Run
 
 ```bash
-python frontend\\main.py
+python frontend\main.py
 ```
 
-> Lưu ý: Các chức năng Transcribe/Analyze cần biến môi trường (ví dụ `OPENAI_API_KEY`) tương tự Streamlit app.
+Make sure the API server and worker are running (see root README).
 
