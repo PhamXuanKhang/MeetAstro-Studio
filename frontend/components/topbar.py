@@ -12,7 +12,7 @@ def build_topbar(
 ) -> ft.Control:
     search = ft.TextField(
         value=search_value,
-        hint_text="Ask or search",
+        hint_text="Search meetings or transcripts",
         height=40,
         dense=True,
         border_radius=14,
@@ -24,7 +24,7 @@ def build_topbar(
     )
 
     record_btn = ft.ElevatedButton(
-        "Record",
+        "New recording",
         icon=ft.Icons.FIBER_MANUAL_RECORD,
         style=ft.ButtonStyle(
             bgcolor=ft.Colors.BLUE_600,

@@ -19,6 +19,11 @@ def main(page: ft.Page) -> None:
     page.window_min_width = 1100
     page.window_min_height = 700
     page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme = ft.Theme(
+        color_scheme_seed=ft.Colors.TEAL,
+        font_family="Aptos",
+    )
+    page.bgcolor = ft.Colors.GREY_50
 
     build_app(page)
 

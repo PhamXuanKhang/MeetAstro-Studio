@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from frontend.core.local_backend import LocalBackend
+from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
 from frontend.utils.helpers import fmt_dt
 
@@ -15,13 +15,13 @@ def build_history_view(
     set_busy,
     on_open_results,
 ) -> ft.Control:
-    backend = LocalBackend()
+    backend = get_backend()
 
     try:
         backend.init_db()
         meetings = backend.list_meetings()
     except Exception as exc:
-        toast(f"Lỗi tải history: {exc}", error=True)
+        toast(f"Failed to load history: {exc}", error=True)
         meetings = []
 
     q = (state.search_query or "").strip().lower()
@@ -46,7 +46,7 @@ def build_history_view(
     if not items:
         return ft.Container(
             padding=ft.padding.all(18),
-            content=ft.Text("Chưa có dữ liệu history.", color=ft.Colors.GREY_700),
+            content=ft.Text("No history available yet.", color=ft.Colors.GREY_700),
             expand=True,
         )
 
