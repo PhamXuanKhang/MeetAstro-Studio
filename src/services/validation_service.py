@@ -107,6 +107,13 @@ def validate_action_items(
 
         item["confidence"] = max(0.0, min(1.0, item_conf))
         item["validation_notes"] = notes
+        # Flag low-confidence items để UI highlight yêu cầu human review
+        try:
+            from src.config import get_settings
+            threshold = get_settings().confidence_low_threshold
+        except Exception:
+            threshold = 0.4
+        item["is_flagged"] = item["confidence"] < threshold
         validated.append(item)
 
     metrics: dict[str, Any] = {

@@ -105,8 +105,19 @@ def _build_analysis(
     )
 
 
-async def _analyze_async(transcript: str) -> MeetingAnalysis:
-    """Async core: chạy summary + AI extraction song song, validate, build result."""
+async def analyze_async(transcript: str) -> MeetingAnalysis:
+    """Async core: run summary + AI extraction in parallel, validate, build result.
+
+    Raises ValueError for empty transcript.
+    Falls back to MockAnalyzer when OPENAI_API_KEY is empty.
+    """
+    if not transcript.strip():
+        raise ValueError("Transcript cannot be empty.")
+
+    if not OPENAI_API_KEY:
+        logger.warning("OPENAI_API_KEY empty — using MockAnalyzer.")
+        return MockAnalyzer().analyze(transcript)
+
     loop = asyncio.get_event_loop()
 
     summary_coro = generate_summary(transcript)
@@ -135,15 +146,16 @@ async def _analyze_async(transcript: str) -> MeetingAnalysis:
 
 
 def analyze(transcript: str) -> MeetingAnalysis:
-    """Phân tích transcript và trả về MeetingAnalysis. Sync wrapper cho Streamlit.
+    """Sync wrapper for UI / scripts that run outside an event loop.
 
-    Fallback về MockAnalyzer nếu OPENAI_API_KEY rỗng.
+    Use analyze_async() when already inside an event loop (e.g. Celery async tasks).
+    Falls back to MockAnalyzer when OPENAI_API_KEY is empty.
     """
     if not transcript.strip():
-        raise ValueError("Transcript không được để trống.")
+        raise ValueError("Transcript cannot be empty.")
 
     if not OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY rỗng — dùng MockAnalyzer.")
+        logger.warning("OPENAI_API_KEY empty — using MockAnalyzer.")
         return MockAnalyzer().analyze(transcript)
 
-    return asyncio.run(_analyze_async(transcript))
+    return asyncio.run(analyze_async(transcript))

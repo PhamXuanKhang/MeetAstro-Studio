@@ -1,6 +1,4 @@
-"""
-Recording service — orchestrate AudioRecorder for the Streamlit app.
-"""
+"""Recording service — orchestrate AudioRecorder for the desktop app."""
 from typing import Optional
 
 from src.config import (
@@ -16,7 +14,7 @@ from src.modules.audio_recorder import AudioRecorder
 
 logger = get_logger(__name__)
 
-# Module-level singleton so Streamlit reruns don't lose the recorder.
+# Module-level singleton to keep the recorder stable across UI updates.
 _recorder: Optional[AudioRecorder] = None
 
 

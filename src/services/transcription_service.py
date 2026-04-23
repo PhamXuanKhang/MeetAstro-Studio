@@ -1,65 +1,31 @@
 """
-Transcription service — fallback chain: Whisper API → Local Whisper.
+Transcription service — OpenAI Whisper API + Speaker Diarization.
 
-Ngoài ra, hỗ trợ transcribe_diarized() dùng gpt-4o-transcribe-diarize
-để nhận diện người nói, fallback về transcribe() thông thường nếu lỗi.
+transcribe()         : Whisper API standard transcription.
+transcribe_diarized(): Whisper API với speaker diarization, fallback về transcribe().
+transcribe_chunks()  : Transcribe nhiều chunk tuần tự rồi concat kết quả.
 """
-import os
 from typing import List
 
-from src.config import get_logger
-from src.providers.local_transcriber import LocalTranscriber
+from src.config import DEFAULT_TRANSCRIPTION_LANGUAGE, get_logger
 from src.providers.openai_diarize_transcriber import OpenAIDiarizeTranscriber
 from src.providers.openai_transcriber import OpenAITranscriber
 
 logger = get_logger(__name__)
 
-_MAX_WHISPER_BYTES = 25 * 1024 * 1024  # 25 MB Whisper API limit
 
-
-def transcribe(audio_path: str, language: str = "vi") -> str:
-    """
-    Transcribe file audio sang văn bản.
-
-    Thử OpenAI Whisper API trước. Nếu thất bại → log warning → fallback LocalTranscriber.
-    Nếu cả hai đều fail → raise RuntimeError.
-    """
+def transcribe(audio_path: str, language: str = DEFAULT_TRANSCRIPTION_LANGUAGE) -> str:
+    """Transcribe file audio sang văn bản qua OpenAI Whisper API."""
     try:
         return OpenAITranscriber().transcribe(audio_path, language=language)
     except Exception as exc:
-        logger.warning(
-            "OpenAI Whisper API thất bại (%s). Đang fallback sang Local Whisper...", exc
-        )
-
-    try:
-        return LocalTranscriber().transcribe(audio_path, language=language)
-    except Exception as exc:
-        raise RuntimeError(
-            f"Cả hai transcription providers đều thất bại. Lỗi cuối: {exc}"
-        ) from exc
+        raise RuntimeError(f"OpenAI Whisper API thất bại: {exc}") from exc
 
 
-def _transcribe_single(audio_path: str, language: str) -> str:
-    """Transcribe một file — dùng LocalTranscriber nếu vượt 25MB Whisper limit."""
-    try:
-        size = os.path.getsize(audio_path)
-    except OSError:
-        size = 0
-
-    if size >= _MAX_WHISPER_BYTES:
-        logger.warning(
-            "File %s vượt 25MB (%d bytes) — dùng LocalTranscriber.", audio_path, size
-        )
-        return LocalTranscriber().transcribe(audio_path, language=language)
-
-    return transcribe(audio_path, language=language)
-
-
-def transcribe_chunks(paths: List[str], language: str = "vi") -> str:
+def transcribe_chunks(paths: List[str], language: str = DEFAULT_TRANSCRIPTION_LANGUAGE) -> str:
     """Transcribe từng chunk tuần tự rồi concat kết quả.
 
-    Mỗi chunk được transcribe độc lập. File vượt 25MB tự động dùng LocalTranscriber.
-    Trả về full transcript ghép từ tất cả chunks.
+    Chunk thất bại sẽ bị bỏ qua (warning log) để không làm dừng toàn bộ pipeline.
     """
     if not paths:
         return ""
@@ -68,7 +34,7 @@ def transcribe_chunks(paths: List[str], language: str = "vi") -> str:
     for i, path in enumerate(paths):
         logger.info("Transcribing chunk %d/%d: %s", i + 1, len(paths), path)
         try:
-            text = _transcribe_single(path, language)
+            text = transcribe(path, language)
             if text.strip():
                 parts.append(text.strip())
         except Exception as exc:
@@ -77,24 +43,23 @@ def transcribe_chunks(paths: List[str], language: str = "vi") -> str:
     return " ".join(parts)
 
 
-def transcribe_diarized(audio_path: str, language: str = "vi") -> str:
+def transcribe_diarized(audio_path: str, language: str = DEFAULT_TRANSCRIPTION_LANGUAGE) -> str:
     """Transcribe audio kèm nhận diện người nói (Speaker Diarization).
 
-    Dùng gpt-4o-transcribe-diarize — tích hợp sẵn diarization, không cần model local.
-    Kết quả trả về string có nhãn người nói:
+    Dùng gpt-4o-transcribe-diarize. Nếu diarize thất bại → fallback về transcribe()
+    thông thường để không làm gián đoạn workflow.
+
+    Kết quả khi thành công:
         [Speaker 0]: Hôm nay chúng ta họp về...
         [Speaker 1]: Vâng, tôi đồng ý...
-
-    Nếu API diarize thất bại → log warning → fallback về transcribe() thông thường
-    (không có nhãn người nói) để không làm gián đoạn workflow.
     """
     try:
-        logger.info("Đang transcribe+diarize với gpt-4o-transcribe-diarize...")
+        logger.info("Starting transcribe+diarize with gpt-4o-transcribe-diarize...")
         result = OpenAIDiarizeTranscriber().transcribe(audio_path, language=language)
-        logger.info("Diarize thành công: %d ký tự.", len(result))
-        return result
+        if result.strip():
+            logger.info("Diarize succeeded: %d chars.", len(result))
+            return result
+        logger.warning("Diarize returned empty text — falling back to plain Whisper...")
     except Exception as exc:
-        logger.warning(
-            "Diarization thất bại (%s). Fallback về transcribe() thông thường...", exc
-        )
-        return transcribe(audio_path, language=language)
+        logger.warning("Diarization failed (%s) — falling back to plain Whisper...", exc)
+    return transcribe(audio_path, language=language)
