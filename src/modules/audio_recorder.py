@@ -2,8 +2,8 @@
 System audio recorder module.
 
 Captures system audio (via pysysaudio) with optional microphone mixing and
-writes the result to a WAV file. Designed to be started / stopped
-programmatically from the desktop UI rather than via Ctrl+C.
+writes the result to a single WAV file. Designed to be started / stopped
+programmatically from the desktop UI.
 """
 import datetime as dt
 import os
@@ -11,52 +11,46 @@ import queue
 import threading
 import time
 import wave
-from typing import Callable, List, Optional
+from typing import Optional
 
 import numpy as np
 
-from src.config import (
-    AUDIO_CHANNELS,
-    AUDIO_MIC_ENABLED,
-    AUDIO_MIC_GAIN,
-    AUDIO_OUTPUT_DIR,
-    AUDIO_SAMPLE_RATE,
-    AUDIO_SYS_GAIN,
-    TRANSCRIPTION_CHUNK_SECONDS,
-    get_logger,
-)
+from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
 
 
 class AudioRecorder:
-    """Record system audio (+ optional mic) to a WAV file in a background thread.
-
-    Supports chunk rotation every `chunk_seconds` seconds. Completed chunks
-    are added to an internal queue accessible via `get_completed_chunks()`.
-    """
+    """Record system audio (+ optional mic) to a WAV file in a background thread."""
 
     def __init__(
         self,
-        sample_rate: int = AUDIO_SAMPLE_RATE,
-        channels: int = AUDIO_CHANNELS,
-        mic_enabled: bool = AUDIO_MIC_ENABLED,
-        mic_gain: float = AUDIO_MIC_GAIN,
-        sys_gain: float = AUDIO_SYS_GAIN,
-        output_dir: str = AUDIO_OUTPUT_DIR,
-        chunk_seconds: int = TRANSCRIPTION_CHUNK_SECONDS,
-        on_chunk_complete: Optional[Callable[[str], None]] = None,
+        sample_rate: Optional[int] = None,
+        channels: Optional[int] = None,
+        mic_enabled: Optional[bool] = None,
+        mic_gain: Optional[float] = None,
+        sys_gain: Optional[float] = None,
+        output_dir: Optional[str] = None,
     ) -> None:
-        self._sample_rate = sample_rate
-        self._channels = channels
-        self._mic_enabled = mic_enabled
-        self._mic_gain = mic_gain
-        self._sys_gain = sys_gain
-        self._output_dir = output_dir
-        self._chunk_seconds = chunk_seconds
-        self._on_chunk_complete = on_chunk_complete
+        """
+        Initialize audio recorder.
 
-        # Internal state
+        Args:
+            sample_rate: Audio sample rate. If None, loads from settings.
+            channels: Number of audio channels. If None, loads from settings.
+            mic_enabled: Whether to enable microphone. If None, loads from settings.
+            mic_gain: Microphone gain multiplier. If None, loads from settings.
+            sys_gain: System audio gain multiplier. If None, loads from settings.
+            output_dir: Output directory for recordings. If None, loads from settings.
+        """
+        settings = get_settings()
+        self._sample_rate = sample_rate if sample_rate is not None else settings.audio_sample_rate
+        self._channels = channels if channels is not None else settings.audio_channels
+        self._mic_enabled = mic_enabled if mic_enabled is not None else settings.audio_mic_enabled
+        self._mic_gain = mic_gain if mic_gain is not None else settings.audio_mic_gain
+        self._sys_gain = sys_gain if sys_gain is not None else settings.audio_sys_gain
+        self._output_dir = output_dir if output_dir is not None else settings.audio_output_dir
+
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._output_path: Optional[str] = None
@@ -64,47 +58,42 @@ class AudioRecorder:
         self._error: Optional[str] = None
         self._total_frames: int = 0
         self._lock = threading.Lock()
-        self._completed_chunks: List[str] = []
-        self._chunk_index: int = 0
-
-    # ── Public API ────────────────────────────────────────────────────────
 
     @property
     def is_recording(self) -> bool:
+        """Return True if currently recording."""
         return self._thread is not None and self._thread.is_alive()
 
     @property
-    def elapsed_seconds(self) -> float:
-        if self._start_time is None:
-            return 0.0
-        return time.time() - self._start_time
-
-    @property
     def output_path(self) -> Optional[str]:
+        """Return the current output file path."""
         return self._output_path
 
     @property
     def error(self) -> Optional[str]:
+        """Return any error that occurred during recording."""
         return self._error
-
-    def get_completed_chunks(self) -> List[str]:
-        """Trả về danh sách đường dẫn các chunk đã hoàn thành (thread-safe)."""
-        with self._lock:
-            return list(self._completed_chunks)
 
     def start(self, output_path: Optional[str] = None) -> str:
         """
-        Begin recording. Returns the output WAV path.
+        Begin recording.
 
-        Raises RuntimeError if already recording.
+        Args:
+            output_path: Optional custom output path. If None, generates timestamped filename.
+
+        Returns:
+            The output WAV file path.
+
+        Raises:
+            RuntimeError: If already recording.
         """
         if self.is_recording:
             raise RuntimeError("Already recording.")
 
         if output_path is None:
-            ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+            ts = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             os.makedirs(self._output_dir, exist_ok=True)
-            output_path = os.path.join(self._output_dir, f"system_audio_{ts}.wav")
+            output_path = os.path.join(self._output_dir, f"recording_{ts}.wav")
 
         self._output_path = os.path.abspath(output_path)
         os.makedirs(os.path.dirname(self._output_path), exist_ok=True)
@@ -112,25 +101,25 @@ class AudioRecorder:
         self._stop_event.clear()
         self._error = None
         self._total_frames = 0
-        self._chunk_index = 0
-        with self._lock:
-            self._completed_chunks = []
 
         self._thread = threading.Thread(target=self._record_loop, daemon=True)
         self._thread.start()
 
         self._start_time = time.time()
-        logger.info("Recording started → %s", self._output_path)
+        logger.info("Recording started: %s", self._output_path)
         return self._output_path
 
     def stop(self) -> str:
         """
         Stop recording and return the WAV path.
 
-        Raises RuntimeError if not currently recording or if the recording
-        thread encountered an error.
+        Returns:
+            The output WAV file path.
+
+        Raises:
+            RuntimeError: If not currently recording or if recording failed.
         """
-        if not self.is_recording:
+        if not self.is_recording or self._thread is None:
             raise RuntimeError("Not recording.")
 
         self._stop_event.set()
@@ -141,6 +130,9 @@ class AudioRecorder:
         if self._error:
             raise RuntimeError(f"Recording failed: {self._error}")
 
+        if self._output_path is None:
+            raise RuntimeError("No output path set.")
+
         duration = self._total_frames / float(self._sample_rate) if self._sample_rate else 0
         logger.info(
             "Recording stopped. Frames: %d | Duration: %.2fs | File: %s",
@@ -148,14 +140,8 @@ class AudioRecorder:
         )
         return self._output_path
 
-    # ── Recording loop (runs in background thread) ────────────────────────
-
-    def _chunk_path(self, index: int) -> str:
-        """Tính đường dẫn file cho chunk index."""
-        base = os.path.splitext(self._output_path)[0]
-        return f"{base}_chunk{index:03d}.wav"
-
     def _open_wav(self, path: str, sampwidth: int) -> wave.Wave_write:
+        """Open a WAV file for writing."""
         wf = wave.open(path, "wb")
         wf.setnchannels(self._channels)
         wf.setsampwidth(sampwidth)
@@ -163,23 +149,8 @@ class AudioRecorder:
         wf.setcomptype("NONE", "not compressed")
         return wf
 
-    def _finish_chunk(self, wf: wave.Wave_write, path: str) -> None:
-        """Đóng chunk file và thêm vào danh sách completed."""
-        try:
-            wf.close()
-        except Exception:
-            pass
-        with self._lock:
-            self._completed_chunks.append(path)
-        logger.info("Chunk hoàn tất: %s", path)
-        if self._on_chunk_complete:
-            try:
-                self._on_chunk_complete(path)
-            except Exception as exc:
-                logger.warning("on_chunk_complete callback lỗi: %s", exc)
-
     def _record_loop(self) -> None:  # noqa: C901
-        """Capture system audio, optionally mix mic, write WAV với chunk rotation."""
+        """Capture system audio, optionally mix mic, write WAV continuously."""
         from pysysaudio import SystemAudioRecorder as SysRecorder
 
         sampwidth = 2  # int16
@@ -195,14 +166,12 @@ class AudioRecorder:
         mic_thread: Optional[threading.Thread] = None
 
         wf: Optional[wave.Wave_write] = None
-        current_chunk_path: Optional[str] = None
 
         try:
-            current_chunk_path = self._chunk_path(self._chunk_index)
-            wf = self._open_wav(current_chunk_path, sampwidth)
-            chunk_start = time.time()
+            if self._output_path is None:
+                raise RuntimeError("No output path set.")
+            wf = self._open_wav(self._output_path, sampwidth)
 
-            # Optionally start mic capture
             if self._mic_enabled:
                 mic_thread = self._start_mic_capture(mic_q)
 
@@ -219,7 +188,6 @@ class AudioRecorder:
                 sys_np = np.frombuffer(chunk, dtype=np.int16)
 
                 if self._mic_enabled:
-                    # Drain mic queue into rolling buffer
                     while True:
                         try:
                             mic_bytes = mic_q.get_nowait()
@@ -239,8 +207,10 @@ class AudioRecorder:
                         if mic_part.size < need:
                             mic_part = np.pad(mic_part, (0, need - mic_part.size))
 
-                    sys_scaled = (sys_np.astype(np.float32) * float(self._sys_gain)).astype(np.int32)
-                    mic_scaled = (mic_part.astype(np.float32) * float(self._mic_gain)).astype(np.int32)
+                    sys_f = sys_np.astype(np.float32) * float(self._sys_gain)
+                    mic_f = mic_part.astype(np.float32) * float(self._mic_gain)
+                    sys_scaled = sys_f.astype(np.int32)
+                    mic_scaled = mic_f.astype(np.int32)
                     mixed = np.clip(sys_scaled + mic_scaled, -32768, 32767).astype(np.int16)
                     wf.writeframes(mixed.tobytes())
                 else:
@@ -248,14 +218,6 @@ class AudioRecorder:
 
                 with self._lock:
                     self._total_frames += len(chunk) // (sampwidth * self._channels)
-
-                # Chunk rotation: khi đủ chunk_seconds, đóng file và mở chunk mới
-                if time.time() - chunk_start >= self._chunk_seconds:
-                    self._finish_chunk(wf, current_chunk_path)
-                    self._chunk_index += 1
-                    current_chunk_path = self._chunk_path(self._chunk_index)
-                    wf = self._open_wav(current_chunk_path, sampwidth)
-                    chunk_start = time.time()
 
         except Exception as exc:
             self._error = str(exc)
@@ -266,27 +228,28 @@ class AudioRecorder:
                     recorder.stop_recording()
             except Exception:
                 pass
-            self._stop_event.set()  # signal mic thread too
+            self._stop_event.set()
             if mic_thread is not None:
                 try:
                     mic_thread.join(timeout=1.0)
                 except Exception:
                     pass
-            if wf is not None and current_chunk_path is not None:
-                self._finish_chunk(wf, current_chunk_path)
+            if wf is not None:
+                try:
+                    wf.close()
+                except Exception:
+                    pass
 
-    # ── Mic capture helper ────────────────────────────────────────────────
-
-    def _start_mic_capture(self, mic_q: "queue.Queue[bytes]") -> threading.Thread:
-        """Start mic capture in a daemon thread. Returns the thread object."""
+    def _start_mic_capture(self, mic_q: "queue.Queue[bytes]") -> Optional[threading.Thread]:
+        """Start mic capture in a daemon thread."""
         try:
             import sounddevice as sd
         except ImportError:
             logger.warning(
-                "sounddevice not installed — mic capture disabled. "
+                "sounddevice not installed - mic capture disabled. "
                 "Install with: pip install sounddevice"
             )
-            return None  # type: ignore[return-value]
+            return None
 
         stop_event = self._stop_event
         sample_rate = self._sample_rate
@@ -308,7 +271,7 @@ class AudioRecorder:
             try:
                 mic_q.put_nowait(indata.tobytes())
             except queue.Full:
-                pass  # drop if consumer is slow
+                pass
 
         def _run():
             try:
@@ -319,7 +282,7 @@ class AudioRecorder:
                     callback=_mic_callback,
                     blocksize=0,
                     device=mic_device,
-                ) as _stream:
+                ):
                     while not stop_event.is_set():
                         sd.sleep(100)
             except Exception as exc:
@@ -331,7 +294,7 @@ class AudioRecorder:
 
     @staticmethod
     def _pick_mic_device(sd) -> Optional[int]:
-        """Heuristic mic device selection — prefer default / headset."""
+        """Heuristic mic device selection - prefer default / headset."""
         try:
             devices = sd.query_devices()
         except Exception:
