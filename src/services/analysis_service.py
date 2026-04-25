@@ -1,12 +1,12 @@
 """
-Analysis service — orchestrate parallel summary + AI extraction + validation.
+Analysis service - orchestrate parallel summary + AI extraction + validation.
 """
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-from src.config import OPENAI_API_KEY, get_logger
+from src.config import get_logger, get_settings
 from src.providers.mock_analyzer import MockAnalyzer
 from src.providers.openai_analyzer import OpenAIAnalyzer
 from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
@@ -24,8 +24,15 @@ _PRIORITY_MAP = {
 }
 
 
+def _get_priority_str(priority: Priority) -> str:
+    """Extract priority value as lowercase string."""
+    if hasattr(priority, "value"):
+        return priority.value.lower()
+    return str(priority).lower()
+
+
 def _extract_via_openai(transcript: str) -> list[dict[str, Any]]:
-    """Gọi OpenAIAnalyzer sync, trả về list dict của tasks từ tất cả epics."""
+    """Call OpenAIAnalyzer synchronously, return list of task dicts from all epics."""
     analyzer = OpenAIAnalyzer()
     analysis = analyzer.analyze(transcript)
     items = []
@@ -36,7 +43,7 @@ def _extract_via_openai(transcript: str) -> list[dict[str, Any]]:
                 "description": task.context,
                 "assignee": task.assignee or "Unassigned",
                 "deadline": task.deadline or "",
-                "priority": task.priority.value.lower() if hasattr(task.priority, "value") else str(task.priority).lower(),
+                "priority": _get_priority_str(task.priority),
                 "context": task.context,
                 "_epic_summary": epic.summary,
                 "_epic_description": epic.description,
@@ -46,7 +53,7 @@ def _extract_via_openai(transcript: str) -> list[dict[str, Any]]:
                         "description": s.context,
                         "assignee": s.assignee or "Unassigned",
                         "deadline": s.deadline or "",
-                        "priority": s.priority.value.lower() if hasattr(s.priority, "value") else str(s.priority).lower(),
+                        "priority": _get_priority_str(s.priority),
                         "context": s.context,
                     }
                     for s in task.subtasks
@@ -59,7 +66,7 @@ def _build_analysis(
     validated_items: list[dict[str, Any]],
     summary_result: dict[str, Any],
 ) -> MeetingAnalysis:
-    """Tái tạo MeetingAnalysis từ validated items + summary result."""
+    """Reconstruct MeetingAnalysis from validated items + summary result."""
     epics_map: dict[str, Epic] = {}
 
     for item in validated_items:
@@ -106,7 +113,8 @@ def _build_analysis(
 
 
 async def analyze_async(transcript: str) -> MeetingAnalysis:
-    """Async core: run summary + AI extraction in parallel, validate, build result.
+    """
+    Async core: run summary + AI extraction in parallel, validate, build result.
 
     Raises ValueError for empty transcript.
     Falls back to MockAnalyzer when OPENAI_API_KEY is empty.
@@ -114,8 +122,9 @@ async def analyze_async(transcript: str) -> MeetingAnalysis:
     if not transcript.strip():
         raise ValueError("Transcript cannot be empty.")
 
-    if not OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY empty — using MockAnalyzer.")
+    settings = get_settings()
+    if not settings.openai_api_key:
+        logger.warning("OPENAI_API_KEY empty - using MockAnalyzer.")
         return MockAnalyzer().analyze(transcript)
 
     loop = asyncio.get_event_loop()
@@ -138,7 +147,7 @@ async def analyze_async(transcript: str) -> MeetingAnalysis:
 
     analysis = _build_analysis(validated, summary_result)
     logger.info(
-        "Phân tích xong: %d epics, %d tasks.",
+        "Analysis complete: %d epics, %d tasks.",
         len(analysis.epics),
         sum(len(e.tasks) for e in analysis.epics),
     )
@@ -146,7 +155,8 @@ async def analyze_async(transcript: str) -> MeetingAnalysis:
 
 
 def analyze(transcript: str) -> MeetingAnalysis:
-    """Sync wrapper for UI / scripts that run outside an event loop.
+    """
+    Sync wrapper for UI / scripts that run outside an event loop.
 
     Use analyze_async() when already inside an event loop (e.g. Celery async tasks).
     Falls back to MockAnalyzer when OPENAI_API_KEY is empty.
@@ -154,8 +164,9 @@ def analyze(transcript: str) -> MeetingAnalysis:
     if not transcript.strip():
         raise ValueError("Transcript cannot be empty.")
 
-    if not OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY empty — using MockAnalyzer.")
+    settings = get_settings()
+    if not settings.openai_api_key:
+        logger.warning("OPENAI_API_KEY empty - using MockAnalyzer.")
         return MockAnalyzer().analyze(transcript)
 
     return asyncio.run(analyze_async(transcript))

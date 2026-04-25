@@ -1,48 +1,54 @@
 """
-Summarization service — gọi OpenAI async để tạo summary + key_decisions + discussion_points + parking_lot.
-Hỗ trợ streaming mode: generate_summary_stream() yield từng token text.
+Summarization service - call OpenAI async to generate summary + key decisions.
 """
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator, Optional
+from typing import Any, Optional
 
 import openai
 
-from src.config import OPENAI_API_KEY, OPENAI_MODEL, get_logger
+from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
 
 _SYSTEM_PROMPT = """\
-Bạn là AI trợ lý phân tích cuộc họp. Hãy tạo tóm tắt ngắn gọn từ transcript dưới đây.
-Trả về JSON với các trường:
-- "summary": string — tóm tắt tổng quan cuộc họp (2-5 câu)
-- "key_decisions": list[string] — các quyết định chính đã được chốt
-- "discussion_points": list[string] — các điểm thảo luận chính
-- "parking_lot_items": list[string] — các vấn đề chưa giải quyết, tạm gác
+You are an AI assistant that analyzes meeting transcripts. \
+Create a concise summary from the transcript below.
+Return JSON with the following fields:
+- "summary": string - overall summary of the meeting (2-5 sentences)
+- "key_decisions": list[string] - key decisions that were finalized
+- "discussion_points": list[string] - main discussion points
+- "parking_lot_items": list[string] - unresolved issues, deferred items
 
-Chỉ trả về JSON, không thêm text khác.
-"""
-
-_STREAM_SYSTEM_PROMPT = """\
-Bạn là AI trợ lý phân tích cuộc họp. Hãy tạo tóm tắt ngắn gọn từ transcript dưới đây.
-Chỉ viết phần tóm tắt tổng quan (2-5 câu), không thêm tiêu đề hay định dạng đặc biệt.
+Return only JSON, no additional text.
 """
 
 
 async def generate_summary(
     transcript: str,
-    api_key: str = OPENAI_API_KEY,
-    model: str = OPENAI_MODEL,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Gọi OpenAI async để sinh summary từ transcript.
-
-    Returns dict với keys: summary, key_decisions, discussion_points, parking_lot_items.
     """
-    client = openai.AsyncOpenAI(api_key=api_key)
+    Call OpenAI async to generate summary from transcript.
+
+    Args:
+        transcript: Meeting transcript text.
+        api_key: OpenAI API key. If None, loads from settings.
+        model: Model name. If None, loads from settings.
+
+    Returns:
+        Dict with keys: summary, key_decisions, discussion_points, parking_lot_items.
+    """
+    settings = get_settings()
+    actual_api_key = api_key if api_key is not None else settings.openai_api_key
+    actual_model = model if model is not None else settings.openai_model
+
+    client = openai.AsyncOpenAI(api_key=actual_api_key)
     try:
         response = await client.chat.completions.create(
-            model=model,
+            model=actual_model,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
@@ -53,7 +59,7 @@ async def generate_summary(
         raw = response.choices[0].message.content or "{}"
         result = json.loads(raw)
     except Exception as exc:
-        logger.warning("generate_summary thất bại: %s — dùng fallback rỗng.", exc)
+        logger.warning("generate_summary failed: %s - using empty fallback.", exc)
         result = {}
 
     return {
@@ -62,29 +68,3 @@ async def generate_summary(
         "discussion_points": result.get("discussion_points", []),
         "parking_lot_items": result.get("parking_lot_items", []),
     }
-
-
-async def generate_summary_stream(
-    transcript: str,
-    api_key: str = OPENAI_API_KEY,
-    model: str = OPENAI_MODEL,
-) -> AsyncIterator[str]:
-    """Yield từng token summary từ OpenAI streaming API."""
-    client = openai.AsyncOpenAI(api_key=api_key)
-    try:
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _STREAM_SYSTEM_PROMPT},
-                {"role": "user", "content": transcript},
-            ],
-            temperature=0.2,
-            stream=True,
-        )
-        async for chunk in stream:
-            delta = chunk.choices[0].delta.content if chunk.choices else None
-            if delta:
-                yield delta
-    except Exception as exc:
-        logger.warning("generate_summary_stream thất bại: %s", exc)
-        yield ""
