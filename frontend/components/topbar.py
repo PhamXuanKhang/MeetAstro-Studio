@@ -50,4 +50,3 @@ def build_topbar(
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
-

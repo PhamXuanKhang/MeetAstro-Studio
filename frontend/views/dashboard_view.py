@@ -31,15 +31,17 @@ def build_dashboard_view(
 
     q = (state.search_query or "").strip().lower()
     if q:
-        meetings = [m for m in meetings if q in (m.title or "").lower() or q in (m.transcript or "").lower()]
+        meetings = [m for m in meetings if q in (m.title or "").lower()]
 
     def meeting_card(rec) -> ft.Control:
         def _open(_e):
             on_open_results(rec)
 
-        subtitle = f"{fmt_dt(rec.created_at)}  •  {(len(rec.transcript or '') // 4)} chars"
         if rec.analysis and rec.analysis.summary:
-            subtitle = f"{fmt_dt(rec.created_at)}  •  {rec.analysis.summary[:90]}{'…' if len(rec.analysis.summary) > 90 else ''}"
+            ellipsis = "…" if len(rec.analysis.summary) > 90 else ""
+            subtitle = f"{fmt_dt(rec.created_at)}  •  {rec.analysis.summary[:90]}{ellipsis}"
+        else:
+            subtitle = fmt_dt(rec.created_at)
 
         thumb = ft.Container(
             width=44,
@@ -84,7 +86,10 @@ def build_dashboard_view(
             content=ft.Column(
                 [
                     ft.Text("No meetings yet.", size=14, weight=ft.FontWeight.W_700),
-                    ft.Text("Start a new meeting to record, upload, and analyze.", size=12, color=ft.Colors.GREY_700),
+                    ft.Text(
+                        "Start a new meeting to record, upload, and analyze.",
+                        size=12, color=ft.Colors.GREY_700
+                    ),
                 ],
                 spacing=6,
             ),
@@ -100,4 +105,3 @@ def build_dashboard_view(
         ),
         expand=True,
     )
-

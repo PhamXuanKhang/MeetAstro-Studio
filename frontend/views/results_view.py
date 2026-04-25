@@ -163,4 +163,3 @@ def build_results_view(
     )
 
     return ft.Column([header, content], spacing=0, expand=True)
-

@@ -1,6 +1,4 @@
 """Tests cho validation_service.py."""
-import pytest
-
 from src.services.validation_service import validate_action_items
 
 

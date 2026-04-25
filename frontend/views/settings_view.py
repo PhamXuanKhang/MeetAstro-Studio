@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import flet as ft
 
 from frontend.core.backend_factory import get_backend
@@ -82,7 +84,17 @@ def build_settings_view(
                 }
                 cfg = {k: v for k, v in cfg.items() if v}
             else:
-                cfg = backend.parse_json_or_empty(generic_kv.value or "")
+                raw = (generic_kv.value or "").strip()
+                if not raw:
+                    cfg = {}
+                else:
+                    try:
+                        cfg = json.loads(raw)
+                        if not isinstance(cfg, dict):
+                            raise ValueError("JSON must be an object.")
+                    except (ValueError, json.JSONDecodeError) as exc:
+                        toast(f"Invalid JSON: {exc}", error=True)
+                        return
             if not cfg:
                 toast("Please fill at least one field.", error=True)
                 return
@@ -135,4 +147,3 @@ def build_settings_view(
         content=ft.Container(alignment=ft.alignment.Alignment(0, -1), content=card),
         expand=True,
     )
-

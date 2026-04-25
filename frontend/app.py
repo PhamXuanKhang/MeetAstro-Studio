@@ -48,10 +48,20 @@ def build_app(page: ft.Page) -> None:
 
         if route == "home":
             title = "Overview"
-            body = build_dashboard_view(page=page, state=state, toast=toast, set_busy=set_busy, on_open_results=lambda rec: _open_record(rec))
+            body = build_dashboard_view(
+                page=page, state=state, toast=toast, set_busy=set_busy,
+                on_open_results=lambda rec: _open_record(rec)
+            )
         elif route == "new_meeting":
             title = "New meeting"
-            body = build_new_meeting_view(page=page, state=state, toast=toast, set_busy=set_busy, on_open_results=lambda: on_navigate("results"))
+            body = build_new_meeting_view(
+                page=page,
+                state=state,
+                toast=toast,
+                set_busy=set_busy,
+                on_open_results=lambda: on_navigate("results"),
+                on_open_review=lambda: on_navigate("review"),
+            )
         elif route == "results":
             title = "Results"
             body = build_results_view(
@@ -64,7 +74,10 @@ def build_app(page: ft.Page) -> None:
             )
         elif route == "history":
             title = "History"
-            body = build_history_view(page=page, state=state, toast=toast, set_busy=set_busy, on_open_results=lambda rec: _open_record(rec))
+            body = build_history_view(
+                page=page, state=state, toast=toast, set_busy=set_busy,
+                on_open_results=lambda rec: _open_record(rec)
+            )
         elif route == "settings":
             title = "Settings"
             body = build_settings_view(page=page, state=state, toast=toast, set_busy=set_busy)
@@ -88,7 +101,10 @@ def build_app(page: ft.Page) -> None:
                 content=ft.Row(
                     [
                         ft.ProgressRing(width=18, height=18, stroke_width=2),
-                        ft.Text(state.progress_text or "Working...", size=12, color=ft.Colors.GREY_800),
+                        ft.Text(
+                            state.progress_text or "Working...",
+                            size=12, color=ft.Colors.GREY_800
+                        ),
                     ],
                     spacing=10,
                 ),
@@ -98,7 +114,11 @@ def build_app(page: ft.Page) -> None:
         )
 
         content_host.content = ft.Column(
-            [topbar, busy_banner, ft.Container(expand=True, bgcolor=ft.Colors.GREY_50, content=body)],
+            [
+                topbar,
+                busy_banner,
+                ft.Container(expand=True, bgcolor=ft.Colors.GREY_50, content=body)
+            ],
             spacing=0,
             expand=True,
         )
@@ -116,4 +136,3 @@ def build_app(page: ft.Page) -> None:
         on_navigate("results")
 
     render()
-

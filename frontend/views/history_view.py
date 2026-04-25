@@ -26,7 +26,7 @@ def build_history_view(
 
     q = (state.search_query or "").strip().lower()
     if q:
-        meetings = [m for m in meetings if q in (m.title or "").lower() or q in (m.transcript or "").lower()]
+        meetings = [m for m in meetings if q in (m.title or "").lower()]
 
     items: list[ft.Control] = []
     for rec in meetings:
@@ -64,4 +64,3 @@ def build_history_view(
         ),
         expand=True,
     )
-
