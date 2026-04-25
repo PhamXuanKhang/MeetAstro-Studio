@@ -1,34 +1,34 @@
 """OpenAI gpt-4o-transcribe-diarize provider.
 
-Dùng model `gpt-4o-transcribe-diarize` qua endpoint /v1/audio/transcriptions
-để transcribe audio VÀ nhận diện người nói (diarization) trong một lần gọi API.
+Uses the `gpt-4o-transcribe-diarize` model via /v1/audio/transcriptions endpoint
+to transcribe audio AND perform speaker diarization in a single API call.
 
-Response format `diarized_json` trả về list segments có cấu trúc:
+Response format `diarized_json` returns a list of segments:
     [{speaker: str, start: float, end: float, text: str}, ...]
 
-Kết quả được chuyển thành string dạng:
-    [Speaker 0]: Hôm nay chúng ta họp về...
-    [Speaker 1]: Vâng, tôi đồng ý...
+Results are converted to a string format:
+    [Speaker 0]: Today we're meeting about...
+    [Speaker 1]: Yes, I agree...
 
-Interface kế thừa BaseTranscriber — backward compatible với toàn bộ caller.
+Inherits from BaseTranscriber for backward compatibility with all callers.
 """
 import time
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 import openai
 
-from src.config import DEFAULT_TRANSCRIPTION_LANGUAGE, OPENAI_API_KEY, get_logger
+from src.config import get_logger, get_settings
 from src.providers.base_transcriber import BaseTranscriber
 
 logger = get_logger(__name__)
 
-_MAX_RETRIES = 1  # Single attempt — model is expensive
+_MAX_RETRIES = 1
 _RETRY_BASE_DELAY = 2.0
 _DIARIZE_MODEL = "gpt-4o-transcribe-diarize"
 
 
 class DiarizedSegment(TypedDict):
-    """Một đoạn hội thoại từ kết quả diarization."""
+    """A conversation segment from diarization results."""
 
     speaker: str
     start: float
@@ -37,25 +37,39 @@ class DiarizedSegment(TypedDict):
 
 
 class OpenAIDiarizeTranscriber(BaseTranscriber):
-    """Transcriber dùng gpt-4o-transcribe-diarize — tích hợp sẵn diarization.
+    """Transcriber using gpt-4o-transcribe-diarize with built-in diarization.
 
-    Không cần model local, không cần HuggingFace token.
-    Chỉ cần OPENAI_API_KEY hiện có.
+    No local model required, no HuggingFace token needed.
+    Only requires the existing OPENAI_API_KEY.
     """
 
-    def __init__(self, api_key: str = OPENAI_API_KEY) -> None:
-        self._client = openai.OpenAI(api_key=api_key)
+    def __init__(self, api_key: Optional[str] = None) -> None:
+        """
+        Initialize the diarization transcriber.
 
-    # ── Public API ─────────────────────────────────────────────────────────────
+        Args:
+            api_key: OpenAI API key. If None, loads from settings.
+        """
+        settings = get_settings()
+        actual_api_key = api_key if api_key is not None else settings.openai_api_key
+        self._client = openai.OpenAI(api_key=actual_api_key)
 
-    def transcribe(self, audio_path: str, language: str = DEFAULT_TRANSCRIPTION_LANGUAGE) -> str:
-        """Transcribe audio có diarization, trả về string đã gắn nhãn người nói.
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> str:
+        """
+        Transcribe audio with diarization, returns speaker-labeled string.
 
         Output format:
-            [Speaker 0]: Hôm nay chúng ta họp về...
-            [Speaker 1]: Vâng, tôi đồng ý...
+            [Speaker 0]: Today we're meeting about...
+            [Speaker 1]: Yes, I agree...
 
-        Retry tối đa 3 lần với exponential backoff khi gặp lỗi API.
+        Single attempt - model is expensive, no retry. API errors are raised immediately.
+
+        Args:
+            audio_path: Path to the audio file.
+            language: Language code. If None, uses default from settings.
+
+        Returns:
+            Transcribed text with speaker labels.
         """
         segments = self.transcribe_to_segments(audio_path, language=language)
         return self._segments_to_string(segments)
@@ -63,13 +77,29 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
     def transcribe_to_segments(
         self,
         audio_path: str,
-        language: str = DEFAULT_TRANSCRIPTION_LANGUAGE,
+        language: Optional[str] = None,
     ) -> list[DiarizedSegment]:
-        """Transcribe audio và trả về danh sách segments có cấu trúc.
-
-        Mỗi segment: {speaker, start, end, text}.
-        Dùng khi caller cần dữ liệu có cấu trúc (ví dụ: export JSON, analytics).
         """
+        Transcribe audio and return structured segments.
+
+        Each segment: {speaker, start, end, text}.
+        Use when caller needs structured data (e.g., JSON export, analytics).
+
+        Args:
+            audio_path: Path to the audio file.
+            language: Language code. If None, uses default from settings.
+
+        Returns:
+            List of diarized segments.
+
+        Raises:
+            FileNotFoundError: If audio file does not exist.
+            RuntimeError: If API call fails.
+        """
+        settings = get_settings()
+        default_lang = settings.default_transcription_language
+        actual_language = language if language is not None else default_lang
+
         last_error: Exception = RuntimeError("Unknown error")
 
         for attempt in range(1, _MAX_RETRIES + 1):
@@ -84,15 +114,14 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
                     response = self._client.audio.transcriptions.create(
                         model=_DIARIZE_MODEL,
                         file=audio_file,
-                        language=language,
+                        language=actual_language,
                         response_format="diarized_json",
-                        # chunking_strategy="auto" BẮT BUỘC cho file > 30s
                         chunking_strategy="auto",
                     )
 
                 segments = self._parse_response(response)
                 logger.info(
-                    "Diarize succeeded: %d segments, %d speakers.",
+                    "Diarization succeeded: %d segments, %d speakers.",
                     len(segments),
                     len({s["speaker"] for s in segments}),
                 )
@@ -117,10 +146,9 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
             f"OpenAIDiarizeTranscriber failed after {_MAX_RETRIES} attempt(s): {last_error}"
         ) from last_error
 
-    # ── Private helpers ────────────────────────────────────────────────────────
-
     def _parse_response(self, response: object) -> list[DiarizedSegment]:
-        """Parse response object → list[DiarizedSegment].
+        """
+        Parse response object to list of DiarizedSegment.
 
         OpenAI diarized_json returns 'utterances' (not 'segments').
         Falls back to 'segments' for forward-compatibility.
@@ -132,7 +160,10 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
             raw = getattr(response, "utterances", None) or getattr(response, "segments", None)
 
         if raw is None:
-            logger.warning("Diarize response has neither 'utterances' nor 'segments' — returning empty list.")
+            logger.warning(
+                "Diarize response has neither 'utterances' nor 'segments' - "
+                "returning empty list."
+            )
             return []
 
         result: list[DiarizedSegment] = []
@@ -148,7 +179,6 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
                 end = float(getattr(seg, "end", 0.0))
                 text = str(getattr(seg, "text", "")).strip()
 
-            # speaker may be int (0, 1, 2) or string — normalise to "Speaker N"
             if isinstance(speaker_raw, int):
                 speaker = f"Speaker {speaker_raw}"
             else:
@@ -163,13 +193,14 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
 
     @staticmethod
     def _segments_to_string(segments: list[DiarizedSegment]) -> str:
-        """Chuyển danh sách segments thành string có nhãn người nói.
+        """
+        Convert segment list to speaker-labeled string.
 
         Output:
-            [Speaker 0]: Hôm nay chúng ta họp về...
-            [Speaker 1]: Vâng, tôi đồng ý...
+            [Speaker 0]: Today we're meeting about...
+            [Speaker 1]: Yes, I agree...
 
-        Các đoạn liền kề cùng speaker được gộp lại để dễ đọc.
+        Adjacent segments from the same speaker are merged for readability.
         """
         if not segments:
             return ""

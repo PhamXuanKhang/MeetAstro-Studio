@@ -1,5 +1,4 @@
-"""Tests cho OpenAITranscriber — mock OpenAI client."""
-import io
+"""Tests for OpenAITranscriber - mock OpenAI client."""
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -20,10 +19,10 @@ def _make_transcriber(response_text: str) -> tuple[OpenAITranscriber, MagicMock]
 
 class TestOpenAITranscriber:
     def test_transcribe_returns_text(self):
-        transcriber, _ = _make_transcriber("  xin chào thế giới  ")
+        transcriber, _ = _make_transcriber("  hello world  ")
         with patch("builtins.open", mock_open(read_data=b"audio")):
             result = transcriber.transcribe("audio.mp3")
-        assert result == "xin chào thế giới"
+        assert result == "hello world"
 
     def test_transcribe_calls_whisper_model(self):
         transcriber, mock_client = _make_transcriber("text")
@@ -35,7 +34,7 @@ class TestOpenAITranscriber:
 
     def test_transcribe_raises_file_not_found(self):
         transcriber, _ = _make_transcriber("text")
-        with pytest.raises(FileNotFoundError, match="Không tìm thấy file audio"):
+        with pytest.raises(FileNotFoundError, match="Audio file not found"):
             transcriber.transcribe("/nonexistent/path.mp3")
 
     def test_transcribe_retries_on_api_error(self):
@@ -70,7 +69,7 @@ class TestOpenAITranscriber:
 
         with patch("builtins.open", mock_open(read_data=b"audio")):
             with patch("src.providers.openai_transcriber.time.sleep"):
-                with pytest.raises(RuntimeError, match="thất bại sau"):
+                with pytest.raises(RuntimeError, match="failed after"):
                     transcriber.transcribe("audio.mp3")
 
         assert mock_client.audio.transcriptions.create.call_count == 3

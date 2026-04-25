@@ -24,7 +24,8 @@ def _make_segment(speaker: str, start: float, end: float, text: str) -> object:
 def _make_transcriber(segments: list) -> tuple[OpenAIDiarizeTranscriber, MagicMock]:
     """Tạo transcriber với mock client."""
     mock_response = MagicMock()
-    mock_response.segments = segments
+    mock_response.utterances = segments
+    mock_response.segments = None
 
     mock_client = MagicMock()
     mock_client.audio.transcriptions.create.return_value = mock_response
@@ -97,7 +98,7 @@ class TestTranscribeToSegments:
 
     def test_raises_file_not_found(self):
         transcriber, _ = _make_transcriber([])
-        with pytest.raises(FileNotFoundError, match="Không tìm thấy file audio"):
+        with pytest.raises(FileNotFoundError, match="Audio file not found"):
             transcriber.transcribe_to_segments("/nonexistent/audio.mp3")
 
     def test_raises_immediately_on_api_error(self):
@@ -112,7 +113,7 @@ class TestTranscribeToSegments:
 
         with patch("builtins.open", mock_open(read_data=b"audio")):
             with patch("src.providers.openai_diarize_transcriber.time.sleep"):
-                with pytest.raises(RuntimeError, match="thất bại sau"):
+                with pytest.raises(RuntimeError, match="failed after"):
                     transcriber.transcribe_to_segments("audio.mp3")
 
         assert mock_client.audio.transcriptions.create.call_count == 1
