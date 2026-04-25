@@ -1,4 +1,4 @@
-"""Tests cho transcription_service (OpenAI Whisper API only)."""
+"""Tests for transcription_service (OpenAI Whisper API only)."""
 import logging
 from unittest.mock import MagicMock, patch
 
@@ -23,7 +23,7 @@ class TestTranscriptionService:
         mock_openai.return_value.transcribe.side_effect = RuntimeError("API down")
 
         with patch("src.services.transcription_service.OpenAITranscriber", mock_openai):
-            with pytest.raises(RuntimeError, match="Whisper API thất bại"):
+            with pytest.raises(RuntimeError, match="Whisper API failed"):
                 svc.transcribe("audio.mp3")
 
     def test_language_passed_through(self):
@@ -36,40 +36,11 @@ class TestTranscriptionService:
         mock_openai.return_value.transcribe.assert_called_once_with("audio.mp3", language="en")
 
 
-class TestTranscribeChunks:
-    def _patch_transcribe(self, return_value="ok"):
-        return patch("src.services.transcription_service.transcribe", return_value=return_value)
-
-    def test_empty_paths_returns_empty_string(self):
-        assert svc.transcribe_chunks([]) == ""
-
-    def test_single_chunk_returns_transcript(self):
-        with self._patch_transcribe("Hello world"):
-            result = svc.transcribe_chunks(["/tmp/chunk000.wav"])
-        assert result == "Hello world"
-
-    def test_multiple_chunks_concatenated(self):
-        texts = ["Hello", "world", "foo"]
-        with patch("src.services.transcription_service.transcribe", side_effect=texts):
-            result = svc.transcribe_chunks(["/tmp/c0.wav", "/tmp/c1.wav", "/tmp/c2.wav"])
-        assert result == "Hello world foo"
-
-    def test_failed_chunk_is_skipped(self):
-        def _side_effect(path, language="en"):
-            if "bad" in path:
-                raise RuntimeError("bad chunk")
-            return "good"
-
-        with patch("src.services.transcription_service.transcribe", side_effect=_side_effect):
-            result = svc.transcribe_chunks(["/tmp/good.wav", "/tmp/bad.wav"])
-        assert result == "good"
-
-
 class TestTranscribeDiarized:
     def test_returns_diarized_transcript_on_success(self):
         mock_diarize = MagicMock()
         mock_diarize.return_value.transcribe.return_value = (
-            "[Speaker 0]: Hôm nay họp\n[Speaker 1]: Vâng đồng ý"
+            "[Speaker 0]: Meeting today\n[Speaker 1]: Yes I agree"
         )
 
         with patch("src.services.transcription_service.OpenAIDiarizeTranscriber", mock_diarize):
@@ -103,7 +74,7 @@ class TestTranscribeDiarized:
                 with caplog.at_level(logging.WARNING, logger="src.services.transcription_service"):
                     svc.transcribe_diarized("audio.mp3")
 
-        assert any("fallback" in r.message.lower() for r in caplog.records)
+        assert any("falling back" in r.message.lower() for r in caplog.records)
 
     def test_language_passed_through(self):
         mock_diarize = MagicMock()

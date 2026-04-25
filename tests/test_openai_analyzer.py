@@ -1,4 +1,4 @@
-"""Tests cho OpenAIAnalyzer — mock OpenAI client."""
+"""Tests for OpenAIAnalyzer - mock OpenAI client."""
 import json
 from unittest.mock import MagicMock, patch
 
@@ -9,18 +9,18 @@ from src.schema import MeetingAnalysis, Priority
 
 
 SAMPLE_JSON = {
-    "summary": "Cuộc họp về launch Q1.",
+    "summary": "Q1 launch meeting.",
     "epics": [
         {
-            "summary": "Ra mắt sản phẩm",
-            "description": "Chuẩn bị launch Q1.",
+            "summary": "Product Launch",
+            "description": "Prepare Q1 launch.",
             "tasks": [
                 {
-                    "summary": "Triển khai hệ thống",
+                    "summary": "Deploy system",
                     "assignee": "Nam",
                     "deadline": "2024-01-15",
                     "priority": "High",
-                    "context": "Cần triển khai trước Tết.",
+                    "context": "Need to deploy before deadline.",
                     "subtasks": [],
                 }
             ],
@@ -30,7 +30,7 @@ SAMPLE_JSON = {
 
 
 def _make_mock_client(content: str) -> MagicMock:
-    """Tạo mock OpenAI client trả về content JSON."""
+    """Create mock OpenAI client returning content JSON."""
     mock_choice = MagicMock()
     mock_choice.message.content = content
     mock_response = MagicMock()
@@ -51,7 +51,7 @@ class TestOpenAIAnalyzer:
         result = analyzer.analyze("transcript text")
 
         assert isinstance(result, MeetingAnalysis)
-        assert result.summary == "Cuộc họp về launch Q1."
+        assert result.summary == "Q1 launch meeting."
         assert len(result.epics) == 1
         assert result.epics[0].tasks[0].priority == Priority.HIGH
 
@@ -88,7 +88,7 @@ class TestOpenAIAnalyzer:
         analyzer._model = "gpt-4o"
         analyzer._system_prompt = "system"
 
-        with pytest.raises(ValueError, match="Không parse được"):
+        with pytest.raises(ValueError, match="Failed to parse"):
             analyzer.analyze("transcript")
 
     def test_analyze_retries_on_api_error(self):
@@ -130,7 +130,7 @@ class TestOpenAIAnalyzer:
         analyzer._system_prompt = "system"
 
         with patch("src.providers.openai_analyzer.time.sleep"):
-            with pytest.raises(RuntimeError, match="thất bại sau"):
+            with pytest.raises(RuntimeError, match="failed after"):
                 analyzer.analyze("transcript")
 
         assert mock_client.chat.completions.create.call_count == 3
