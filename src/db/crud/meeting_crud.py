@@ -67,7 +67,7 @@ async def list_meetings(
         .limit(page_size)
     )
     result = await db.execute(stmt)
-    return result.scalars().all(), total
+    return list(result.scalars().all()), total
 
 
 async def update_meeting_status(
