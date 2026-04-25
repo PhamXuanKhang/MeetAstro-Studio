@@ -15,6 +15,7 @@ def build_new_meeting_view(
     toast,
     set_busy,
     on_open_results,
+    on_open_review=None,
 ) -> ft.Control:
     backend = get_backend()
 
@@ -199,15 +200,10 @@ def build_new_meeting_view(
         if not state.analysis or not state.current_meeting_id:
             toast("No analysis to push yet.", error=True)
             return
-
-        def _do():
-            result = backend.push_to_jira(state.analysis, meeting_id=state.current_meeting_id)
-            if result.get("is_stub"):
-                ui(lambda: toast("Jira STUB mode — no real API call made.", error=True))
-            else:
-                ui(lambda: toast("Jira push completed."))
-
-        _run_bg(_do, busy_text="Pushing to Jira...")
+        if on_open_review is not None:
+            on_open_review()
+        else:
+            toast("Open the Review screen to approve items before pushing.", error=True)
 
     def _set_transcript(text: str) -> None:
         transcript.value = text
@@ -279,7 +275,7 @@ def build_new_meeting_view(
                         ft.OutlinedButton("Export Markdown", icon=ft.Icons.DESCRIPTION_OUTLINED, on_click=export_md),
                         ft.OutlinedButton("Export JSON", icon=ft.Icons.DATA_OBJECT, on_click=export_json),
                         ft.OutlinedButton("Export CSV", icon=ft.Icons.TABLE_VIEW, on_click=export_csv),
-                        ft.ElevatedButton("Push to Jira", icon=ft.Icons.ROCKET_LAUNCH, on_click=push_jira),
+                        ft.ElevatedButton("Review & Push to Jira", icon=ft.Icons.ROCKET_LAUNCH, on_click=push_jira),
                     ],
                     wrap=True,
                     spacing=10,
@@ -302,4 +298,3 @@ def build_new_meeting_view(
         ),
         expand=True,
     )
-

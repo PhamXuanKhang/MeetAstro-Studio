@@ -404,11 +404,11 @@ def _build_item_card(
                     color=ft.Colors.GREY_700,
                 ),
                 # Validation notes nếu có
-                    ft.Text(
-                        " | ".join(item.validation_notes),
-                        size=10,
-                        color=ft.Colors.ORANGE_700,
-                    ) if item.validation_notes else ft.Container(),
+                ft.Text(
+                    " | ".join(item.validation_notes),
+                    size=10,
+                    color=ft.Colors.ORANGE_700,
+                ) if item.validation_notes else ft.Container(),
                 # Edit form (toggle)
                 edit_form,
                 # Action buttons
