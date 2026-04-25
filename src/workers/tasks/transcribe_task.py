@@ -1,5 +1,5 @@
 """
-Celery task: transcribe audio file → lưu transcript vào DB.
+Celery task: transcribe audio file and save transcript to database.
 
 Input:  meeting_id (str), audio_path (str), diarize (bool), language (str)
 Output: {"transcript_id": str, "char_count": int}
@@ -27,20 +27,41 @@ def transcribe_audio(
     *,
     diarize: bool = False,
     language: str = "en",
+    cleanup_audio: bool = True,
 ) -> dict:
-    """Transcribe audio và lưu vào bảng transcripts."""
-    return asyncio.run(_transcribe_async(self, meeting_id, audio_path, diarize, language))
+    """
+    Transcribe audio and save to transcripts table.
+
+    Args:
+        meeting_id: UUID of the meeting.
+        audio_path: Path to the audio file.
+        diarize: Whether to perform speaker diarization.
+        language: Language code for transcription.
+        cleanup_audio: Whether to delete audio file after successful transcription.
+
+    Returns:
+        Dict with transcript_id and char_count.
+    """
+    return asyncio.run(
+        _transcribe_async(self, meeting_id, audio_path, diarize, language, cleanup_audio)
+    )
 
 
 async def _transcribe_async(
-    task, meeting_id: str, audio_path: str, diarize: bool, language: str
+    task,
+    meeting_id: str,
+    audio_path: str,
+    diarize: bool,
+    language: str,
+    cleanup_audio: bool,
 ) -> dict:
-    from src.db.session import get_session_factory
     from src.db.crud.meeting_crud import (
         create_transcript,
         get_transcript,
         update_meeting_status,
     )
+    from src.db.session import get_session_factory
+    from src.services.cleanup_service import delete_audio_file
     from src.services.transcription_service import transcribe, transcribe_diarized
 
     session_factory = get_session_factory()
@@ -51,11 +72,11 @@ async def _transcribe_async(
             await update_meeting_status(db, meeting_uuid, status="transcribing")
             await db.commit()
         except Exception as exc:
-            logger.error(f"[transcribe_task] Lỗi cập nhật status: {exc}")
+            logger.error("[transcribe_task] Failed to update status: %s", exc)
             raise
 
     try:
-        logger.info(f"[transcribe_task] Bắt đầu transcribe: {audio_path} diarize={diarize}")
+        logger.info("[transcribe_task] Starting transcription: %s diarize=%s", audio_path, diarize)
         if diarize:
             raw_text = transcribe_diarized(audio_path, language=language)
             diarized_text = raw_text
@@ -71,7 +92,6 @@ async def _transcribe_async(
         raise task.retry(exc=exc)
 
     async with session_factory() as db:
-        # Xóa transcript cũ nếu có (retry case)
         old = await get_transcript(db, meeting_uuid)
         if old:
             await db.delete(old)
@@ -87,5 +107,9 @@ async def _transcribe_async(
         await update_meeting_status(db, meeting_uuid, status="transcribed")
         await db.commit()
 
-    logger.info(f"[transcribe_task] Xong: transcript_id={transcript.id}")
+    if cleanup_audio:
+        delete_audio_file(audio_path)
+        logger.info("[transcribe_task] Cleaned up audio file: %s", audio_path)
+
+    logger.info("[transcribe_task] Complete: transcript_id=%s", transcript.id)
     return {"transcript_id": str(transcript.id), "char_count": transcript.char_count}

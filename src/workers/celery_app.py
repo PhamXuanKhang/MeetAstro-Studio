@@ -5,15 +5,20 @@ Broker: Redis
 Result backend: Redis
 Task serializer: JSON
 
-Khởi chạy worker:
+Start worker:
     celery -A src.workers.celery_app worker -Q default --loglevel=info
+
+Start beat scheduler (for periodic tasks):
+    celery -A src.workers.celery_app beat --loglevel=info
 """
 from celery import Celery
+from celery.schedules import crontab
 
 from src.config import get_settings
 
 
 def create_celery() -> Celery:
+    """Create and configure Celery application."""
     settings = get_settings()
     app = Celery(
         "ai_meeting_assistant",
@@ -29,15 +34,25 @@ def create_celery() -> Celery:
         task_track_started=True,
         task_acks_late=True,
         worker_prefetch_multiplier=1,
-        result_expires=3600,  # Job results hết hạn sau 1 giờ
+        result_expires=3600,
     )
-    # Explicit include cho tất cả task modules
+
     app.conf.include = [
         "src.workers.pipeline",
         "src.workers.tasks.transcribe_task",
         "src.workers.tasks.analyze_task",
         "src.workers.tasks.jira_push_task",
+        "src.workers.tasks.cleanup_task",
     ]
+
+    app.conf.beat_schedule = {
+        "cleanup-old-recordings": {
+            "task": "cleanup_recordings",
+            "schedule": crontab(minute=0, hour="*/2"),
+            "options": {"queue": "default"},
+        },
+    }
+
     return app
 
 

@@ -1,5 +1,5 @@
 """
-Celery task: push approved review items lên Jira.
+Celery task: push approved review items to Jira.
 
 Input:  meeting_id (str)
 Output: {"epic_keys": list, "task_count": int, "subtask_count": int, "is_stub": bool}
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
     queue="default",
 )
 def push_to_jira(self, meeting_id: str) -> dict:
-    """Push approved items lên Jira và update meeting status."""
+    """Push approved items to Jira and update meeting status."""
     return asyncio.run(_push_async(self, meeting_id))
 
 
@@ -42,13 +42,12 @@ async def _push_async(task, meeting_id: str) -> dict:
         analysis_result = await get_analysis_result(db, meeting_uuid)
 
         if not items:
-            raise ValueError("Không có approved items để push.")
+            raise ValueError("No approved items to push.")
 
-        # Reconstruct MeetingAnalysis từ approved review_items
         meeting_analysis = _reconstruct_analysis(items, analysis_result)
 
     try:
-        logger.info(f"[jira_push_task] Bắt đầu push Jira cho meeting {meeting_id}")
+        logger.info("[jira_push_task] Starting Jira push for meeting %s", meeting_id)
         push_result = push_analysis_to_jira(meeting_analysis)
     except Exception as exc:
         async with session_factory() as db:
@@ -63,8 +62,10 @@ async def _push_async(task, meeting_id: str) -> dict:
         await db.commit()
 
     logger.info(
-        f"[jira_push_task] Xong: epic_keys={push_result.epic_keys} "
-        f"tasks={push_result.task_count} subtasks={push_result.subtask_count}"
+        "[jira_push_task] Complete: epic_keys=%s tasks=%d subtasks=%d",
+        push_result.epic_keys,
+        push_result.task_count,
+        push_result.subtask_count,
     )
     return {
         "epic_keys": push_result.epic_keys,
@@ -76,18 +77,16 @@ async def _push_async(task, meeting_id: str) -> dict:
 
 def _reconstruct_analysis(approved_items, analysis_result):
     """
-    Tái tạo MeetingAnalysis từ danh sách approved ReviewItem.
+    Reconstruct MeetingAnalysis from list of approved ReviewItems.
 
-    Dùng edited_* fields nếu user đã chỉnh sửa, ngược lại dùng original fields.
+    Uses edited_* fields if user has made edits, otherwise uses original fields.
     """
     from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
 
-    # Group items theo item_index hierarchy
     epics_map: dict[str, dict] = {}
 
     for item in approved_items:
         parts = item.item_index.split(".")
-        # Lấy giá trị effective (edited nếu có, original nếu không)
         summary = item.edited_summary or item.summary
         assignee = item.edited_assignee or item.assignee
         deadline = item.edited_deadline or item.deadline
@@ -136,16 +135,15 @@ def _reconstruct_analysis(approved_items, analysis_result):
                 priority=priority, context=item.context or "",
             )
 
-    # Xây dựng MeetingAnalysis
     epics = []
-    for epic_idx in sorted(epics_map.keys()):
+    for epic_idx in sorted(epics_map.keys(), key=int):
         epic_data = epics_map[epic_idx]
         tasks = []
-        for task_idx in sorted(epic_data["tasks"].keys()):
+        for task_idx in sorted(epic_data["tasks"].keys(), key=int):
             task_data = epic_data["tasks"][task_idx]
             subtasks = [
                 task_data["subtasks"][s]
-                for s in sorted(task_data["subtasks"].keys())
+                for s in sorted(task_data["subtasks"].keys(), key=int)
             ]
             tasks.append(Task(
                 summary=task_data["summary"],

@@ -1,5 +1,5 @@
 """
-Celery task: analyze transcript → tạo analysis + review_items.
+Celery task: analyze transcript and create analysis + review_items.
 
 Input:  meeting_id (str), transcript_id (str)
 Output: {"analysis_id": str, "review_item_count": int, "flagged_count": int}
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
     queue="default",
 )
 def analyze_transcript(self, meeting_id: str, transcript_id: str) -> dict:
-    """Phân tích transcript bằng GPT-4o và tạo review items."""
+    """Analyze transcript using GPT-4o and create review items."""
     return asyncio.run(_analyze_async(self, meeting_id, transcript_id))
 
 
@@ -45,23 +45,23 @@ async def _analyze_async(task, meeting_id: str, transcript_id: str) -> dict:
         await update_meeting_status(db, meeting_uuid, status="analyzing")
         await db.commit()
 
-    # Lấy transcript text
     async with session_factory() as db:
         transcript = await get_transcript(db, meeting_uuid)
         if not transcript:
-            raise ValueError(f"Transcript {transcript_id} không tồn tại.")
+            raise ValueError(f"Transcript {transcript_id} does not exist.")
         transcript_text = transcript.raw_text
 
     if not transcript_text.strip():
         async with session_factory() as db:
             await update_meeting_status(
-                db, meeting_uuid, status="failed", error_message="Transcript is empty — cannot analyze."
+                db, meeting_uuid, status="failed",
+                error_message="Transcript is empty - cannot analyze."
             )
             await db.commit()
-        raise ValueError("Transcript is empty — cannot analyze.")
+        raise ValueError("Transcript is empty - cannot analyze.")
 
     try:
-        logger.info(f"[analyze_task] Starting analysis for meeting {meeting_id}")
+        logger.info("[analyze_task] Starting analysis for meeting %s", meeting_id)
         meeting_analysis = await analyze_async(transcript_text)
     except Exception as exc:
         async with session_factory() as db:
@@ -71,7 +71,6 @@ async def _analyze_async(task, meeting_id: str, transcript_id: str) -> dict:
             await db.commit()
         raise task.retry(exc=exc)
 
-    # Tính overall_confidence
     all_confidences = []
     for epic in meeting_analysis.epics:
         for task_item in epic.tasks:
@@ -80,7 +79,6 @@ async def _analyze_async(task, meeting_id: str, transcript_id: str) -> dict:
                 all_confidences.append(sub.confidence)
     overall_conf = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
 
-    # Lưu analysis_result + review_items
     async with session_factory() as db:
         analysis_result = await create_analysis_result(
             db,
@@ -90,10 +88,8 @@ async def _analyze_async(task, meeting_id: str, transcript_id: str) -> dict:
             overall_confidence=overall_conf,
         )
 
-        # Remove stale review items from any previous analysis run
         await delete_review_items_for_meeting(db, meeting_uuid)
 
-        # Flatten Epic/Task/Subtask → review_items
         review_items_data = _flatten_to_review_items(
             meeting_analysis, str(meeting_uuid), settings.confidence_low_threshold
         )
@@ -105,8 +101,10 @@ async def _analyze_async(task, meeting_id: str, transcript_id: str) -> dict:
         await db.commit()
 
     logger.info(
-        f"[analyze_task] Xong: analysis_id={analysis_result.id} "
-        f"items={len(review_items_data)} flagged={flagged_count}"
+        "[analyze_task] Complete: analysis_id=%s items=%d flagged=%d",
+        analysis_result.id,
+        len(review_items_data),
+        flagged_count,
     )
     return {
         "analysis_id": str(analysis_result.id),
@@ -116,16 +114,16 @@ async def _analyze_async(task, meeting_id: str, transcript_id: str) -> dict:
 
 
 def _priority_str(priority_val) -> str:
+    """Extract priority value as string."""
     return priority_val.value if hasattr(priority_val, "value") else str(priority_val)
 
 
 def _flatten_to_review_items(
     analysis, meeting_id: str, low_threshold: float
 ) -> list[dict]:
-    """Chuyển MeetingAnalysis thành list dicts để bulk insert vào review_items."""
+    """Convert MeetingAnalysis to list of dicts for bulk insert into review_items."""
     items = []
     for epic_idx, epic in enumerate(analysis.epics):
-        # Epic item
         items.append({
             "meeting_id": uuid.UUID(meeting_id),
             "item_type": "epic",
