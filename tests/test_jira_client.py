@@ -1,5 +1,6 @@
-"""Tests cho JiraClient — mock httpx.AsyncClient, test stub mode."""
-from unittest.mock import AsyncMock, MagicMock, patch
+"""Tests cho JiraClient — mock httpx.Client (sync), test stub mode."""
+from typing import Optional
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,14 +13,22 @@ def make_epic() -> Epic:
 
 
 def make_task() -> Task:
-    return Task(summary="Triển khai", assignee="Alice", deadline="2024-01-15", priority=Priority.HIGH, context="context")
+    return Task(
+        summary="Triển khai", assignee="Alice", deadline="2024-01-15",
+        priority=Priority.HIGH, context="context"
+    )
 
 
 def make_subtask() -> Subtask:
-    return Subtask(summary="Cài môi trường", assignee="Nam", deadline="2024-01-10", priority=Priority.MEDIUM, context="context")
+    return Subtask(
+        summary="Cài môi trường", assignee="Nam", deadline="2024-01-10",
+        priority=Priority.MEDIUM, context="context"
+    )
 
 
-def _mock_httpx_response(key: str, status_code: int = 200, body: dict = None) -> MagicMock:
+def _mock_httpx_response(
+    key: str, status_code: int = 200, body: Optional[dict] = None
+) -> MagicMock:
     """Tạo mock httpx.Response."""
     mock_resp = MagicMock()
     mock_resp.status_code = status_code
@@ -28,14 +37,15 @@ def _mock_httpx_response(key: str, status_code: int = 200, body: dict = None) ->
     return mock_resp
 
 
-def _patch_httpx_post(key: str = "TEST-1", status_code: int = 200, body: dict = None):
-    """Context manager patch httpx.AsyncClient.post."""
+def _patch_httpx_post(key: str = "TEST-1", status_code: int = 200, body: Optional[dict] = None):
+    """Context manager patch httpx.Client (sync) — JiraClient gọi sync để chạy
+    bên trong asyncio.run() của Celery worker."""
     mock_response = _mock_httpx_response(key, status_code, body)
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.post = AsyncMock(return_value=mock_response)
-    return patch("src.modules.jira_client.httpx.AsyncClient", return_value=mock_client), mock_client
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.post = MagicMock(return_value=mock_response)
+    return patch("src.modules.jira_client.httpx.Client", return_value=mock_client), mock_client
 
 
 class TestJiraClientStubMode:
@@ -115,7 +125,7 @@ class TestJiraClientRealMode:
             client.create_task(make_task(), "TEST-1")
 
         payload = mock_client.post.call_args.kwargs["json"]
-        assert payload["fields"]["customfield_10014"] == "TEST-1"
+        assert payload["fields"]["parent"]["key"] == "TEST-1"
 
     def test_create_task_sends_auth(self):
         client = self._make_client()
@@ -135,7 +145,7 @@ class TestJiraClientRealMode:
                 with pytest.raises(RuntimeError):
                     client.create_epic(make_epic())
 
-        assert "Jira API trả về lỗi 400" in caplog.text
+        assert "Jira API returned error 400" in caplog.text
         assert "Invalid custom field" in caplog.text
 
     def test_create_subtask_sends_parent_key(self):

@@ -1,4 +1,4 @@
-"""Tests cho jira_service — orchestration Epic -> Task -> Subtask."""
+"""Tests for jira_service - orchestration Epic -> Task -> Subtask."""
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,7 +10,7 @@ from src.services.jira_service import JiraPushResult, push_analysis_to_jira
 def _make_analysis() -> MeetingAnalysis:
     subtasks = [
         Subtask(
-            summary="Chuẩn bị tài liệu",
+            summary="Prepare documentation",
             assignee="Nam",
             deadline="2024-01-10",
             priority=Priority.MEDIUM,
@@ -19,7 +19,7 @@ def _make_analysis() -> MeetingAnalysis:
     ]
     tasks = [
         Task(
-            summary="Triển khai",
+            summary="Implementation",
             assignee="Alice",
             deadline="2024-01-15",
             priority=Priority.HIGH,
@@ -27,14 +27,14 @@ def _make_analysis() -> MeetingAnalysis:
             subtasks=subtasks,
         )
     ]
-    epics = [Epic(summary="Ra mắt Q1", description="Chuẩn bị launch", tasks=tasks)]
+    epics = [Epic(summary="Q1 Launch", description="Prepare launch", tasks=tasks)]
     return MeetingAnalysis(summary="summary", epics=epics)
 
 
 def test_push_analysis_to_jira_raises_on_empty_epics():
     analysis = MeetingAnalysis(summary="no epics", epics=[])
 
-    with pytest.raises(ValueError, match="Không có epics"):
+    with pytest.raises(ValueError, match="No epics"):
         push_analysis_to_jira(analysis)
 
 
@@ -79,5 +79,5 @@ def test_push_analysis_to_jira_wraps_task_error_with_context():
     client.create_epic.return_value = "MEET-1"
     client.create_task.side_effect = RuntimeError("Jira unavailable")
 
-    with pytest.raises(RuntimeError, match="Tạo Task thất bại"):
+    with pytest.raises(RuntimeError, match="Failed to create Task"):
         push_analysis_to_jira(analysis, client=client)
