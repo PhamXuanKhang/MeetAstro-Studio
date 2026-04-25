@@ -98,4 +98,4 @@ async def delete_provider_config(
             ProviderConfig.provider_name == provider_name,
         )
     )
-    return result.rowcount > 0
+    return (result.rowcount or 0) > 0  # type: ignore[attr-defined]
