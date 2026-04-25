@@ -11,7 +11,7 @@ from typing import Optional
 
 import httpx
 
-from src.config import DEFAULT_TRANSCRIPTION_LANGUAGE
+from src.config import get_settings
 from src.schema import MeetingAnalysis, MeetingRecord, ReviewItem
 
 
@@ -99,7 +99,7 @@ class HttpBackend:
             resp = self._client.post(
                 self._url(f"/meetings/{meeting_id}/audio"),
                 files={"file": (Path(audio_path).name, f, "audio/wav")},
-                data={"diarize": str(diarize).lower(), "language": DEFAULT_TRANSCRIPTION_LANGUAGE},
+                data={"diarize": str(diarize).lower(), "language": get_settings().default_transcription_language},
                 timeout=30,
             )
         resp.raise_for_status()
