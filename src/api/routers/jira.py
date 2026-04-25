@@ -1,8 +1,8 @@
 """
-Router: /api/v1/meetings/{id}/jira — push sang Jira.
+Router: /api/v1/meetings/{id}/jira - push to Jira.
 
-POST /meetings/{id}/jira/push      Push approved items → Jira
-GET  /meetings/{id}/jira/status    Trạng thái push gần nhất
+POST /meetings/{id}/jira/push      Push approved items to Jira
+GET  /meetings/{id}/jira/status    Status of latest push
 """
 import uuid
 from typing import Annotated
@@ -24,32 +24,33 @@ async def push_to_jira(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JiraPushResponse:
     """
-    Push các approved review items lên Jira.
-    Yêu cầu tất cả items phải ở trạng thái approved hoặc rejected (không còn pending).
+    Push approved review items to Jira.
+
+    Requires all items to be in approved or rejected state (no pending items).
     """
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
 
     summary = await get_review_summary(db, meeting_id)
     if summary["pending"] > 0:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Còn {summary['pending']} items chưa review. "
-                "Approve hoặc reject tất cả trước khi push Jira."
+                f"There are {summary['pending']} items pending review. "
+                "Approve or reject all items before pushing to Jira."
             ),
         )
     if summary["approved"] == 0:
         raise HTTPException(
-            status_code=400, detail="Không có item nào được approve."
+            status_code=400, detail="No items have been approved."
         )
 
     from src.workers.tasks.jira_push_task import push_to_jira as push_task
     task = push_task.delay(str(meeting_id))
     return JiraPushResponse(
         job_id=task.id,
-        message=f"Đã queue Jira push. Theo dõi tại /jobs/{task.id}.",
+        message=f"Jira push queued. Track at /jobs/{task.id}.",
     )
 
 
@@ -58,10 +59,10 @@ async def jira_push_status(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JobStatusResponse:
-    """Trạng thái Jira push gần nhất của meeting."""
+    """Get status of latest Jira push for meeting."""
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
 
     if meeting.status == "pushed":
         return JobStatusResponse(job_id=meeting.celery_task_id or "", state="SUCCESS")

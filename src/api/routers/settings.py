@@ -1,9 +1,9 @@
 """
-Router: /api/v1/settings — quản lý provider configs.
+Router: /api/v1/settings - manage provider configs.
 
-GET    /settings/providers           Danh sách provider names
+GET    /settings/providers           List provider names
 POST   /settings/providers/{name}    Set/update provider config
-DELETE /settings/providers/{name}    Xóa provider config
+DELETE /settings/providers/{name}    Delete provider config
 """
 from typing import Annotated
 
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 class ProviderConfigPayload(BaseModel):
+    """Payload for setting provider config."""
     config: dict
     user_id: str = "default_user"
 
@@ -31,7 +32,7 @@ async def list_providers(
     db: Annotated[AsyncSession, Depends(get_db)],
     user_id: str = "default_user",
 ) -> dict:
-    """Danh sách provider names đang active."""
+    """List active provider names."""
     providers = await list_provider_configs(db, user_id=user_id)
     return {"providers": providers}
 
@@ -42,11 +43,11 @@ async def set_provider(
     payload: ProviderConfigPayload,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """Thêm hoặc cập nhật provider config (encrypted)."""
+    """Add or update provider config (encrypted)."""
     await set_provider_config(
         db, provider_name, payload.config, user_id=payload.user_id
     )
-    return {"message": f"Provider '{provider_name}' đã được lưu."}
+    return {"message": f"Provider '{provider_name}' saved."}
 
 
 @router.delete("/providers/{provider_name}")
@@ -55,8 +56,10 @@ async def delete_provider(
     db: Annotated[AsyncSession, Depends(get_db)],
     user_id: str = "default_user",
 ) -> dict:
-    """Xóa provider config."""
+    """Delete provider config."""
     deleted = await delete_provider_config(db, provider_name, user_id=user_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' không tồn tại.")
-    return {"message": f"Provider '{provider_name}' đã được xóa."}
+        raise HTTPException(
+            status_code=404, detail=f"Provider '{provider_name}' not found."
+        )
+    return {"message": f"Provider '{provider_name}' deleted."}

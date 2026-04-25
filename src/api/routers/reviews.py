@@ -1,16 +1,16 @@
 """
 Router: Human-in-the-Loop review workflow.
 
-GET    /meetings/{id}/review                 Danh sách review items
-GET    /meetings/{id}/review/summary         Thống kê
-GET    /meetings/{id}/review/{item_id}       Chi tiết item
-PATCH  /meetings/{id}/review/{item_id}       Chỉnh sửa item
+GET    /meetings/{id}/review                 List review items
+GET    /meetings/{id}/review/summary         Summary stats
+GET    /meetings/{id}/review/{item_id}       Item details
+PATCH  /meetings/{id}/review/{item_id}       Edit item
 POST   /meetings/{id}/review/{item_id}/approve  Approve item
 POST   /meetings/{id}/review/{item_id}/reject   Reject item
-POST   /meetings/{id}/review/approve_all    Approve tất cả
+POST   /meetings/{id}/review/approve_all     Approve all
 """
 import uuid
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,7 +39,7 @@ async def review_summary(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReviewSummaryResponse:
-    """Thống kê trạng thái review items."""
+    """Get summary stats of review items."""
     await _assert_meeting_exists(db, meeting_id)
     summary = await get_review_summary(db, meeting_id)
     return ReviewSummaryResponse(**summary)
@@ -49,10 +49,10 @@ async def review_summary(
 async def list_review_items_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    status: str | None = None,
+    status: Optional[str] = None,
     flagged_only: bool = False,
 ) -> list[ReviewItemResponse]:
-    """Danh sách review items, flagged items lên đầu."""
+    """List review items with flagged items first."""
     await _assert_meeting_exists(db, meeting_id)
     items = await list_review_items(
         db, meeting_id, status=status, flagged_only=flagged_only
@@ -66,7 +66,7 @@ async def get_review_item_endpoint(
     item_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReviewItemResponse:
-    """Lấy chi tiết một review item."""
+    """Get details of a specific review item."""
     item = await _get_item_or_404(db, item_id, meeting_id)
     return ReviewItemResponse.model_validate(item)
 
@@ -78,7 +78,7 @@ async def patch_review_item(
     payload: ReviewItemPatch,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReviewItemResponse:
-    """Chỉnh sửa một review item (set review_status='edited')."""
+    """Edit a review item (sets review_status='edited')."""
     await _get_item_or_404(db, item_id, meeting_id)
     updated = await update_review_item(
         db,
@@ -97,7 +97,7 @@ async def approve_item(
     item_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReviewItemResponse:
-    """Approve một review item."""
+    """Approve a review item."""
     await _get_item_or_404(db, item_id, meeting_id)
     updated = await set_review_status(db, item_id, status="approved")
     return ReviewItemResponse.model_validate(updated)
@@ -109,7 +109,7 @@ async def reject_item(
     item_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReviewItemResponse:
-    """Reject một review item."""
+    """Reject a review item."""
     await _get_item_or_404(db, item_id, meeting_id)
     updated = await set_review_status(db, item_id, status="rejected")
     return ReviewItemResponse.model_validate(updated)
@@ -120,22 +120,22 @@ async def approve_all_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """Approve tất cả items chưa bị rejected."""
+    """Approve all items that are not rejected."""
     await _assert_meeting_exists(db, meeting_id)
     count = await approve_all_items(db, meeting_id)
     return {"approved_count": count}
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
 async def _assert_meeting_exists(db: AsyncSession, meeting_id: uuid.UUID) -> None:
+    """Helper to check meeting exists."""
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
 
 
 async def _get_item_or_404(db: AsyncSession, item_id: uuid.UUID, meeting_id: uuid.UUID):
+    """Helper to get review item or raise 404."""
     item = await get_review_item(db, item_id)
     if not item or item.meeting_id != meeting_id:
-        raise HTTPException(status_code=404, detail="Review item không tồn tại.")
+        raise HTTPException(status_code=404, detail="Review item not found.")
     return item
