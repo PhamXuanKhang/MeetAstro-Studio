@@ -19,7 +19,10 @@ def build_sidebar(
         return ft.Container(
             content=ft.Row(
                 [
-                    ft.Icon(name=icon, size=18, color=ft.Colors.BLUE_600 if selected else ft.Colors.GREY_700),
+                    ft.Icon(
+                        name=icon, size=18,
+                        color=ft.Colors.BLUE_600 if selected else ft.Colors.GREY_700
+                    ),
                     ft.Text(
                         label,
                         size=13,
@@ -45,7 +48,9 @@ def build_sidebar(
     profile = ft.Container(
         content=ft.Row(
             [
-                ft.CircleAvatar(content=ft.Text("A"), bgcolor=ft.Colors.TEAL_500, color=ft.Colors.WHITE),
+                ft.CircleAvatar(
+                    content=ft.Text("A"), bgcolor=ft.Colors.TEAL_500, color=ft.Colors.WHITE
+                ),
                 ft.Column(
                     [
                         ft.Text("AI Meeting Assistant", size=13, weight=ft.FontWeight.W_700),
@@ -95,4 +100,3 @@ def build_sidebar(
             spacing=0,
         ),
     )
-

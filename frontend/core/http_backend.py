@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 import httpx
 
@@ -121,13 +121,6 @@ class HttpBackend:
         )
         resp.raise_for_status()
         return resp.json()["raw_text"]
-
-    # ── Summary streaming ─────────────────────────────────────────────────────
-    def generate_summary_stream(
-        self, transcript: str, *, on_token: Callable[[str], None]
-    ) -> str:
-        """Streaming summary is not supported in HTTP-only mode."""
-        raise RuntimeError("Summary streaming is not available in HTTP-only mode.")
 
     # ── Analysis ──────────────────────────────────────────────────────────────
     def analyze(

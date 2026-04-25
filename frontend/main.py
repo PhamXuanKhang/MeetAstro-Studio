@@ -10,7 +10,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from frontend.app import build_app
+from frontend.app import build_app  # noqa: E402
 
 
 def main(page: ft.Page) -> None:
@@ -30,4 +30,3 @@ def main(page: ft.Page) -> None:
 
 if __name__ == "__main__":
     ft.app(target=main, view=ft.AppView.FLET_APP)
-

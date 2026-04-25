@@ -25,4 +25,3 @@ class AppState:
     review_items: list[ReviewItem] = field(default_factory=list)
     meeting_status: str = ""
     current_meeting_id: Optional[str] = None
-
