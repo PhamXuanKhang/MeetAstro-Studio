@@ -1,8 +1,8 @@
 """
-Router: /api/v1/meetings/{id}/analyze — phân tích transcript.
+Router: /api/v1/meetings/{id}/analyze - analyze transcript.
 
-POST /meetings/{id}/analyze    Bắt đầu analysis job
-GET  /meetings/{id}/analysis   Lấy kết quả analysis
+POST /meetings/{id}/analyze    Start analysis job
+GET  /meetings/{id}/analysis   Get analysis result
 """
 import uuid
 from typing import Annotated
@@ -28,15 +28,15 @@ async def start_analysis(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JobStatusResponse:
-    """Bắt đầu analysis job. Transcript phải tồn tại trước."""
+    """Start analysis job. Transcript must exist first."""
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
 
     transcript = await get_transcript(db, meeting_id)
     if not transcript:
         raise HTTPException(
-            status_code=400, detail="Transcript chưa có. Chạy transcription trước."
+            status_code=400, detail="Transcript not found. Run transcription first."
         )
 
     from src.workers.tasks.analyze_task import analyze_transcript
@@ -52,10 +52,10 @@ async def get_analysis_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AnalysisResponse:
-    """Lấy kết quả analysis của meeting."""
+    """Get analysis result for meeting."""
     result = await get_analysis_result(db, meeting_id)
     if not result:
         raise HTTPException(
-            status_code=404, detail="Analysis chưa có. Chạy analyze trước."
+            status_code=404, detail="Analysis not found. Run analyze first."
         )
     return AnalysisResponse.model_validate(result)

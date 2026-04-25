@@ -1,5 +1,5 @@
 """
-Router: /api/v1/meetings/{id}/export — export kết quả.
+Router: /api/v1/meetings/{id}/export - export results.
 
 GET /meetings/{id}/export/markdown   Markdown string
 GET /meetings/{id}/export/json       JSON file
@@ -23,10 +23,11 @@ router = APIRouter(prefix="/meetings", tags=["exports"])
 async def _get_analysis_or_404(
     db: AsyncSession, meeting_id: uuid.UUID
 ) -> MeetingAnalysis:
+    """Helper to get analysis or raise 404."""
     result = await get_analysis_result(db, meeting_id)
     if not result:
         raise HTTPException(
-            status_code=404, detail="Analysis chưa có. Chạy analyze trước."
+            status_code=404, detail="Analysis not found. Run analyze first."
         )
     return MeetingAnalysis.from_dict(result.analysis_json)
 
@@ -36,7 +37,7 @@ async def export_markdown_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> str:
-    """Export kết quả dưới dạng Markdown."""
+    """Export result as Markdown."""
     await _assert_meeting_exists(db, meeting_id)
     analysis = await _get_analysis_or_404(db, meeting_id)
     return export_markdown(analysis)
@@ -47,14 +48,16 @@ async def export_json_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Response:
-    """Export kết quả dưới dạng JSON."""
+    """Export result as JSON."""
     await _assert_meeting_exists(db, meeting_id)
     analysis = await _get_analysis_or_404(db, meeting_id)
     content = export_json(analysis)
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="meeting_{meeting_id}.json"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="meeting_{meeting_id}.json"'
+        },
     )
 
 
@@ -63,18 +66,21 @@ async def export_csv_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Response:
-    """Export kết quả dưới dạng CSV."""
+    """Export result as CSV."""
     await _assert_meeting_exists(db, meeting_id)
     analysis = await _get_analysis_or_404(db, meeting_id)
     content = export_csv(analysis)
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="meeting_{meeting_id}.csv"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="meeting_{meeting_id}.csv"'
+        },
     )
 
 
 async def _assert_meeting_exists(db: AsyncSession, meeting_id: uuid.UUID) -> None:
+    """Helper to check meeting exists."""
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")

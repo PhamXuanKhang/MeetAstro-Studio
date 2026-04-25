@@ -1,44 +1,67 @@
 """
-Credential vault — Fernet symmetric encryption cho provider credentials.
-Key lấy từ APP_SECRET_KEY trong config.
+Credential vault using Fernet symmetric encryption for provider credentials.
+
+Uses APP_SECRET_KEY from configuration for encryption/decryption.
 """
 import base64
+import hashlib
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from src.config import APP_SECRET_KEY, get_logger
+from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
 
 
 def _get_fernet() -> Fernet:
-    if not APP_SECRET_KEY:
+    """Get Fernet instance using APP_SECRET_KEY from settings."""
+    settings = get_settings()
+    secret_key = settings.app_secret_key
+
+    if not secret_key:
         raise ValueError(
-            "APP_SECRET_KEY chưa được cấu hình. "
-            "Set APP_SECRET_KEY trong .env (dùng: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\")."
+            "APP_SECRET_KEY is not configured. Set APP_SECRET_KEY in .env file. "
+            "Generate a key with: python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\""
         )
-    # Fernet key phải là 32-byte URL-safe base64 — nếu raw string thì derive bằng padding
-    key = APP_SECRET_KEY.encode()
-    # Nếu key chưa đúng format Fernet, pad/encode lại
+
+    key = secret_key.encode()
     try:
         return Fernet(key)
     except Exception:
-        # Fallback: hash key thành 32 bytes rồi base64-encode
-        import hashlib
         derived = base64.urlsafe_b64encode(hashlib.sha256(key).digest())
         return Fernet(derived)
 
 
 def encrypt(plaintext: str) -> str:
-    """Mã hóa chuỗi plaintext. Trả về ciphertext dạng string."""
+    """
+    Encrypt a plaintext string.
+
+    Args:
+        plaintext: String to encrypt.
+
+    Returns:
+        Encrypted ciphertext as string.
+    """
     f = _get_fernet()
     return f.encrypt(plaintext.encode()).decode()
 
 
 def decrypt(ciphertext: str) -> str:
-    """Giải mã ciphertext. Raise InvalidToken nếu key sai hoặc data corrupt."""
+    """
+    Decrypt a ciphertext string.
+
+    Args:
+        ciphertext: Encrypted string to decrypt.
+
+    Returns:
+        Decrypted plaintext.
+
+    Raises:
+        ValueError: If decryption fails (wrong key or corrupted data).
+    """
     f = _get_fernet()
     try:
         return f.decrypt(ciphertext.encode()).decode()
     except InvalidToken as exc:
-        raise ValueError("Không thể decrypt — key sai hoặc dữ liệu bị hỏng.") from exc
+        raise ValueError("Decryption failed - wrong key or corrupted data.") from exc

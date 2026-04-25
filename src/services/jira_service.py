@@ -1,5 +1,5 @@
 """
-Jira service — orchestration luồng đẩy MeetingAnalysis lên Jira.
+Jira service - orchestrate pushing MeetingAnalysis to Jira.
 """
 from dataclasses import dataclass, field
 from typing import Optional
@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class JiraPushResult:
-    """Kết quả push một MeetingAnalysis lên Jira."""
+    """Result of pushing a MeetingAnalysis to Jira."""
 
     is_stub: bool
     epic_keys: list[str] = field(default_factory=list)
@@ -26,9 +26,22 @@ def push_analysis_to_jira(
     analysis: MeetingAnalysis,
     client: Optional[JiraClient] = None,
 ) -> JiraPushResult:
-    """Đẩy toàn bộ Epic -> Task -> Subtask từ MeetingAnalysis lên Jira."""
+    """
+    Push entire Epic -> Task -> Subtask hierarchy from MeetingAnalysis to Jira.
+
+    Args:
+        analysis: MeetingAnalysis containing epics to push.
+        client: Optional JiraClient instance. If None, creates new one.
+
+    Returns:
+        JiraPushResult with counts and keys.
+
+    Raises:
+        ValueError: If no epics to push.
+        RuntimeError: If any Jira API call fails.
+    """
     if not analysis.epics:
-        raise ValueError("Không có epics để đẩy lên Jira.")
+        raise ValueError("No epics to push to Jira.")
 
     jira_client = client or JiraClient()
     result = JiraPushResult(is_stub=jira_client.is_stub)
@@ -37,7 +50,7 @@ def push_analysis_to_jira(
         try:
             epic_key = jira_client.create_epic(epic)
         except Exception as exc:
-            raise RuntimeError(f"Tạo Epic thất bại ('{epic.summary}'): {exc}") from exc
+            raise RuntimeError(f"Failed to create Epic ('{epic.summary}'): {exc}") from exc
 
         result.epic_keys.append(epic_key)
         result.epic_count += 1
@@ -46,7 +59,7 @@ def push_analysis_to_jira(
             try:
                 task_key = jira_client.create_task(task, epic_key)
             except Exception as exc:
-                raise RuntimeError(f"Tạo Task thất bại ('{task.summary}'): {exc}") from exc
+                raise RuntimeError(f"Failed to create Task ('{task.summary}'): {exc}") from exc
 
             result.task_count += 1
 
@@ -55,12 +68,12 @@ def push_analysis_to_jira(
                     jira_client.create_subtask(subtask, task_key)
                 except Exception as exc:
                     raise RuntimeError(
-                        f"Tạo Subtask thất bại ('{subtask.summary}'): {exc}"
+                        f"Failed to create Subtask ('{subtask.summary}'): {exc}"
                     ) from exc
                 result.subtask_count += 1
 
     logger.info(
-        "Jira push hoàn tất: epics=%d tasks=%d subtasks=%d stub=%s",
+        "Jira push complete: epics=%d tasks=%d subtasks=%d stub=%s",
         result.epic_count,
         result.task_count,
         result.subtask_count,

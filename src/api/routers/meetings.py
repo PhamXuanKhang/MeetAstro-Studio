@@ -1,12 +1,13 @@
 """
-Router: /api/v1/meetings — CRUD meetings và audio upload.
+Router: /api/v1/meetings - CRUD meetings and audio upload.
 
-POST /meetings                 Tạo meeting
-GET  /meetings                 Danh sách meetings
-GET  /meetings/{id}            Chi tiết meeting
-DELETE /meetings/{id}          Xóa meeting
-POST /meetings/{id}/audio      Upload audio → queue pipeline
+POST /meetings                 Create meeting
+GET  /meetings                 List meetings
+GET  /meetings/{id}            Get meeting details
+DELETE /meetings/{id}          Delete meeting
+POST /meetings/{id}/audio      Upload audio -> queue pipeline
 """
+import datetime as dt
 import os
 import shutil
 import uuid
@@ -39,7 +40,7 @@ async def create_meeting_endpoint(
     payload: MeetingCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MeetingResponse:
-    """Tạo meeting record mới."""
+    """Create a new meeting record."""
     meeting = await create_meeting(
         db, title=payload.title, user_id=payload.user_id
     )
@@ -54,7 +55,7 @@ async def list_meetings_endpoint(
     page_size: int = Query(default=20, ge=1, le=100),
     user_id: str = Query(default="default_user"),
 ) -> MeetingListResponse:
-    """Lấy danh sách meetings."""
+    """Get list of meetings with pagination."""
     items, total = await list_meetings(
         db, user_id=user_id, status=status, page=page, page_size=page_size
     )
@@ -71,10 +72,10 @@ async def get_meeting_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MeetingResponse:
-    """Lấy chi tiết một meeting."""
+    """Get details of a specific meeting."""
     meeting = await get_meeting(db, meeting_id, load_relations=True)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
     return MeetingResponse.model_validate(meeting)
 
 
@@ -83,10 +84,10 @@ async def delete_meeting_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """Xóa meeting và cascade xóa tất cả dữ liệu liên quan."""
+    """Delete meeting and cascade delete all related data."""
     deleted = await delete_meeting(db, meeting_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
 
 
 @router.post("/{meeting_id}/audio", response_model=AudioUploadResponse)
@@ -98,31 +99,33 @@ async def upload_audio_endpoint(
     language: str = Form(default="en"),
 ) -> AudioUploadResponse:
     """
-    Upload audio file và queue pipeline transcribe → analyze.
+    Upload audio file and queue transcribe -> analyze pipeline.
 
-    Trả về job_id để polling tiến trình qua GET /jobs/{job_id}.
+    Returns job_id for polling progress via GET /jobs/{job_id}.
     """
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
     if meeting.status not in ("pending", "failed"):
         raise HTTPException(
             status_code=409,
-            detail=f"Meeting đang ở trạng thái '{meeting.status}', không thể upload lại.",
+            detail=f"Meeting is in '{meeting.status}' state, cannot re-upload.",
         )
 
-    # Lưu file vào disk
     settings = get_settings()
     audio_dir = settings.audio_output_dir
     os.makedirs(audio_dir, exist_ok=True)
+
+    timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     ext = os.path.splitext(file.filename or "audio.wav")[1] or ".wav"
-    audio_path = os.path.join(audio_dir, f"{meeting_id}{ext}")
+    audio_path = os.path.join(audio_dir, f"upload_{timestamp}_{meeting_id}{ext}")
+
     with open(audio_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Cập nhật audio_path
     await update_meeting_status(db, meeting_id, status="pending")
     from sqlalchemy import update as sa_update
+
     from src.db.models import Meeting as MeetingModel
     await db.execute(
         sa_update(MeetingModel)
@@ -130,7 +133,6 @@ async def upload_audio_endpoint(
         .values(audio_path=audio_path)
     )
 
-    # Queue Celery pipeline
     from src.workers.pipeline import run_pipeline
     task = run_pipeline.delay(
         str(meeting_id), audio_path, diarize=diarize, language=language

@@ -1,9 +1,9 @@
 """
-Router: /api/v1/meetings/{id}/transcribe — quản lý transcript.
+Router: /api/v1/meetings/{id}/transcribe - manage transcripts.
 
-POST /meetings/{id}/transcribe     Bắt đầu transcription job
-GET  /meetings/{id}/transcript     Lấy transcript text
-PATCH /meetings/{id}/transcript    Chỉnh sửa transcript
+POST /meetings/{id}/transcribe     Start transcription job
+GET  /meetings/{id}/transcript     Get transcript text
+PATCH /meetings/{id}/transcript    Edit transcript
 """
 import uuid
 from typing import Annotated
@@ -26,13 +26,13 @@ async def start_transcription(
     diarize: bool = False,
     language: str = "en",
 ) -> JobStatusResponse:
-    """Bắt đầu transcription job cho meeting đã có audio_path."""
+    """Start transcription job for meeting with existing audio_path."""
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting không tồn tại.")
+        raise HTTPException(status_code=404, detail="Meeting not found.")
     if not meeting.audio_path:
         raise HTTPException(
-            status_code=400, detail="Meeting chưa có audio. Upload audio trước."
+            status_code=400, detail="Meeting has no audio. Upload audio first."
         )
 
     from src.workers.tasks.transcribe_task import transcribe_audio
@@ -50,11 +50,11 @@ async def get_transcript_endpoint(
     meeting_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TranscriptResponse:
-    """Lấy transcript đã lưu của meeting."""
+    """Get saved transcript for meeting."""
     transcript = await get_transcript(db, meeting_id)
     if not transcript:
         raise HTTPException(
-            status_code=404, detail="Transcript chưa có. Chạy transcription trước."
+            status_code=404, detail="Transcript not found. Run transcription first."
         )
     return TranscriptResponse.model_validate(transcript)
 
@@ -65,10 +65,10 @@ async def patch_transcript(
     payload: TranscriptPatch,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TranscriptResponse:
-    """Cho phép user chỉnh sửa transcript trước khi analyze."""
+    """Allow user to edit transcript before analysis."""
     transcript = await get_transcript(db, meeting_id)
     if not transcript:
-        raise HTTPException(status_code=404, detail="Transcript không tồn tại.")
+        raise HTTPException(status_code=404, detail="Transcript not found.")
     transcript.raw_text = payload.raw_text
     transcript.char_count = len(payload.raw_text)
     await db.flush()

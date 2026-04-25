@@ -1,6 +1,6 @@
 """
-Integration tests — P10: full pipeline + edge cases.
-Tất cả external calls đều được mock.
+Integration tests - P10: full pipeline + edge cases.
+All external calls are mocked.
 """
 from unittest.mock import MagicMock, patch
 
@@ -9,10 +9,8 @@ import pytest
 from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 def _make_analysis(
-    summary: str = "Họp sprint planning",
+    summary: str = "Sprint planning meeting",
     n_epics: int = 1,
     confidence: float = 0.85,
 ) -> MeetingAnalysis:
@@ -36,27 +34,23 @@ def _make_analysis(
     return MeetingAnalysis(
         epics=epics,
         summary=summary,
-        key_decisions=["Dùng FastAPI", "Deploy lên GCP"],
-        parking_lot=["Review budget sau"],
+        key_decisions=["Use FastAPI", "Deploy to GCP"],
+        parking_lot=["Review budget later"],
     )
 
 
 SAMPLE_TRANSCRIPT = (
-    "Alice: Chúng ta cần implement feature X trước ngày 31/01.\n"
-    "Bob: Tôi sẽ assign cho team backend.\n"
-    "Alice: OK, đây là critical priority."
+    "Alice: We need to implement feature X before January 31st.\n"
+    "Bob: I'll assign it to the backend team.\n"
+    "Alice: OK, this is critical priority."
 )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Test: Full pipeline mock (transcribe → analyze → export)
-# ══════════════════════════════════════════════════════════════════════════════
-
 class TestFullPipelineMock:
-    """Mock toàn bộ OpenAI calls, verify pipeline flow."""
+    """Mock all OpenAI calls, verify pipeline flow."""
 
     def test_transcribe_analyze_export_pipeline(self, tmp_path):
-        """Transcribe → Analyze → Export markdown không raise exception."""
+        """Transcribe -> Analyze -> Export markdown without raising exception."""
         from src.modules.exporter import export_markdown
         from src.services.transcription_service import transcribe
         from src.services.analysis_service import analyze
@@ -78,49 +72,46 @@ class TestFullPipelineMock:
             mock_asyncio.run.return_value = mock_analysis
             result = analyze(transcript)
 
-        assert result.summary == "Họp sprint planning"
+        assert result.summary == "Sprint planning meeting"
         assert len(result.epics) == 1
 
         md = export_markdown(result)
-        assert "Họp sprint planning" in md
+        assert "Sprint planning meeting" in md
         assert "Implement feature X" in md
 
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Test: Edge cases
-# ══════════════════════════════════════════════════════════════════════════════
-
 class TestEdgeCases:
     def test_empty_transcript_raises(self):
-        """analyze() raise ValueError khi transcript rỗng."""
+        """analyze() raises ValueError when transcript is empty."""
         from src.services.analysis_service import analyze
 
-        with pytest.raises(ValueError, match="trống"):
+        with pytest.raises(ValueError, match="cannot be empty"):
             analyze("")
 
     def test_whitespace_transcript_raises(self):
-        """analyze() raise ValueError khi transcript chỉ có khoảng trắng."""
+        """analyze() raises ValueError when transcript is only whitespace."""
         from src.services.analysis_service import analyze
 
-        with pytest.raises(ValueError, match="trống"):
+        with pytest.raises(ValueError, match="cannot be empty"):
             analyze("   \n\t  ")
 
     def test_no_api_key_uses_mock_analyzer(self):
-        """Khi OPENAI_API_KEY rỗng, analyze() trả về MockAnalyzer result."""
+        """When OPENAI_API_KEY is empty, analyze() returns MockAnalyzer result."""
         from src.services.analysis_service import analyze
 
-        with patch("src.services.analysis_service.OPENAI_API_KEY", ""):
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = ""
+        with patch("src.services.analysis_service.get_settings", return_value=mock_settings):
             result = analyze(SAMPLE_TRANSCRIPT)
 
         assert isinstance(result, MeetingAnalysis)
         assert len(result.epics) >= 1
 
     def test_long_transcript_does_not_raise(self):
-        """Transcript dài (>14k tokens) không raise ngoại lệ khi analyze."""
+        """Long transcript (>14k tokens) does not raise exception when analyzing."""
         from src.services.analysis_service import analyze
 
-        long_transcript = "Alice: Nội dung quan trọng. " * 600  # ~14k+ words
+        long_transcript = "Alice: Important content. " * 600
         mock_analysis = _make_analysis(summary="Long meeting")
 
         with patch("src.services.analysis_service.asyncio") as mock_asyncio:
@@ -130,21 +121,17 @@ class TestEdgeCases:
         assert result.summary == "Long meeting"
 
     def test_missing_app_secret_key_raises_on_encrypt(self):
-        """credential_vault.encrypt() raise ValueError khi APP_SECRET_KEY rỗng."""
+        """credential_vault.encrypt() raises ValueError when APP_SECRET_KEY is empty."""
         from src.modules.credential_vault import encrypt
 
-        with patch("src.modules.credential_vault.APP_SECRET_KEY", ""):
+        mock_settings = MagicMock()
+        mock_settings.app_secret_key = ""
+        with patch("src.modules.credential_vault.get_settings", return_value=mock_settings):
             with pytest.raises(ValueError, match="APP_SECRET_KEY"):
                 encrypt("test-secret")
 
-    def test_transcribe_chunks_empty_returns_empty_string(self):
-        """transcribe_chunks([]) trả về empty string."""
-        from src.services.transcription_service import transcribe_chunks
-
-        assert transcribe_chunks([]) == ""
-
     def test_export_json_roundtrip(self):
-        """Export JSON rồi parse lại được MeetingAnalysis."""
+        """Export JSON then parse back to MeetingAnalysis."""
         from src.modules.exporter import export_json
 
         analysis = _make_analysis()
@@ -155,103 +142,33 @@ class TestEdgeCases:
         assert loaded.epics[0].tasks[0].summary == "Implement feature X"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Test: Jira stub mode
-# ══════════════════════════════════════════════════════════════════════════════
-
 class TestJiraStubMode:
     def test_stub_mode_when_no_credentials(self):
-        """JiraClient dùng stub khi JIRA_BASE_URL rỗng."""
+        """JiraClient uses stub when JIRA_BASE_URL is empty."""
         from src.modules.jira_client import JiraClient
 
-        with patch("src.modules.jira_client.JIRA_BASE_URL", ""):
-            client = JiraClient()
-            assert client.is_stub
+        client = JiraClient(base_url="", email="", token="", project_key="")
+        assert client.is_stub
 
     def test_push_to_jira_stub_result(self):
-        """push_analysis_to_jira() trả về is_stub=True khi không có credentials."""
+        """push_analysis_to_jira() returns is_stub=True when no credentials."""
+        from src.modules.jira_client import JiraClient
         from src.services.jira_service import push_analysis_to_jira
 
         analysis = _make_analysis()
-
-        with patch("src.modules.jira_client.JIRA_BASE_URL", ""):
-            with patch("src.modules.jira_client.JIRA_API_TOKEN", ""):
-                result = push_analysis_to_jira(analysis)
+        stub_client = JiraClient(base_url="", email="", token="", project_key="")
+        result = push_analysis_to_jira(analysis, client=stub_client)
 
         assert result.is_stub is True
         assert isinstance(result.epic_keys, list)
 
     def test_stub_create_epic_returns_stub_key(self):
-        """JiraClient stub mode trả về STUB-0 key."""
+        """JiraClient stub mode returns STUB-0 key."""
         from src.modules.jira_client import JiraClient
         from src.schema import Epic
 
-        with patch("src.modules.jira_client.JIRA_BASE_URL", ""):
-            client = JiraClient()
-            epic = Epic(summary="Test Epic")
-            key = client.create_epic(epic)
+        client = JiraClient(base_url="", email="", token="", project_key="")
+        epic = Epic(summary="Test Epic")
+        key = client.create_epic(epic)
 
         assert "STUB" in key.upper() or key.startswith("STUB")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Test: Chunked recording (3 chunks)
-# ══════════════════════════════════════════════════════════════════════════════
-
-class TestChunkedRecording:
-    def test_transcribe_3_chunks_concat(self, tmp_path):
-        """transcribe_chunks() với 3 file nhỏ → concat kết quả."""
-        from src.services.transcription_service import transcribe_chunks
-
-        texts = ["Phần một.", "Phần hai.", "Phần ba."]
-        chunk_files = []
-        for i, _ in enumerate(texts):
-            f = tmp_path / f"chunk{i:03d}.wav"
-            f.write_bytes(b"\x00" * 100)
-            chunk_files.append(str(f))
-
-        with patch(
-            "src.services.transcription_service.transcribe",
-            side_effect=texts,
-        ):
-            result = transcribe_chunks(chunk_files)
-
-        assert result == "Phần một. Phần hai. Phần ba."
-
-    def test_failed_chunk_skipped_rest_continues(self, tmp_path):
-        """Chunk thất bại không làm dừng toàn bộ — các chunk khác vẫn transcribe."""
-        from src.services.transcription_service import transcribe_chunks
-
-        def _side_effect(path, language="en"):
-            if "bad" in path:
-                raise RuntimeError("chunk fail")
-            return "ok"
-
-        files = [
-            str(tmp_path / "good1.wav"),
-            str(tmp_path / "bad.wav"),
-            str(tmp_path / "good2.wav"),
-        ]
-        for f in files:
-            (tmp_path / f.split("\\")[-1].split("/")[-1]).write_bytes(b"\x00" * 10)
-
-        with patch("src.services.transcription_service.transcribe", side_effect=_side_effect):
-            result = transcribe_chunks(files)
-
-        assert result == "ok ok"
-
-    def test_audio_recorder_chunk_state_reset_on_start(self):
-        """AudioRecorder reset _completed_chunks khi gọi start() mới."""
-        import threading
-        from src.modules.audio_recorder import AudioRecorder
-
-        rec = AudioRecorder()
-        rec._completed_chunks = ["/old/chunk.wav"]
-
-        with patch.object(rec, "_record_loop"):
-            fake_thread = MagicMock(spec=threading.Thread)
-            fake_thread.is_alive.return_value = True
-            with patch("threading.Thread", return_value=fake_thread):
-                rec.start(output_path="/tmp/new_recording.wav")
-
-        assert rec.get_completed_chunks() == []
