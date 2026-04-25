@@ -27,6 +27,7 @@ server = [
     "alembic>=1.13",
     "celery>=5.3",
     "redis>=5.0",
+    "slowapi>=0.1.9",
 ]
 
 # Frontend: Flet desktop app + local audio recording
