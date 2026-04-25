@@ -3,15 +3,19 @@ import csv
 import io
 import json
 
-import pytest
-
 from src.modules.exporter import export_csv, export_json, export_markdown
 from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
 
 
 def make_analysis() -> MeetingAnalysis:
-    subtask = Subtask(summary="Cài môi trường", assignee="Nam", deadline="2024-01-10", priority=Priority.MEDIUM, context="context subtask")
-    task = Task(summary="Triển khai", assignee="Alice", deadline="2024-01-15", priority=Priority.HIGH, context="context task", subtasks=[subtask])
+    subtask = Subtask(
+        summary="Cài môi trường", assignee="Nam", deadline="2024-01-10",
+        priority=Priority.MEDIUM, context="context subtask"
+    )
+    task = Task(
+        summary="Triển khai", assignee="Alice", deadline="2024-01-15",
+        priority=Priority.HIGH, context="context task", subtasks=[subtask]
+    )
     epic = Epic(summary="Ra mắt Q1", description="Chuẩn bị launch.", tasks=[task])
     return MeetingAnalysis(epics=[epic], summary="Họp về launch Q1.")
 

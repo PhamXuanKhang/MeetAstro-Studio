@@ -46,11 +46,10 @@ def export_json(analysis: MeetingAnalysis) -> str:
 def export_csv(analysis: MeetingAnalysis) -> str:
     """Xuất MeetingAnalysis thành CSV — mỗi task/subtask là một row."""
     output = io.StringIO()
-    writer = csv.DictWriter(
-        output,
-        fieldnames=["type", "epic", "task", "summary", "assignee", "deadline", "priority", "context"],
-        lineterminator="\n",
-    )
+    fieldnames = [
+        "type", "epic", "task", "summary", "assignee", "deadline", "priority", "context"
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
 
     for epic in analysis.epics:
