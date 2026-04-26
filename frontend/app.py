@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 import flet as ft
 
 from frontend.components.sidebar import build_sidebar
@@ -12,11 +14,37 @@ from frontend.views.results_view import build_results_view
 from frontend.views.review_view import build_review_view
 from frontend.views.settings_view import build_settings_view
 
+_TITLES = {
+    "home": "Overview",
+    "new_meeting": "New Meeting",
+    "results": "Results",
+    "review": "Review",
+    "history": "History",
+    "settings": "Settings",
+}
+
 
 def build_app(page: ft.Page) -> None:
     state = AppState()
+    _search_timer: list = [None]
 
-    content_host = ft.Container(expand=True)
+    # ── Persistent busy banner — updated in-place, never rebuilt ─────────
+    busy_text_ctrl = ft.Text("Working...", size=12, color=ft.Colors.GREY_800)
+    busy_banner = ft.Container(
+        visible=False,
+        padding=ft.padding.symmetric(horizontal=18, vertical=10),
+        bgcolor=ft.Colors.AMBER_50,
+        border=ft.border.only(bottom=ft.BorderSide(1, ft.Colors.AMBER_100)),
+        content=ft.Row(
+            [ft.ProgressRing(width=18, height=18, stroke_width=2), busy_text_ctrl],
+            spacing=10,
+        ),
+    )
+
+    # ── Persistent content slots ──────────────────────────────────────────
+    view_container = ft.Container(expand=True, bgcolor=ft.Colors.GREY_50)
+    topbar_slot = ft.Container(expand=False)
+    sidebar_slot = ft.Container(expand=False)
 
     def toast(message: str, *, error: bool = False) -> None:
         page.snack_bar = ft.SnackBar(
@@ -29,110 +57,98 @@ def build_app(page: ft.Page) -> None:
     def set_busy(busy: bool, text: str = "") -> None:
         state.busy = busy
         state.progress_text = text
-        render()
 
-    def on_navigate(route: str) -> None:
-        state.route = route
-        render()
+        def _update():
+            busy_text_ctrl.value = text or "Working..."
+            busy_banner.visible = busy
+            try:
+                busy_banner.update()
+            except Exception:
+                pass
 
-    def on_search_change(e: ft.ControlEvent) -> None:
-        state.search_query = e.control.value or ""
-        render()
+        try:
+            page.call_from_thread(_update)
+        except Exception:
+            _update()
 
-    def on_record_click() -> None:
-        state.route = "new_meeting"
-        render()
-
-    def render() -> None:
-        route = state.route
-
+    def _swap_content(route: str) -> None:
+        """Swap chỉ phần nội dung — không bao giờ gọi page.clean()."""
         if route == "home":
-            title = "Overview"
             body = build_dashboard_view(
                 page=page, state=state, toast=toast, set_busy=set_busy,
-                on_open_results=lambda rec: _open_record(rec)
+                on_open_results=lambda rec: _open_record(rec),
             )
         elif route == "new_meeting":
-            title = "New meeting"
             body = build_new_meeting_view(
-                page=page,
-                state=state,
-                toast=toast,
-                set_busy=set_busy,
+                page=page, state=state, toast=toast, set_busy=set_busy,
                 on_open_results=lambda: on_navigate("results"),
                 on_open_review=lambda: on_navigate("review"),
             )
         elif route == "results":
-            title = "Results"
             body = build_results_view(
-                page=page, state=state, toast=toast, set_busy=set_busy, on_navigate=on_navigate
+                page=page, state=state, toast=toast, set_busy=set_busy,
+                on_navigate=on_navigate,
             )
         elif route == "review":
-            title = "Review"
             body = build_review_view(
-                page=page, state=state, toast=toast, set_busy=set_busy, on_navigate=on_navigate
+                page=page, state=state, toast=toast, set_busy=set_busy,
+                on_navigate=on_navigate,
             )
         elif route == "history":
-            title = "History"
             body = build_history_view(
                 page=page, state=state, toast=toast, set_busy=set_busy,
-                on_open_results=lambda rec: _open_record(rec)
+                on_open_results=lambda rec: _open_record(rec),
             )
         elif route == "settings":
-            title = "Settings"
             body = build_settings_view(page=page, state=state, toast=toast, set_busy=set_busy)
         else:
-            title = "Home"
-            body = ft.Text("Not found")
+            body = ft.Text("Page not found", color=ft.Colors.GREY_700)
 
-        sidebar = build_sidebar(active_route=route, on_navigate=on_navigate)
-        topbar = build_topbar(
+        title = _TITLES.get(route, route.replace("_", " ").title())
+        topbar_slot.content = build_topbar(
             title=title,
             search_value=state.search_query,
             on_search_change=on_search_change,
-            on_record_click=on_record_click,
+            on_record_click=lambda: on_navigate("new_meeting"),
         )
-
-        busy_banner = (
-            ft.Container(
-                padding=ft.padding.symmetric(horizontal=18, vertical=10),
-                bgcolor=ft.Colors.AMBER_50,
-                border=ft.border.only(bottom=ft.BorderSide(1, ft.Colors.AMBER_100)),
-                content=ft.Row(
-                    [
-                        ft.ProgressRing(width=18, height=18, stroke_width=2),
-                        ft.Text(
-                            state.progress_text or "Working...",
-                            size=12, color=ft.Colors.GREY_800
-                        ),
-                    ],
-                    spacing=10,
-                ),
-            )
-            if state.busy
-            else ft.Container(height=0)
-        )
-
-        content_host.content = ft.Column(
-            [
-                topbar,
-                busy_banner,
-                ft.Container(expand=True, bgcolor=ft.Colors.GREY_50, content=body)
-            ],
-            spacing=0,
-            expand=True,
-        )
-
-        page.clean()
-        page.add(ft.Row([sidebar, content_host], expand=True, spacing=0))
+        sidebar_slot.content = build_sidebar(active_route=route, on_navigate=on_navigate)
+        view_container.content = body
         page.update()
+
+    def on_navigate(route: str) -> None:
+        state.route = route
+        _swap_content(route)
+
+    def on_search_change(e: ft.ControlEvent) -> None:
+        state.search_query = e.control.value or ""
+        if _search_timer[0]:
+            _search_timer[0].cancel()
+        t = threading.Timer(
+            0.3,
+            lambda: page.call_from_thread(lambda: _swap_content(state.route)),
+        )
+        _search_timer[0] = t
+        t.start()
 
     def _open_record(rec) -> None:
         state.selected_meeting = rec
-        state.analysis = rec.analysis
-        state.transcript = rec.transcript or ""
-        state.audio_path = rec.audio_path
-        state.current_meeting_id = str(rec.id) if rec.id else None
+        state.analysis = getattr(rec, "analysis", None)
+        state.transcript = getattr(rec, "transcript", "") or ""
+        state.audio_path = getattr(rec, "audio_path", None)
+        state.current_meeting_id = str(rec.id) if getattr(rec, "id", None) else None
         on_navigate("results")
 
-    render()
+    # Build layout once — never call page.clean() again
+    content_col = ft.Column(
+        [topbar_slot, busy_banner, view_container],
+        spacing=0,
+        expand=True,
+    )
+    page.add(
+        ft.Row(
+            [sidebar_slot, content_col],
+            expand=True,
+            spacing=0,
+        )
+    )
+    _swap_content(state.route)
