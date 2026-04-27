@@ -1,32 +1,63 @@
 # Audio Processing Workflow
 
-Luồng xử lý âm thanh trong hệ thống, bắt đầu từ File Âm Thanh nguyên gốc cho tới khi phân tách ra văn bản thô (Transcript).
+Luồng xử lý âm thanh trong hệ thống, từ audio upload/record cho tới transcript lưu trong PostgreSQL.
 
 ---
 
-## 1. Kiến trúc hiện hành (Current Workflow)
+## 1. Kiến trúc hiện hành
 
-Hiện hành, quá trình xử lý âm thanh trong dự án theo tiêu chí Đơn Giản, Chạy Nhanh, và Tập trung vào cấu trúc Transcript. 
+Audio được xử lý bất đồng bộ qua FastAPI + Celery:
 
-**STT (Speech-To-Text) Workflow:**
-1. Trích xuất Input File: Upload `.mp3`/`.wav`. Hoặc sử dụng tính năng Record `recording_service.py` để thâu băng từ System Desktop + Microphone Mixing.
-2. STT Engine: Gọi qua `transcription_service.py`. Dùng Provider Pattern định sẵn:
-   - Thử sử dụng `OpenAITranscriber` (Whisper API qua request đám mây).
-   - *Fallback:* Nếu gặp Timeout hoặc Network lỗi, chuyển sang `LocalTranscriber` (mô hình base của Whisper được lưu local).
-3. Output: Hệ thống xuất ra duy nhất 1 chuỗi string `transcript` hoàn chỉnh lưu nội dung toàn bộ văn bản gốc mà không phân biệt ai đang nói câu nào. 
+```text
+Flet desktop
+  -> POST /api/v1/meetings/{id}/audio
+  -> Celery run_pipeline
+  -> transcribe_audio
+  -> OpenAI transcription provider
+  -> Transcript row in PostgreSQL
+```
+
+### Input
+
+- Upload file `.wav`, `.mp3`, `.m4a` từ Flet desktop app.
+- Hoặc record local bằng `recording_service.py` / `audio_recorder.py`, sau đó upload file đã ghi.
+
+### STT providers
+
+- `OpenAITranscriber`: plain OpenAI Whisper API transcription.
+- `OpenAIDiarizeTranscriber`: OpenAI diarization transcription với speaker labels.
+
+Không dùng Local Whisper trong dự án này. Nếu plain OpenAI transcription fail, task fail và Celery retry/error handling xử lý theo cấu hình task.
+
+### Diarization fallback
+
+Khi `diarize=true`, `transcription_service.transcribe_diarized()` thử `OpenAIDiarizeTranscriber` trước. Nếu diarization lỗi hoặc trả text rỗng, service fallback sang `OpenAITranscriber` để pipeline vẫn có transcript plain text.
+
+```text
+diarize=true
+  -> OpenAIDiarizeTranscriber
+  -> success: "[Speaker 0]: ..."
+  -> failure/empty: OpenAITranscriber plain transcript
+```
+
+### Output
+
+Transcript được lưu vào bảng `transcripts`:
+
+- `raw_text`: transcript dùng cho analysis.
+- `diarized_text`: transcript có speaker labels nếu có.
+- `language`: mã ngôn ngữ.
+- `char_count`: số ký tự transcript.
 
 ---
 
-## 2. Kiến trúc tương lai: Diarization & Alignment (Roadmap)
+## 2. Hướng mở rộng
 
-Khi hệ thống quy mô (Scale up), việc chỉ có văn bản Text thô mà không có người nói sẽ dẫn đến AI tạo ra các Task bị lộn xộn, sai chủ thể nhận việc (Assignee). Do đó, luồng Audio sẽ phải thêm bước Diarization.
+Nếu cần speaker attribution chính xác hơn, có thể tách pipeline thành hai nhánh:
 
-**Quy trình dự kiến:**
-1. **Parallel Computing**: Cùng một file âm thanh Input, hệ thống sẽ đẩy vào 2 tiến trình chạy song song (Parallels):
-   - Nhánh 1: Transcription (Speech-To-Text) - lấy nguyên con Text.
-   - Nhánh 2: Diarization Engine (Ví dụ dùng thư viện Pyannote Audio) để quét và ngắt thời gian từng người nói: `(Speaker A: 00:00 -> 00:20)`, `(Speaker B: 00:21 -> 00:25)`.
-2. **Alignment (So khớp)**: So gộp Transcript Text có timestamps (Word-level timestamps của Whisper) vào với Diarization Labels. 
-3. **Data Transform**: Đúc ra bộ object kiểu `[{"speaker": "Speaker A", "text": "Hôm nay chúng ta họp về..."}]`.
-4. **LLM Intake**: Đẩy Object đã phân tách người nói vào nhánh LLM Analysis.
+1. Transcription: lấy text/timestamps.
+2. Diarization: xác định speaker segments.
+3. Alignment: gộp word-level timestamps với speaker labels.
+4. LLM intake: đưa structured speaker transcript vào analysis.
 
-*P/S: Việc cài đặt Diarization sẽ kéo theo nhu cầu deploy một model Voice-Recognition tương đối nặng trong background, tuỳ thuộc vào Server Resources để đưa ra quyết định Scale cho phù hợp.*
+Việc thêm diarization engine riêng cần cân nhắc deploy resource, latency, privacy và chi phí vận hành. Nếu triển khai provider mới, provider đó phải kế thừa `BaseTranscriber` và có test riêng.

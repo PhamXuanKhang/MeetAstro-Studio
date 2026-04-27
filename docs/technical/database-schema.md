@@ -70,18 +70,18 @@ Core table storing meeting metadata.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
-| `id` | UUID | No | `uuid_generate_v4()` | Primary key |
-| `title` | VARCHAR(255) | No | - | Meeting title |
-| `audio_path` | VARCHAR(500) | Yes | NULL | Path to audio file on server |
-| `status` | VARCHAR(50) | No | `'pending'` | Status: `pending`, `transcribing`, `transcribed`, `analyzing`, `draft`, `reviewed`, `pushed` |
-| `user_id` | VARCHAR(100) | No | `'default_user'` | User identifier |
-| `celery_task_id` | VARCHAR(100) | Yes | NULL | Active Celery task ID for polling |
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
+| `title` | TEXT | No | - | Meeting title |
+| `audio_path` | TEXT | Yes | NULL | Path to audio file on server |
+| `status` | TEXT | No | `'pending'` | Status: `pending`, `transcribing`, `transcribed`, `analyzing`, `draft`, `reviewed`, `pushed` |
+| `user_id` | TEXT | No | `'default_user'` | User identifier |
+| `celery_task_id` | TEXT | Yes | NULL | Active Celery task ID for polling |
+| `error_message` | TEXT | Yes | NULL | Last pipeline error message |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
 | `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
 
 Indexes:
-- `ix_meetings_user_id` on `user_id`
-- `ix_meetings_status` on `status`
+- None in migration `0001_initial.py`.
 
 ### transcripts
 
@@ -89,12 +89,12 @@ Stores transcription results from Whisper API.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
-| `id` | UUID | No | `uuid_generate_v4()` | Primary key |
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
 | `meeting_id` | UUID | No | - | FK to `meetings.id` |
 | `raw_text` | TEXT | No | - | Plain transcript text |
 | `diarized_text` | TEXT | Yes | NULL | Transcript with speaker labels |
-| `language` | VARCHAR(10) | No | `'vi'` | Transcription language code |
-| `char_count` | INTEGER | No | 0 | Character count |
+| `language` | TEXT | Yes | `'en'` | Transcription language code |
+| `char_count` | INTEGER | Yes | NULL | Character count |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
 
 Constraints:
@@ -106,12 +106,14 @@ Stores GPT-4o analysis output.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
-| `id` | UUID | No | `uuid_generate_v4()` | Primary key |
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
 | `meeting_id` | UUID | No | - | FK to `meetings.id` |
 | `analysis_json` | JSONB | No | - | Full `MeetingAnalysis` as JSON |
 | `summary` | TEXT | Yes | NULL | Extracted summary text |
-| `overall_confidence` | FLOAT | No | 0.0 | Overall confidence score (0.0-1.0) |
+| `overall_confidence` | FLOAT | Yes | NULL | Overall confidence score (0.0-1.0) |
+| `validation_metrics` | JSONB | Yes | NULL | Validation metrics from analysis pipeline |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
 
 Constraints:
 - FK `meeting_id` -> `meetings.id` ON DELETE CASCADE
@@ -148,22 +150,23 @@ Flattened action items for human review (Human-in-the-Loop).
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
-| `id` | UUID | No | `uuid_generate_v4()` | Primary key |
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
 | `meeting_id` | UUID | No | - | FK to `meetings.id` |
-| `item_type` | VARCHAR(20) | No | - | `'epic'`, `'task'`, or `'subtask'` |
-| `item_index` | VARCHAR(50) | No | - | Hierarchical index (e.g., `"0.1.2"`) |
-| `summary` | VARCHAR(500) | No | - | AI-generated summary |
-| `assignee` | VARCHAR(100) | Yes | NULL | AI-extracted assignee |
-| `deadline` | DATE | Yes | NULL | AI-extracted deadline |
-| `priority` | VARCHAR(20) | Yes | NULL | `Critical`, `High`, `Medium`, `Low` |
+| `item_type` | TEXT | No | - | `'epic'`, `'task'`, or `'subtask'` |
+| `item_index` | TEXT | No | - | Hierarchical index (e.g., `"0.1.2"`) |
+| `summary` | TEXT | No | - | AI-generated summary |
+| `assignee` | TEXT | Yes | NULL | AI-extracted assignee |
+| `deadline` | TEXT | Yes | NULL | AI-extracted deadline |
+| `priority` | TEXT | Yes | NULL | `Critical`, `High`, `Medium`, `Low` |
 | `context` | TEXT | Yes | NULL | Transcript excerpt |
 | `confidence` | FLOAT | No | 0.0 | Validation confidence score |
 | `is_flagged` | BOOLEAN | No | FALSE | Flagged for user attention |
-| `review_status` | VARCHAR(20) | No | `'draft'` | `draft`, `approved`, `rejected` |
-| `edited_summary` | VARCHAR(500) | Yes | NULL | User-edited summary |
-| `edited_assignee` | VARCHAR(100) | Yes | NULL | User-edited assignee |
-| `edited_deadline` | DATE | Yes | NULL | User-edited deadline |
-| `edited_priority` | VARCHAR(20) | Yes | NULL | User-edited priority |
+| `review_status` | TEXT | No | `'draft'` | `draft`, `approved`, `rejected` |
+| `edited_summary` | TEXT | Yes | NULL | User-edited summary |
+| `edited_assignee` | TEXT | Yes | NULL | User-edited assignee |
+| `edited_deadline` | TEXT | Yes | NULL | User-edited deadline |
+| `edited_priority` | TEXT | Yes | NULL | User-edited priority |
+| `validation_notes` | JSONB | No | `[]` | Reasons for confidence/flagging decisions |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
 | `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
 
@@ -172,7 +175,7 @@ Constraints:
 
 Indexes:
 - `ix_review_items_meeting_id` on `meeting_id`
-- `ix_review_items_review_status` on `review_status`
+- `ix_review_items_is_flagged` on `is_flagged`
 
 ### provider_configs
 
@@ -180,9 +183,9 @@ Stores encrypted provider credentials (Fernet encryption).
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
-| `id` | UUID | No | `uuid_generate_v4()` | Primary key |
-| `user_id` | VARCHAR(100) | No | `'default_user'` | User identifier |
-| `provider_name` | VARCHAR(100) | No | - | Provider name (e.g., `'jira'`, `'openai'`) |
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
+| `user_id` | TEXT | No | `'default_user'` | User identifier |
+| `provider_name` | TEXT | No | - | Provider name (e.g., `'jira'`, `'openai'`) |
 | `config_json` | TEXT | No | - | **Fernet-encrypted** JSON config |
 | `active` | BOOLEAN | No | TRUE | Whether config is active |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
@@ -190,6 +193,73 @@ Stores encrypted provider credentials (Fernet encryption).
 
 Constraints:
 - UNIQUE (`user_id`, `provider_name`)
+
+### user_plans
+
+Stores the current quota plan for each user.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
+| `user_id` | TEXT | No | - | User identifier |
+| `plan_type` | TEXT | No | `'free'` | Plan type: `free`, `basic`, `pro`, `enterprise` |
+| `plan_started_at` | TIMESTAMPTZ | No | `NOW()` | Start timestamp |
+| `plan_expires_at` | TIMESTAMPTZ | Yes | NULL | Expiration timestamp |
+| `is_active` | BOOLEAN | Yes | TRUE | Whether plan is active |
+| `extra_data` | JSONB | Yes | NULL | Provider-specific or future metadata |
+| `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
+
+Constraints:
+- UNIQUE (`user_id`)
+
+Indexes:
+- `ix_user_plans_user_id` on `user_id`
+
+### usage_records
+
+Tracks daily/monthly usage for quota enforcement.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
+| `user_plan_id` | UUID | No | - | FK to `user_plans.id` |
+| `usage_type` | TEXT | No | - | Usage type, e.g. `transcription_tokens`, `analysis_tokens`, `jira_pushes`, `meetings` |
+| `usage_count` | BIGINT | No | 0 | Count for this usage period |
+| `period_start` | TIMESTAMPTZ | No | - | Period start |
+| `period_end` | TIMESTAMPTZ | No | - | Period end |
+| `extra_data` | JSONB | Yes | NULL | Additional usage metadata |
+| `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
+
+Constraints:
+- FK `user_plan_id` -> `user_plans.id` ON DELETE CASCADE
+- UNIQUE (`user_plan_id`, `usage_type`, `period_start`)
+
+Indexes:
+- `ix_usage_user_type_period` on (`user_plan_id`, `usage_type`, `period_start`)
+
+### quota_limits
+
+Defines maximum usage for each plan and period.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | No | `gen_random_uuid()` | Primary key |
+| `plan_type` | TEXT | No | - | Plan type |
+| `limit_type` | TEXT | No | - | Usage type this limit applies to |
+| `limit_value` | BIGINT | No | - | Maximum allowed usage |
+| `period_type` | TEXT | No | `'monthly'` | Period type, e.g. `daily`, `monthly` |
+| `is_active` | BOOLEAN | Yes | TRUE | Whether limit is active |
+| `description` | TEXT | Yes | NULL | Human-readable description |
+| `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
+
+Constraints:
+- UNIQUE (`plan_type`, `limit_type`, `period_type`)
+
+Indexes:
+- `ix_quota_limits_plan_type` on `plan_type`
 
 ---
 

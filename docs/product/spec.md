@@ -34,7 +34,7 @@ Justify: User luôn review và confirm trước khi export — cost of reject = 
 | Path | Mô tả |
 |------|-------|
 | **Happy — AI đúng, tự tin** | Transcript hiển thị chính xác, user đọc lướt thấy đúng, tiếp tục nhấn "Phân tích". |
-| **Low-confidence — AI không chắc** | Whisper API fail (network/quota) → fallback Local Whisper + hiện warning "Đang dùng local model, chất lượng có thể thấp hơn". User đọc transcript, quyết định chấp nhận hoặc re-upload. |
+| **Low-confidence — AI không chắc** | Diarization fail (network/quota/provider issue) → fallback sang plain OpenAI Whisper transcription + hiện warning phù hợp. User đọc transcript, quyết định chấp nhận hoặc re-upload. |
 | **Failure — AI sai** | Transcript sai nhiều (accent nặng, nhiều tiếng ồn) → user thấy text vô nghĩa. User chỉnh tay trong text area hoặc upload lại file audio khác. |
 | **Correction — user sửa** | User edit trực tiếp transcript trong text area trước khi analyze. Bản sửa được dùng làm input cho bước phân tích. |
 
@@ -83,7 +83,7 @@ Justify: User luôn review và confirm trước khi export — cost of reject = 
 |---|---------|---------|------------|
 | 1 | **Audio chất lượng kém** (nhiều người nói cùng lúc, tiếng ồn, accent nặng) | Whisper transcribe sai → analysis dựa trên transcript lỗi → action items vô nghĩa. User **có thể không biết** nếu không đọc kỹ transcript. | Hiển thị transcript để user verify trước khi analyze. [TBD] Thêm confidence score per segment. |
 | 2 | **GPT-4o hallucinate action items** không có trong transcript | Tạo task giả, giao cho người không liên quan. Nếu user không review kỹ → push lên Jira → confusion. | Yêu cầu GPT-4o trích dẫn `context` từ transcript cho mỗi task. User cross-check context ↔ transcript. Augmentation mode bắt buộc review trước push. |
-| 3 | **API outage** (OpenAI down hoặc rate limit) | User không transcribe/analyze được → workflow bị block. | Fallback chain: Whisper API → Local Whisper. [TBD] Cache analyzer — retry queue. Hiện error message rõ ràng thay vì fail im lặng. |
+| 3 | **API outage** (OpenAI down hoặc rate limit) | User không transcribe/analyze được → workflow bị block. | Celery retry + error message rõ ràng. Diarization có thể fallback sang plain OpenAI transcription, nhưng không fallback sang Local Whisper. [TBD] Retry queue/cache analyzer. |
 
 ---
 
@@ -106,7 +106,7 @@ AI Meeting Assistant là tool **augmentation** giúp nhân viên văn phòng t�
 
 AI **không tự quyết** — user luôn review transcript và analysis trước khi hành động. Điều này quan trọng vì Whisper có thể sai với tiếng Việt accent nặng, và GPT-4o có thể hallucinate action items. Safety net: mỗi task có `context` field trích dẫn từ transcript để user verify.
 
-Quality target: recall ≥ 85% (không sót task), WER ≤ 20%, structured output valid ≥ 95%. Risk chính: audio kém chất lượng và hallucination. Mitigation: augmentation mode bắt buộc, fallback chain transcription, context trích dẫn.
+Quality target: recall ≥ 85% (không sót task), WER ≤ 20%, structured output valid ≥ 95%. Risk chính: audio kém chất lượng và hallucination. Mitigation: human review bắt buộc, diarization fallback sang plain OpenAI transcription, context trích dẫn.
 
 Data flywheel hiện chưa có — hướng phát triển: log user corrections (transcript edits, tasks bị bỏ) → improve prompt → fine-tune model domain-specific dài hạn.
 

@@ -21,8 +21,12 @@ The Jira flow is triggered from the Flet UI via the API:
 ```text
 User clicks "Push to Jira"
   -> Flet shows progress: "Pushing to Jira..."
-  -> API queues Celery task
-  -> jira_service creates JiraClient() if needed
+  -> API checks meeting exists
+  -> API blocks if any ReviewItem is still draft
+  -> API queues Celery task and returns job_id
+  -> Flet polls /api/v1/jobs/{job_id}
+  -> worker reconstructs MeetingAnalysis from approved ReviewItem[]
+  -> jira_service creates JiraClient()
   -> jira_service for each epic in analysis.epics:
        epic_key = client.create_epic(epic)
        for each task in epic.tasks:
@@ -139,9 +143,10 @@ Trong `JiraClient._post`:
 - Nếu response không OK: log status code + response text
 - Sau đó `raise_for_status()` để ném exception
 
-Ở UI:
-- Toàn bộ block push Jira được bọc `try/except`
-- Có lỗi bất kỳ sẽ hiện `st.error("Lỗi Jira: ...")`
+Ở API/Flet:
+- API trả `409` nếu còn pending review items.
+- API trả `400` nếu không có approved items.
+- Flet bắt HTTP/job errors và hiển thị error message rõ ràng trong desktop UI.
 
 Lưu ý quan trọng:
 - Không có rollback khi fail giữa chừng
@@ -159,7 +164,6 @@ Lưu ý quan trọng:
 
 ### Giới hạn/rủi ro
 - Chưa có idempotency, bấm lại có thể tạo duplicate issues
-- `customfield_10014` phụ thuộc cấu hình Jira instance
 - `assignee.name` có thể không hợp lệ với Jira Cloud mới (nhiều instance cần `accountId`)
 - Không có rollback khi tạo Epic thành công nhưng Task/Subtask fail
 
@@ -169,7 +173,7 @@ Lưu ý quan trọng:
 
 1. Điền đủ 4 biến `JIRA_*` trong `.env`
 2. Đảm bảo issue types tồn tại: `Epic`, `Task`, `Subtask`
-3. Xác minh custom field Epic Link/Epic Name đúng ID cho instance hiện tại
+3. Xác minh Jira instance hỗ trợ `parent: {"key": ...}` cho Epic/Task/Subtask hierarchy
 4. Kiểm tra quyền account API token có quyền create issue trong project
 5. Chạy thử với 1 transcript nhỏ trước khi dùng dữ liệu thật
 

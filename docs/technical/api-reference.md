@@ -25,10 +25,12 @@ Check API and database connectivity.
 **Response:**
 ```json
 {
-  "status": "healthy",
-  "database": "connected"
+  "status": "ok",
+  "db": "ok"
 }
 ```
+
+If PostgreSQL is not available, `db` is returned as `"unavailable"`.
 
 ---
 
@@ -41,19 +43,30 @@ GET /api/v1/meetings
 ```
 
 Query params:
-- `user_id` (optional): Filter by user
+- `user_id` (optional, default: `"default_user"`): Filter by user
+- `status` (optional): Filter by meeting status
+- `page` (optional, default: `1`): Page number
+- `page_size` (optional, default: `20`, max: `100`): Page size
 
 **Response:**
 ```json
 {
-  "meetings": [
+  "items": [
     {
       "id": "uuid",
       "title": "Sprint Planning",
+      "audio_path": null,
       "status": "draft",
-      "created_at": "2026-04-24T10:00:00Z"
+      "user_id": "default_user",
+      "celery_task_id": null,
+      "error_message": null,
+      "created_at": "2026-04-24T10:00:00Z",
+      "updated_at": "2026-04-24T10:00:00Z"
     }
-  ]
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 20
 }
 ```
 
@@ -76,7 +89,13 @@ POST /api/v1/meetings
 {
   "id": "uuid",
   "title": "Sprint Planning",
-  "status": "pending"
+  "audio_path": null,
+  "status": "pending",
+  "user_id": "default_user",
+  "celery_task_id": null,
+  "error_message": null,
+  "created_at": "2026-04-24T10:00:00Z",
+  "updated_at": "2026-04-24T10:00:00Z"
 }
 ```
 
@@ -93,8 +112,11 @@ GET /api/v1/meetings/{meeting_id}
   "title": "Sprint Planning",
   "audio_path": "/data/recordings/uuid.wav",
   "status": "draft",
+  "user_id": "default_user",
   "celery_task_id": "task-uuid",
-  "created_at": "2026-04-24T10:00:00Z"
+  "error_message": null,
+  "created_at": "2026-04-24T10:00:00Z",
+  "updated_at": "2026-04-24T10:00:00Z"
 }
 ```
 
@@ -107,17 +129,17 @@ POST /api/v1/meetings/{meeting_id}/audio
 **Request:** `multipart/form-data`
 - `file`: Audio file (.wav, .mp3, .m4a)
 
-Query params:
+Form fields:
 - `diarize` (bool, default: false): Enable speaker diarization
-- `language` (str, default: "vi"): Transcription language
+- `language` (str, default: "en"): Transcription language
 
 **Response:**
 ```json
 {
   "meeting_id": "uuid",
-  "audio_path": "/data/recordings/uuid.wav",
-  "task_id": "celery-task-uuid",
-  "status": "transcribing"
+  "job_id": "celery-task-uuid",
+  "status": "queued",
+  "message": "Pipeline đã được queue. Dùng /jobs/{job_id} để theo dõi tiến trình."
 }
 ```
 
@@ -147,7 +169,8 @@ GET /api/v1/meetings/{meeting_id}/transcript
   "raw_text": "Transcript content here...",
   "diarized_text": "[Speaker 0]: Hello...",
   "language": "vi",
-  "char_count": 1234
+  "char_count": 1234,
+  "created_at": "2026-04-24T10:00:00Z"
 }
 ```
 
@@ -168,8 +191,12 @@ PATCH /api/v1/meetings/{meeting_id}/transcript
 ```json
 {
   "id": "uuid",
+  "meeting_id": "uuid",
   "raw_text": "Corrected transcript content...",
-  "char_count": 1234
+  "diarized_text": null,
+  "language": "vi",
+  "char_count": 1234,
+  "created_at": "2026-04-24T10:00:00Z"
 }
 ```
 
@@ -188,9 +215,11 @@ Triggers Celery task to analyze transcript.
 **Response:**
 ```json
 {
-  "meeting_id": "uuid",
-  "task_id": "celery-task-uuid",
-  "status": "analyzing"
+  "job_id": "celery-task-uuid",
+  "state": "PENDING",
+  "progress_pct": null,
+  "result": null,
+  "error": null
 }
 ```
 
@@ -213,7 +242,9 @@ GET /api/v1/meetings/{meeting_id}/analysis
     "discussion_points": [...],
     "parking_lot": [...]
   },
-  "overall_confidence": 0.85
+  "overall_confidence": 0.85,
+  "validation_metrics": {},
+  "created_at": "2026-04-24T10:00:00Z"
 }
 ```
 
@@ -232,23 +263,29 @@ Query params:
 
 **Response:**
 ```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "item_type": "task",
-      "item_index": "0.1",
-      "summary": "Implement API endpoint",
-      "assignee": "John",
-      "deadline": "2026-04-30",
-      "priority": "High",
-      "context": "Quoted from transcript...",
-      "confidence": 0.85,
-      "is_flagged": false,
-      "review_status": "draft"
-    }
-  ]
-}
+[
+  {
+    "id": "uuid",
+    "meeting_id": "uuid",
+    "item_type": "task",
+    "item_index": "0.1",
+    "summary": "Implement API endpoint",
+    "assignee": "John",
+    "deadline": "2026-04-30",
+    "priority": "High",
+    "context": "Quoted from transcript...",
+    "confidence": 0.85,
+    "is_flagged": false,
+    "review_status": "draft",
+    "edited_summary": null,
+    "edited_assignee": null,
+    "edited_deadline": null,
+    "edited_priority": null,
+    "validation_notes": [],
+    "created_at": "2026-04-24T10:00:00Z",
+    "updated_at": "2026-04-24T10:00:00Z"
+  }
+]
 ```
 
 #### Update Review Item
@@ -315,20 +352,27 @@ Pushes approved review items to Jira.
 **Response:**
 ```json
 {
+  "job_id": "celery-task-uuid",
   "is_stub": false,
-  "epic_keys": ["PROJ-1", "PROJ-2"],
-  "epic_count": 2,
-  "task_count": 5,
-  "subtask_count": 3
+  "epic_keys": [],
+  "task_count": 0,
+  "subtask_count": 0,
+  "message": "Jira push queued. Track at /jobs/celery-task-uuid."
 }
 ```
 
-If Jira credentials are missing:
+Poll the returned job to get the final Jira push result. If Jira credentials are
+missing, the worker uses Jira STUB mode and returns fake Jira keys in the job
+result.
+
+Final job result example:
 ```json
 {
   "is_stub": true,
   "epic_keys": ["STUB-001"],
-  "warning": "Jira credentials not configured"
+  "epic_count": 1,
+  "task_count": 5,
+  "subtask_count": 3
 }
 ```
 
@@ -389,30 +433,10 @@ GET /api/v1/settings/providers
 }
 ```
 
-#### Get Provider Config
-
-```
-GET /api/v1/settings/providers/{provider_name}
-```
-
-**Response:**
-```json
-{
-  "provider_name": "jira",
-  "active": true,
-  "config": {
-    "base_url": "https://company.atlassian.net",
-    "project_key": "PROJ"
-  }
-}
-```
-
-Note: Sensitive fields (tokens, keys) are not returned.
-
 #### Update Provider Config
 
 ```
-PUT /api/v1/settings/providers/{provider_name}
+POST /api/v1/settings/providers/{provider_name}
 ```
 
 **Request:**
@@ -440,7 +464,7 @@ DELETE /api/v1/settings/providers/{provider_name}
 #### Get Job Status
 
 ```
-GET /api/v1/jobs/{task_id}
+GET /api/v1/jobs/{job_id}
 ```
 
 Poll Celery task status.
@@ -448,16 +472,17 @@ Poll Celery task status.
 **Response:**
 ```json
 {
-  "task_id": "uuid",
-  "status": "SUCCESS",
+  "job_id": "uuid",
+  "state": "SUCCESS",
   "result": {
     "transcript_id": "uuid",
     "char_count": 1234
-  }
+  },
+  "error": null
 }
 ```
 
-Status values: `PENDING`, `STARTED`, `SUCCESS`, `FAILURE`, `RETRY`
+State values: `PENDING`, `STARTED`, `SUCCESS`, `FAILURE`, `RETRY`, `REVOKED`
 
 ---
 

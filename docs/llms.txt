@@ -1,7 +1,7 @@
 # AI Meeting Assistant — Context for AI Agents
 
 > This file provides structured context for AI coding agents (Claude Code, Cursor, Copilot, Codex, etc.) working on this project.
-> Updated: 2026-04-24
+> Updated: 2026-04-27
 
 ## What This Project Does
 
@@ -22,7 +22,7 @@ Pipeline:
 - **Audio**: pysysaudio + sounddevice (local system audio capture + mic mixing)
 - **Security**: cryptography (Fernet) for credential encryption
 - **Package management**: uv + pyproject.toml optional groups
-- **Testing**: pytest (12+ test files, all external calls mocked)
+- **Testing**: pytest (13 test files, all external calls mocked)
 - **Linting**: flake8 (max-line-length=100) + mypy
 
 ## Project Structure
@@ -59,7 +59,7 @@ A20-App-089/
 │   │   ├── pipeline.py         # run_pipeline task
 │   │   └── tasks/              # transcribe_task, analyze_task, jira_push_task
 │   ├── db/
-│   │   ├── models.py           # ORM: Meeting, Transcript, AnalysisResult, ReviewItem, ProviderConfig
+│   │   ├── models.py           # ORM: Meeting, Transcript, AnalysisResult, ReviewItem, ProviderConfig, quota tables
 │   │   ├── base.py             # DeclarativeBase
 │   │   ├── session.py          # Async engine + session factory
 │   │   ├── crud/               # meeting_crud, review_crud, provider_crud
@@ -86,7 +86,7 @@ A20-App-089/
 │   │   └── credential_vault.py # Fernet encrypt/decrypt
 │   └── prompts/
 │       └── extract_action_items.md  # Vietnamese system prompt
-├── tests/                      # pytest test files (12+)
+├── tests/                      # pytest test files (13 files)
 ├── docs/                       # Documentation
 │   ├── INDEX.md                # Doc index
 │   ├── llms.txt                # This file (AI agent context)
@@ -148,7 +148,7 @@ push_to_jira.delay(meeting_id)
 
 ## Database Schema (PostgreSQL)
 
-5 tables with UUID primary keys:
+8 tables with UUID primary keys:
 
 | Table | Purpose |
 |-------|---------|
@@ -157,6 +157,9 @@ push_to_jira.delay(meeting_id)
 | `analysis_results` | Analysis JSON, summary, confidence |
 | `review_items` | Flattened action items for review (Epic/Task/Subtask) |
 | `provider_configs` | Encrypted provider credentials |
+| `user_plans` | User quota plan |
+| `usage_records` | Usage counters by period |
+| `quota_limits` | Plan-based quota limits |
 
 ## API Endpoints
 

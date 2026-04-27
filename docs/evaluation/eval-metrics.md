@@ -31,7 +31,7 @@ Các chỉ số đo lường chất lượng AI và product health.
 | 6 | **Transcription Latency** | ≤ 15s cho audio ≤ 5 phút | > 30s |
 | 7 | **Analysis Latency** | ≤ 10s | > 20s |
 | 8 | **End-to-end Latency** | ≤ 60s (upload → analysis hiển thị) | > 120s consistently |
-| 9 | **Fallback Rate** | % requests fallback sang Local Whisper | Tracking only | > 30% (Whisper API có vấn đề) |
+| 9 | **Diarization Fallback Rate** | % diarization requests fallback sang plain OpenAI Whisper transcription | Tracking only | > 30% (diarization provider có vấn đề) |
 
 ### Product Health Metrics (khi có user)
 

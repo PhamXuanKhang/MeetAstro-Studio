@@ -163,7 +163,7 @@ AppState trong `frontend/core/state.py`:
 
 ## Database Schema (PostgreSQL)
 
-5 tables — UUID primary keys, TIMESTAMPTZ timestamps:
+8 tables — UUID primary keys, TIMESTAMPTZ timestamps:
 
 | Table | Columns key | Quan hệ |
 |-------|-------------|---------|
@@ -172,6 +172,9 @@ AppState trong `frontend/core/state.py`:
 | `analysis_results` | id, meeting_id, analysis_json (JSONB), summary, overall_confidence | belongs to meeting |
 | `review_items` | id, meeting_id, item_type, item_index, summary, assignee, deadline, priority, confidence, is_flagged, review_status, edited_* | belongs to meeting |
 | `provider_configs` | id, user_id, provider_name, config_json (encrypted), active | standalone |
+| `user_plans` | id, user_id, plan_type, plan_started_at, plan_expires_at, is_active | quota management |
+| `usage_records` | id, user_plan_id, usage_type, usage_count, period_start, period_end | usage tracking |
+| `quota_limits` | id, plan_type, limit_type, limit_value, period_type, is_active | quota rules |
 
 Migrations quản lý bằng Alembic (`src/db/migrations/`).
 
