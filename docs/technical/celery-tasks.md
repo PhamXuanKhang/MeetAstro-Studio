@@ -300,18 +300,19 @@ def my_task(self, arg):
 ### Task Status API
 
 ```
-GET /api/v1/jobs/{task_id}
+GET /api/v1/jobs/{job_id}
 ```
 
 Response:
 ```json
 {
-  "task_id": "abc123",
-  "status": "SUCCESS",
+  "job_id": "abc123",
+  "state": "SUCCESS",
   "result": {
     "transcript_id": "uuid",
     "char_count": 1234
-  }
+  },
+  "error": null
 }
 ```
 
@@ -369,17 +370,17 @@ async def upload_audio(meeting_id: str, file: UploadFile):
     # Update meeting with task ID
     await update_meeting(meeting_id, celery_task_id=task.id)
     
-    return {"task_id": task.id, "status": "transcribing"}
+    return {"job_id": task.id, "state": "PENDING"}
 ```
 
 ### Polling from Frontend
 
 ```python
 # In frontend HTTP backend
-def poll_task(self, task_id: str, interval: float = 1.0):
+def poll_job(self, job_id: str, interval: float = 1.0):
     while True:
-        status = self.get_job_status(task_id)
-        if status["status"] in ("SUCCESS", "FAILURE"):
+        status = self.get_job_status(job_id)
+        if status["state"] in ("SUCCESS", "FAILURE"):
             return status
         time.sleep(interval)
 ```
