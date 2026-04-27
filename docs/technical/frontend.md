@@ -41,7 +41,7 @@ frontend/
 │   ├── review_view.py          # Human-in-the-loop review
 │   ├── history_view.py         # Past meetings list
 │   └── settings_view.py        # Provider config management
-└── requirements.txt            # Frontend-specific dependencies (optional)
+└── README.md                   # Frontend setup notes
 ```
 
 ---
@@ -479,7 +479,7 @@ All long operations should use background threads with `page.call_from_thread()`
 
 ### `ModuleNotFoundError: src`
 
-Run `pip install -e .` from repo root to install the package in editable mode.
+Run `python -m pip install -e ".[frontend]"` from repo root to install the package in editable mode.
 
 ### Connection refused to API
 
@@ -494,7 +494,7 @@ Build standalone `.exe` using [flet pack](https://flet.dev/docs/publish):
 
 ```bash
 # Install frontend dependencies
-uv pip install -e ".[frontend]"
+python -m pip install -e ".[frontend]"
 
 # Build executable
 flet pack frontend/main.py --name "AI Meeting Assistant"
