@@ -36,7 +36,7 @@ def build_history_view(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=12,
         ),
-        alignment=ft.alignment.center,
+        alignment=ft.alignment.Alignment(0, 0),
         visible=True,
     )
     list_container = ft.Container(visible=False)

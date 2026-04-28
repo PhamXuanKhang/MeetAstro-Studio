@@ -36,7 +36,7 @@ def build_dashboard_view(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=12,
         ),
-        alignment=ft.alignment.center,
+        alignment=ft.alignment.Alignment(0, 0),
         visible=True,
     )
     cards_col = ft.Column(spacing=12, visible=False)
