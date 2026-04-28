@@ -20,7 +20,8 @@ def build_sidebar(
             content=ft.Row(
                 [
                     ft.Icon(
-                        name=icon, size=18,
+                        icon,
+                        size=18,
                         color=ft.Colors.BLUE_600 if selected else ft.Colors.GREY_700
                     ),
                     ft.Text(

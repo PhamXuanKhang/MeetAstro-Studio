@@ -128,7 +128,10 @@ def build_new_meeting_view(
             try:
                 page.call_from_thread(_upd)
             except Exception:
-                pass
+                try:
+                    _upd()
+                except Exception:
+                    pass
             time.sleep(1)
 
     def start_record(_e) -> None:

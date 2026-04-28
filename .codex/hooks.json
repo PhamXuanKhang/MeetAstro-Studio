@@ -6,7 +6,8 @@
         "hooks": [
           {
             "name": "log-prompt",
-            "command": "AI_TOOL_NAME=codex python3 scripts/log_hook.py",
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/log_hook.ps1 codex",
             "timeout": 10
           }
         ]
@@ -17,7 +18,8 @@
         "hooks": [
           {
             "name": "log-stop",
-            "command": "AI_TOOL_NAME=codex python3 scripts/log_hook.py",
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/log_hook.ps1 codex",
             "timeout": 10
           }
         ]

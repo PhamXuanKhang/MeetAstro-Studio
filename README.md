@@ -46,9 +46,9 @@ A20-App-089/
 ### Prerequisites
 
 - **Python 3.11+** (backend) / Python 3.9+ (frontend)
-- **Docker Desktop** (for PostgreSQL + Redis)
+- **Docker Desktop** running with the Linux engine enabled (for PostgreSQL + Redis + API + worker)
 - **Git**
-- **[uv](https://docs.astral.sh/uv/)** (package manager)
+- **uv** (preferred) or **pip** (both read dependencies from `pyproject.toml`)
 
 ### 1. Clone and Setup
 
@@ -56,15 +56,21 @@ A20-App-089/
 git clone https://github.com/a20-ai-thuc-chien/A20-App-089.git
 cd A20-App-089
 
-# Create virtual environment
-uv venv
-source .venv/Scripts/activate   # Windows
-# OR
-source .venv/bin/activate       # Linux/Mac
+# Create virtual environment (Windows PowerShell)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 
 # Install dependencies (all-in-one for local dev)
+python -m pip install -e ".[all]"
+
+# Or, if uv is installed
+uv venv
+.\.venv\Scripts\Activate.ps1
 uv pip install -e ".[all]"
 ```
+
+Dependencies are declared in `pyproject.toml`; this repo does not use a
+`requirements.txt` file.
 
 ### 2. Configure Environment
 
@@ -92,6 +98,15 @@ This starts:
 - **FastAPI** on `http://localhost:8000`
 - **Celery Worker** (background)
 - Auto-runs **Alembic migrations**
+
+If Docker fails with a named-pipe error such as `open //./pipe/dockerDesktopLinuxEngine`,
+start Docker Desktop, wait until the Linux engine is running, then retry:
+
+```bash
+docker context ls
+docker --context desktop-linux ps
+docker compose up --build
+```
 
 ### 4. Start Desktop App
 

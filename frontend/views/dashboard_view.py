@@ -9,6 +9,13 @@ from frontend.core.state import AppState
 from frontend.utils.helpers import fmt_dt
 
 
+def _ui(page: ft.Page, fn) -> None:
+    try:
+        page.call_from_thread(fn)
+    except Exception:
+        fn()
+
+
 def build_dashboard_view(
     *,
     page: ft.Page,
@@ -19,7 +26,6 @@ def build_dashboard_view(
 ) -> ft.Control:
     backend = get_backend()
 
-    # Persistent slots — updated from background thread via page.call_from_thread
     loading_ring = ft.Container(
         padding=ft.padding.all(48),
         content=ft.Column(
@@ -85,8 +91,8 @@ def build_dashboard_view(
             meetings = backend.list_meetings()
             state.cached_meetings = meetings
         except Exception as exc:
-            page.call_from_thread(lambda: toast(f"Không thể tải danh sách: {exc}", error=True))
-            meetings = state.cached_meetings  # fall back to cache
+            _ui(page, lambda: toast(f"Không thể tải danh sách: {exc}", error=True))
+            meetings = state.cached_meetings
 
         q = (state.search_query or "").strip().lower()
         if q:
@@ -119,7 +125,7 @@ def build_dashboard_view(
             cards_col.visible = True
             page.update()
 
-        page.call_from_thread(_update)
+        _ui(page, _update)
 
     threading.Thread(target=_load, daemon=True).start()
 

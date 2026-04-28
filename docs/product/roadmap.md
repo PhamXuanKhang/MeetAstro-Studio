@@ -1,6 +1,6 @@
 # Roadmap & Milestones
 
-**Cập nhật lần cuối:** 19/04/2026
+**Cập nhật lần cuối:** 27/04/2026
 
 ---
 
@@ -22,18 +22,18 @@
 | Deliverable | Status |
 |-------------|--------|
 | Pydantic models (Priority, ActionItem, Task, Epic, MeetingAnalysis, MeetingRecord) | ✅ |
-| Strategy Pattern: ABC base + 4 providers (OpenAI Analyzer, Mock Analyzer, OpenAI Transcriber, Local Transcriber) | ✅ |
-| Fallback chain transcription (Whisper API → Local Whisper) | ✅ |
-| SQLite CRUD (database.py) + provider_configs | ✅ |
+| Strategy Pattern: ABC base + providers (OpenAI Analyzer, Mock Analyzer, OpenAI Transcriber, OpenAI Diarize Transcriber) | ✅ |
+| OpenAI Whisper API transcription + diarization fallback về plain OpenAI transcription | ✅ |
+| PostgreSQL async CRUD + provider_configs encrypted | ✅ |
 | Export Markdown / JSON / CSV (exporter.py) | ✅ |
 | Jira stub client (mock mode khi thiếu credentials) | ✅ |
 | Vietnamese prompt cho GPT-4o structured output | ✅ |
-| Streamlit UI 3-column layout | ✅ |
-| Unit tests (14 test files), all passing | ✅ |
+| Flet desktop app HTTP client | ✅ |
+| Unit tests (13 test files), mock external APIs | ✅ |
 | pyproject.toml + editable install | ✅ |
 | Config với pydantic-settings | ✅ |
 
-**ADRs liên quan:** ADR-1 (xóa legacy, build mới), ADR-2 (SQLite cho MVP), ADR-3 (pyproject.toml), ADR-5 (Jira stub)
+**ADRs liên quan:** ADR-1 (xóa legacy, build mới), ADR-3 (pyproject.toml), ADR-5 (Jira stub)
 → Xem chi tiết: [WORKLOG.md](../../WORKLOG.md)
 
 ---
@@ -45,7 +45,7 @@
 | Deliverable | Owner | Status |
 |-------------|-------|--------|
 | Audio recording (system audio + mic mixing) | Vthuc | ✅ |
-| Recording service orchestration cho Streamlit | Vthuc | ✅ |
+| Recording service orchestration cho Flet desktop | Vthuc | ✅ |
 | Chunked transcription (chunk rotation mỗi N giây) | Vthuc | ✅ |
 | Rule-based extraction service (cross-validate với AI) | Khang | ✅ |
 | Validation service (confidence scores) | Khang | ✅ |
@@ -54,10 +54,10 @@
 | Provider configs CRUD | Khang | ✅ |
 | Schema mở rộng (key_decisions, discussion_points, parking_lot) | Khang | ✅ |
 | Jira upload flow documentation | Duypt | ✅ |
-| Smoke test Streamlit app E2E với audio thật | Khang | ⬜ |
+| Smoke test Flet app E2E với audio thật | Khang | ⬜ |
 | Test Jira integration với Atlassian sandbox | Khang | ⬜ |
 | Chạy flake8 + mypy clean | Khang | ⬜ |
-| Deploy lên cloud (Streamlit Community Cloud hoặc VPS) | [TBD] | ⬜ |
+| Deploy backend lên VPS/Docker, distribute Flet desktop build | [TBD] | ⬜ |
 | CI/CD pipeline (GitHub Actions: lint + test + deploy) | [TBD] | ⬜ |
 
 ---
@@ -83,8 +83,8 @@
 
 | Deliverable | Notes |
 |-------------|-------|
-| PostgreSQL thay SQLite (multi-user concurrent writes) | ADR-2 đã thiết kế interface abstract sẵn |
-| User authentication (login/session) | Streamlit auth hoặc external OAuth |
+| Quota enforcement + usage analytics | `user_plans`, `usage_records`, `quota_limits` đã có migration |
+| User authentication (login/session) | FastAPI auth hoặc external OAuth |
 | Analytics dashboard (track adoption, correction rate) | Learning signal từ Canvas |
 | Feedback loop: log corrections → improve prompt | Data flywheel |
 | Real-time transcription (chunking + streaming) | ✅ Chunking đã có (AudioRecorder) — còn streaming UI |

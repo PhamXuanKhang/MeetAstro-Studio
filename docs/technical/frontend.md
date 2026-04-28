@@ -41,7 +41,7 @@ frontend/
 │   ├── review_view.py          # Human-in-the-loop review
 │   ├── history_view.py         # Past meetings list
 │   └── settings_view.py        # Provider config management
-└── requirements.txt            # Frontend-specific dependencies (optional)
+└── README.md                   # Frontend setup notes
 ```
 
 ---
@@ -90,19 +90,11 @@ def create_app(page: ft.Page) -> App:
 UI constants and configuration.
 
 ```python
-# Colors
-PRIMARY_COLOR = "#1976D2"
-SECONDARY_COLOR = "#424242"
-SUCCESS_COLOR = "#4CAF50"
-WARNING_COLOR = "#FF9800"
-ERROR_COLOR = "#F44336"
-
-# Layout
-SIDEBAR_WIDTH = 250
-TOPBAR_HEIGHT = 64
-
-# API
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+@dataclass(frozen=True)
+class FrontendConfig:
+    app_version: str = "0.1.0"
+    sidebar_width: int = 260
+    content_max_width: int = 1100
 ```
 
 ---
@@ -116,30 +108,18 @@ Centralized state for the application.
 ```python
 @dataclass
 class AppState:
-    # Navigation
-    current_route: str = "/"
-    
-    # Current meeting
-    current_meeting_id: Optional[str] = None
-    meeting_status: Optional[str] = None
-    
-    # Audio
+    route: str = "home"
     audio_path: Optional[str] = None
-    is_recording: bool = False
-    recording_elapsed: float = 0.0
-    
-    # Transcript
     transcript: str = ""
-    transcript_edited: bool = False
-    
-    # Analysis
     analysis: Optional[MeetingAnalysis] = None
-    
-    # Review
+    selected_meeting: Optional[MeetingRecord] = None
+    progress_text: str = ""
+    busy: bool = False
+    search_query: str = ""
+    cached_meetings: list[MeetingRecord] = field(default_factory=list)
     review_items: list[ReviewItem] = field(default_factory=list)
-    
-    # Task tracking
-    current_task_id: Optional[str] = None
+    meeting_status: str = ""
+    current_meeting_id: Optional[str] = None
 ```
 
 State updates trigger UI refresh via `page.update()`.
@@ -190,7 +170,7 @@ class HttpBackend:
     def export_csv(self, meeting_id: str) -> str: ...
     
     # Jobs
-    def get_job_status(self, task_id: str) -> dict: ...
+    def get_job_status(self, job_id: str) -> dict: ...
 ```
 
 ---
@@ -380,14 +360,14 @@ Features:
 
 ---
 
-## Task Polling
+## Job Polling
 
-Long-running operations (transcribe, analyze) use Celery tasks. The frontend polls for completion.
+Long-running operations (transcribe, analyze, Jira push) use Celery jobs. The frontend polls for completion via `GET /api/v1/jobs/{job_id}`.
 
 ```python
-async def poll_task(task_id: str, interval: float = 1.0):
+async def poll_job(job_id: str, interval: float = 1.0):
     """
-    Poll task status until completion.
+    Poll job state until completion.
     
     States:
         PENDING -> still queued
@@ -397,11 +377,11 @@ async def poll_task(task_id: str, interval: float = 1.0):
         RETRY -> retrying
     """
     while True:
-        status = backend.get_job_status(task_id)
-        if status["status"] == "SUCCESS":
+        status = backend.get_job_status(job_id)
+        if status["state"] == "SUCCESS":
             return status["result"]
-        elif status["status"] == "FAILURE":
-            raise Exception(status.get("error", "Task failed"))
+        elif status["state"] == "FAILURE":
+            raise Exception(status.get("error", "Job failed"))
         await asyncio.sleep(interval)
 ```
 
@@ -499,7 +479,7 @@ All long operations should use background threads with `page.call_from_thread()`
 
 ### `ModuleNotFoundError: src`
 
-Run `pip install -e .` from repo root to install the package in editable mode.
+Run `python -m pip install -e ".[frontend]"` from repo root to install the package in editable mode.
 
 ### Connection refused to API
 
@@ -514,7 +494,7 @@ Build standalone `.exe` using [flet pack](https://flet.dev/docs/publish):
 
 ```bash
 # Install frontend dependencies
-uv pip install -e ".[frontend]"
+python -m pip install -e ".[frontend]"
 
 # Build executable
 flet pack frontend/main.py --name "AI Meeting Assistant"

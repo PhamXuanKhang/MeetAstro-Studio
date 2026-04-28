@@ -9,6 +9,13 @@ from frontend.core.state import AppState
 from frontend.utils.helpers import fmt_dt
 
 
+def _ui(page: ft.Page, fn) -> None:
+    try:
+        page.call_from_thread(fn)
+    except Exception:
+        fn()
+
+
 def build_history_view(
     *,
     page: ft.Page,
@@ -39,7 +46,7 @@ def build_history_view(
             backend.init_db()
             meetings = backend.list_meetings()
         except Exception as exc:
-            page.call_from_thread(lambda: toast(f"Không thể tải lịch sử: {exc}", error=True))
+            _ui(page, lambda: toast(f"Không thể tải lịch sử: {exc}", error=True))
             meetings = []
 
         q = (state.search_query or "").strip().lower()
@@ -76,7 +83,7 @@ def build_history_view(
             list_container.visible = True
             page.update()
 
-        page.call_from_thread(_update)
+        _ui(page, _update)
 
     threading.Thread(target=_load, daemon=True).start()
 

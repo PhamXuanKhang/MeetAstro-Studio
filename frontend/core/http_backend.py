@@ -24,6 +24,7 @@ class HttpBackend:
     def __init__(self, base_url: str = "http://localhost:8000") -> None:
         self._base = base_url.rstrip("/")
         self._client = httpx.Client(base_url=self._base, timeout=60)
+        self._settings = get_settings()
 
     def _url(self, path: str) -> str:
         return f"/api/v1{path}"
@@ -99,7 +100,10 @@ class HttpBackend:
             resp = self._client.post(
                 self._url(f"/meetings/{meeting_id}/audio"),
                 files={"file": (Path(audio_path).name, f, "audio/wav")},
-                data={"diarize": str(diarize).lower(), "language": get_settings().default_transcription_language},
+                data={
+                    "diarize": str(diarize).lower(),
+                    "language": self._settings.default_transcription_language,
+                },
                 timeout=30,
             )
         resp.raise_for_status()
@@ -257,11 +261,14 @@ class HttpBackend:
 
 def _parse_meeting(data: dict) -> MeetingRecord:
     """Convert API response dict to MeetingRecord."""
-    return MeetingRecord(
-        id=str(data.get("id")) if data.get("id") else None,
-        title=data.get("title", ""),
-        transcript="",
-        audio_path=data.get("audio_path"),
-        created_at=data.get("created_at"),
-        updated_at=data.get("updated_at"),
-    )
+    payload: dict[str, object] = {
+        "id": str(data.get("id")) if data.get("id") else None,
+        "title": data.get("title", ""),
+        "transcript": "",
+        "audio_path": data.get("audio_path"),
+    }
+    if data.get("created_at") is not None:
+        payload["created_at"] = data["created_at"]
+    if data.get("updated_at") is not None:
+        payload["updated_at"] = data["updated_at"]
+    return MeetingRecord.model_validate(payload)

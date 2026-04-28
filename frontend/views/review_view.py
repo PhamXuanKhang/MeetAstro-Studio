@@ -14,6 +14,14 @@ import flet as ft
 from frontend.core.state import AppState
 
 
+def _ui(page: ft.Page, fn) -> None:
+    """Gọi fn trên main thread; fallback direct call nếu Flet version không hỗ trợ."""
+    try:
+        page.call_from_thread(fn)
+    except Exception:
+        fn()
+
+
 def build_review_view(
     *,
     page: ft.Page,
@@ -77,14 +85,13 @@ def build_review_view(
     )
 
     def reload_items() -> None:
-        """Luôn chạy từ background thread — dùng page.call_from_thread để update UI."""
         from frontend.core.backend_factory import get_backend
         backend = get_backend()
         try:
             items = backend.list_review_items(meeting_id)
             review_summary = backend.get_review_summary(meeting_id)
         except Exception as exc:
-            page.call_from_thread(lambda: toast(f"Lỗi tải review items: {exc}", error=True))
+            _ui(page, lambda: toast(f"Lỗi tải review items: {exc}", error=True))
             return
 
         def _update():
@@ -139,7 +146,7 @@ def build_review_view(
 
             page.update()
 
-        page.call_from_thread(_update)
+        _ui(page, _update)
 
     def on_approve_all(_):
         def _run():
@@ -147,34 +154,33 @@ def build_review_view(
             backend = get_backend()
             try:
                 count = backend.approve_all_review_items(meeting_id)
-                page.call_from_thread(lambda: toast(f"Đã approve {count} items."))
+                _ui(page, lambda: toast(f"Đã approve {count} items."))
                 reload_items()
             except Exception as exc:
-                page.call_from_thread(lambda: toast(f"Lỗi: {exc}", error=True))
+                _ui(page, lambda: toast(f"Lỗi: {exc}", error=True))
 
         threading.Thread(target=_run, daemon=True).start()
 
     def on_push_jira(_):
         def _run():
-            page.call_from_thread(lambda: set_busy(True, "Đang push lên Jira..."))
+            _ui(page, lambda: set_busy(True, "Đang push lên Jira..."))
             from frontend.core.backend_factory import get_backend
             backend = get_backend()
             try:
                 backend.push_to_jira(None, meeting_id=meeting_id)
                 state.meeting_status = "pushed"
-                page.call_from_thread(lambda: toast("Push lên Jira thành công!"))
+                _ui(page, lambda: toast("Push lên Jira thành công!"))
                 reload_items()
             except Exception as exc:
-                page.call_from_thread(lambda: toast(f"Lỗi push Jira: {exc}", error=True))
+                _ui(page, lambda: toast(f"Lỗi push Jira: {exc}", error=True))
             finally:
-                page.call_from_thread(lambda: set_busy(False))
+                _ui(page, lambda: set_busy(False))
 
         threading.Thread(target=_run, daemon=True).start()
 
     approve_all_btn.on_click = on_approve_all
     push_btn.on_click = on_push_jira
 
-    # Load lần đầu trong background thread
     threading.Thread(target=reload_items, daemon=True).start()
 
     content = ft.Container(
@@ -296,12 +302,7 @@ def _build_item_card(
     )
 
     # Pre-build all action buttons — toggle visibility, never re-render
-    edit_btn = ft.IconButton(
-        icon=ft.Icons.EDIT_NOTE,
-        tooltip="Chỉnh sửa",
-        icon_size=16,
-        visible=True,
-    )
+    edit_btn = ft.IconButton(icon=ft.Icons.EDIT_NOTE, tooltip="Chỉnh sửa", icon_size=16, visible=True)
     save_btn = ft.TextButton("Lưu", visible=False)
     cancel_btn = ft.TextButton("Hủy", visible=False)
 
@@ -322,17 +323,16 @@ def _build_item_card(
             backend = get_backend()
             try:
                 backend.patch_review_item(
-                    meeting_id,
-                    item_id,
+                    meeting_id, item_id,
                     edited_summary=edit_summary.value or None,
                     edited_assignee=edit_assignee.value or None,
                     edited_deadline=edit_deadline.value or None,
                     edited_priority=edit_priority.value or None,
                 )
-                page.call_from_thread(lambda: toast("Đã lưu chỉnh sửa."))
+                _ui(page, lambda: toast("Đã lưu chỉnh sửa."))
                 reload_items()
             except Exception as exc:
-                page.call_from_thread(lambda: toast(f"Lỗi lưu: {exc}", error=True))
+                _ui(page, lambda: toast(f"Lỗi lưu: {exc}", error=True))
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -344,7 +344,7 @@ def _build_item_card(
                 backend.approve_review_item(meeting_id, item_id)
                 reload_items()
             except Exception as exc:
-                page.call_from_thread(lambda: toast(f"Lỗi approve: {exc}", error=True))
+                _ui(page, lambda: toast(f"Lỗi approve: {exc}", error=True))
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -356,7 +356,7 @@ def _build_item_card(
                 backend.reject_review_item(meeting_id, item_id)
                 reload_items()
             except Exception as exc:
-                page.call_from_thread(lambda: toast(f"Lỗi reject: {exc}", error=True))
+                _ui(page, lambda: toast(f"Lỗi reject: {exc}", error=True))
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -416,27 +416,18 @@ def _build_item_card(
                     color=ft.Colors.ORANGE_700,
                 ) if item.validation_notes else ft.Container(),
                 edit_form,
-                ft.Row(
-                    [
-                        save_btn,
-                        cancel_btn,
+                ft.Row([save_btn, cancel_btn,
                         ft.ElevatedButton(
-                            "✓ Approve",
-                            on_click=approve,
-                            bgcolor=ft.Colors.GREEN_100,
-                            color=ft.Colors.GREEN_800,
+                            "✓ Approve", on_click=approve,
+                            bgcolor=ft.Colors.GREEN_100, color=ft.Colors.GREEN_800,
                             disabled=item.review_status == "approved",
                         ),
                         ft.ElevatedButton(
-                            "✗ Reject",
-                            on_click=reject,
-                            bgcolor=ft.Colors.RED_100,
-                            color=ft.Colors.RED_800,
+                            "✗ Reject", on_click=reject,
+                            bgcolor=ft.Colors.RED_100, color=ft.Colors.RED_800,
                             disabled=item.review_status == "rejected",
-                        ),
-                    ],
-                    spacing=8,
-                ),
+                        )],
+                       spacing=8),
             ],
             spacing=6,
         ),

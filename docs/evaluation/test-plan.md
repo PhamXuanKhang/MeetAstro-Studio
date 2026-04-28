@@ -8,10 +8,10 @@ Chiến lược testing cho AI Meeting Assistant.
 
 | Loại test | Coverage | Status |
 |-----------|----------|--------|
-| **Unit tests** | 85 tests, 9 files | ✅ All passing |
-| **Integration tests** | E2E với audio thật | ⬜ Chưa implement |
-| **Manual smoke test** | Flet UI + real audio | ⬜ Chưa chạy |
-| **Eval test** | AI quality (recall, precision, WER) | ⬜ Chưa implement |
+| **Unit tests** | 13 test files trong `tests/` | Cần chạy lại trong môi trường đã cài dev deps |
+| **Integration tests** | Có `tests/test_integration.py`, mock external APIs | Cần mở rộng E2E với audio mẫu |
+| **Manual smoke test** | Flet UI + FastAPI + worker + real audio | Chưa chạy định kỳ |
+| **Eval test** | AI quality: recall, precision, WER | Chưa tự động hóa |
 
 ---
 
@@ -19,17 +19,21 @@ Chiến lược testing cho AI Meeting Assistant.
 
 ### Test files hiện có
 
-| File | Số tests | Mô tả |
-|------|----------|--------|
-| `tests/test_schema.py` | ~10 | Dataclass construction, `to_dict` / `from_dict` round-trip |
-| `tests/test_openai_analyzer.py` | ~10 | Mock OpenAI client, verify JSON parsing, retry logic |
-| `tests/test_openai_transcriber.py` | ~10 | Mock Whisper API |
-| `tests/test_local_transcriber.py` | ~10 | Mock `whisper.load_model` |
-| `tests/test_transcription_service.py` | ~10 | **Fallback chain**: OpenAI fail → Local OK, both fail → RuntimeError, verify warning log |
-| `tests/test_analysis_service.py` | ~10 | Mock analyzer, empty transcript → ValueError |
-| `tests/test_database.py` | ~10 | SQLite CRUD với `tmp_path` fixture (file-based, không `:memory:`) |
-| `tests/test_exporter.py` | ~10 | Build `MeetingAnalysis` cứng, assert output MD/JSON/CSV chứa expected fields |
-| `tests/test_jira_client.py` | ~12 | Mock `requests.post`, verify request payload + headers, stub mode behavior |
+| File | Mô tả |
+|------|-------|
+| `tests/test_schema.py` | Domain schema, enum, serialization round-trip |
+| `tests/test_openai_analyzer.py` | Mock OpenAI analyzer, JSON parsing, retry/error handling |
+| `tests/test_openai_transcriber.py` | Mock OpenAI Whisper API transcriber |
+| `tests/test_openai_diarize_transcriber.py` | Mock OpenAI diarization transcriber |
+| `tests/test_transcription_service.py` | Plain transcription + diarization fallback về plain OpenAI transcription |
+| `tests/test_analysis_service.py` | Analysis orchestration, empty transcript validation |
+| `tests/test_validation_service.py` | Confidence scoring, rule-based cross validation |
+| `tests/test_recording_service.py` | Recording service orchestration |
+| `tests/test_exporter.py` | Markdown/JSON/CSV export |
+| `tests/test_jira_client.py` | Jira REST payloads, auth, stub mode |
+| `tests/test_jira_service.py` | Jira push orchestration Epic -> Task -> Subtask |
+| `tests/test_integration.py` | Mocked integration flow |
+| `tests/__init__.py` | Test package marker |
 
 ### Chạy tests
 
@@ -40,15 +44,16 @@ pytest tests/ -v
 # Một file cụ thể
 pytest tests/test_transcription_service.py -v
 
-# Với coverage (nếu cần)
+# Với coverage nếu cần
 pytest tests/ -v --cov=src --cov-report=term-missing
 ```
 
 ### Lưu ý quan trọng
 
-- **Database tests:** Dùng `tmp_path` fixture (file-based SQLite), **KHÔNG** dùng `:memory:` vì mỗi `sqlite3.connect(":memory:")` tạo DB riêng biệt
-- **Provider tests:** Tất cả mock external APIs — không gọi OpenAI/Whisper thật trong unit test
-- **Fallback chain test:** Phải verify cả: (1) OpenAI thành công, (2) OpenAI fail → Local thành công + log warning, (3) Cả hai fail → RuntimeError
+- **External APIs:** Tất cả OpenAI, Whisper, Jira calls phải được mock trong unit test.
+- **Database:** Dự án chỉ dùng PostgreSQL qua `src/db/`; không thêm SQLite test path mới.
+- **Transcription fallback:** Chỉ cho phép fallback từ diarization sang plain OpenAI Whisper transcription. Không dùng Local Whisper.
+- **Prompt changes:** Sau khi sửa prompt/analyzer, verify output parse được thành `MeetingAnalysis` và match Jira schema Epic/Task/Subtask.
 
 ---
 
@@ -56,63 +61,75 @@ pytest tests/ -v --cov=src --cov-report=term-missing
 
 ### E2E Flow Test
 
+```text
+Audio file (<= 2 phút)
+    -> upload audio qua FastAPI
+    -> poll /api/v1/jobs/{job_id}
+    -> assert transcript not empty, len > 50
+    -> assert analysis has >= 1 epic
+    -> review approve/reject items
+    -> export markdown/json/csv
+    -> optional: push Jira in STUB mode
 ```
-Audio file (≤ 2 phút)
-    → transcribe() → assert transcript not empty, len > 50
-    → analyze(transcript) → assert analysis has ≥ 1 epic
-    → export_markdown(analysis) → assert contains "Epic"
-    → export_json(analysis) → assert valid JSON, has "epics" key
-    → export_csv(analysis) → assert header row + ≥ 1 data row
-    → create_meeting(record) → assert id > 0
-    → get_meeting(id) → assert record.title matches
-```
 
-**Cần:** Audio file mẫu + OPENAI_API_KEY thật (hoặc mock server).
+**Cần:** audio file mẫu, PostgreSQL + Redis + worker, `OPENAI_API_KEY` thật hoặc mock server.
 
-### Fallback Integration Test
+### Diarization Fallback Integration Test
 
-1. Set `OPENAI_API_KEY` thành invalid → transcribe audio
-2. Verify: fallback sang Local Whisper, log warning xuất hiện
-3. Verify: transcript output vẫn có nội dung hợp lệ
+1. Mock diarization provider lỗi transient.
+2. Verify service fallback sang plain OpenAI transcription.
+3. Verify transcript output vẫn được lưu và pipeline không bị gián đoạn.
 
 ### Jira Integration Test
 
-1. Setup Atlassian sandbox (nếu có)
-2. Set `JIRA_*` env vars
-3. Chạy `create_epic() → create_task() → create_subtask()`
-4. Verify: issues tạo đúng trên Jira dashboard
+1. Setup Atlassian sandbox nếu có.
+2. Set `JIRA_*` env vars.
+3. Chạy push approved review items qua `POST /api/v1/meetings/{id}/jira/push`.
+4. Poll `/api/v1/jobs/{job_id}` và verify issues tạo đúng trên Jira dashboard.
 
 ---
 
 ## Manual Smoke Test Checklist
 
-Run `python frontend\main.py` (API + worker running) and verify:
+Run `python frontend\main.py` với API + worker đang chạy và verify:
 
 ### Upload & Transcribe
-- [ ] Upload file `.wav` → file path shown
-- [ ] Upload file `.mp3` → file path shown
-- [ ] Click "Transcribe" → progress banner → transcript shown
-- [ ] Transcript field editable → edits are preserved
+
+- [ ] Upload file `.wav` -> job được queue và transcript hiển thị sau polling.
+- [ ] Upload file `.mp3` -> job được queue và transcript hiển thị sau polling.
+- [ ] Bật/tắt diarization -> transcript vẫn trả về hợp lệ.
+- [ ] Transcript field editable -> edits được lưu qua `PATCH /transcript`.
 
 ### Analyze
-- [ ] Click "Analyze" → progress banner → Epic/Task/Subtask shown
-- [ ] Each task shows summary, assignee (or TBD), deadline (or N/A), priority
-- [ ] Epics render with nested tasks
+
+- [ ] Click "Analyze" -> job được queue -> Epic/Task/Subtask hiển thị.
+- [ ] Each task shows summary, assignee (or TBD), deadline (or N/A), priority.
+- [ ] Low-confidence/flagged items được hiển thị để review.
+
+### Review
+
+- [ ] Approve một item.
+- [ ] Reject một item.
+- [ ] Edit item rồi approve.
+- [ ] Approve all hoạt động đúng.
 
 ### Export
-- [ ] "Export Markdown" → Save As dialog → `.md` opens correctly
-- [ ] "Export JSON" → Save As dialog → valid JSON, has `epics` key
-- [ ] "Export CSV" → Save As dialog → header + data rows
+
+- [ ] "Export Markdown" -> Save As dialog -> `.md` mở đúng.
+- [ ] "Export JSON" -> valid JSON, có `epics`.
+- [ ] "Export CSV" -> header + data rows.
 
 ### Save & Jira
-- [ ] Meeting appears in History after analysis
-- [ ] "Push to Jira" → warning "STUB mode" (when credentials are missing)
+
+- [ ] Meeting appears in History after analysis.
+- [ ] "Push to Jira" bị chặn nếu còn pending review items.
+- [ ] "Push to Jira" chạy STUB mode khi thiếu credentials.
 
 ### Edge Cases
-- [ ] Transcribe khi chưa upload file → button disabled
-- [ ] Analyze khi transcript trống → button disabled
-- [ ] Lưu DB khi chưa nhập tên cuộc họp → warning message
-- [ ] Upload file rất lớn (> 25MB) → xử lý hợp lý (error hoặc warning)
+
+- [ ] Transcribe khi chưa upload file -> button disabled hoặc API trả lỗi rõ.
+- [ ] Analyze khi transcript trống -> button disabled hoặc API trả lỗi rõ.
+- [ ] Upload file rất lớn (> 25MB) -> xử lý hợp lý bằng error/warning.
 
 ---
 
@@ -128,4 +145,4 @@ flake8 . --max-line-length=100 && mypy . --ignore-missing-imports && pytest test
 |------|----------|---------------|
 | `flake8` | Lint style | 0 warnings |
 | `mypy` | Type checking | 0 errors |
-| `pytest` | Unit tests | 85/85 pass |
+| `pytest` | Unit tests | All passing |

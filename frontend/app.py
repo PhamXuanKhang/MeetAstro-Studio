@@ -54,6 +54,12 @@ def build_app(page: ft.Page) -> None:
         page.snack_bar.open = True
         page.update()
 
+    def _ui(fn) -> None:
+        try:
+            page.call_from_thread(fn)
+        except Exception:
+            fn()
+
     def set_busy(busy: bool, text: str = "") -> None:
         state.busy = busy
         state.progress_text = text
@@ -66,10 +72,7 @@ def build_app(page: ft.Page) -> None:
             except Exception:
                 pass
 
-        try:
-            page.call_from_thread(_update)
-        except Exception:
-            _update()
+        _ui(_update)
 
     def _swap_content(route: str) -> None:
         """Swap chỉ phần nội dung — không bao giờ gọi page.clean()."""
@@ -123,10 +126,7 @@ def build_app(page: ft.Page) -> None:
         state.search_query = e.control.value or ""
         if _search_timer[0]:
             _search_timer[0].cancel()
-        t = threading.Timer(
-            0.3,
-            lambda: page.call_from_thread(lambda: _swap_content(state.route)),
-        )
+        t = threading.Timer(0.3, lambda: _ui(lambda: _swap_content(state.route)))
         _search_timer[0] = t
         t.start()
 
