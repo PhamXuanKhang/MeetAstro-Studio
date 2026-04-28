@@ -8,8 +8,9 @@ from src.schema import MeetingAnalysis, MeetingRecord, ReviewItem
 
 @dataclass
 class AppState:
-    route: str = "home"
+    route: str = "new_meeting"
 
+    is_recording: bool = False
     audio_path: Optional[str] = None
     transcript: str = ""
     analysis: Optional[MeetingAnalysis] = None

@@ -3,7 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 
 
-def fmt_dt(dt: datetime) -> str:
+def fmt_dt(dt) -> str:
+    if dt is None:
+        return "—"
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        except ValueError:
+            return dt
     return dt.strftime("%d/%m/%Y %H:%M")
 
 

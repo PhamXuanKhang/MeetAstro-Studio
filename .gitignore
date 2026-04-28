@@ -21,3 +21,4 @@ capture_system_audio_to_wav.py
 uv.lock
 data/meetings.db
 data/meetings.db
+data/

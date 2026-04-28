@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import threading
+
 import flet as ft
 
 from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
 from frontend.utils.helpers import fmt_dt
+
+
+def _ui(page: ft.Page, fn) -> None:
+    try:
+        page.call_from_thread(fn)
+    except Exception:
+        fn()
 
 
 def build_history_view(
@@ -17,50 +26,75 @@ def build_history_view(
 ) -> ft.Control:
     backend = get_backend()
 
-    try:
-        backend.init_db()
-        meetings = backend.list_meetings()
-    except Exception as exc:
-        toast(f"Failed to load history: {exc}", error=True)
-        meetings = []
+    loading_ring = ft.Container(
+        padding=ft.padding.all(48),
+        content=ft.Column(
+            [
+                ft.ProgressRing(width=32, height=32, stroke_width=3),
+                ft.Text("Đang tải lịch sử...", size=12, color=ft.Colors.GREY_600),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=12,
+        ),
+        alignment=ft.alignment.center,
+        visible=True,
+    )
+    list_container = ft.Container(visible=False)
 
-    q = (state.search_query or "").strip().lower()
-    if q:
-        meetings = [m for m in meetings if q in (m.title or "").lower()]
+    def _load() -> None:
+        try:
+            backend.init_db()
+            meetings = backend.list_meetings()
+        except Exception as exc:
+            _ui(page, lambda: toast(f"Không thể tải lịch sử: {exc}", error=True))
+            meetings = []
 
-    items: list[ft.Control] = []
-    for rec in meetings:
-        def _mk_open(r):
-            return lambda _e: on_open_results(r)
+        q = (state.search_query or "").strip().lower()
+        if q:
+            meetings = [m for m in meetings if q in (m.title or "").lower()]
 
-        items.append(
-            ft.ListTile(
-                title=ft.Text(rec.title or "Note", weight=ft.FontWeight.W_600),
-                subtitle=ft.Text(fmt_dt(rec.created_at), size=11, color=ft.Colors.GREY_700),
-                leading=ft.Icon(ft.Icons.DESCRIPTION_OUTLINED),
-                trailing=ft.Icon(ft.Icons.CHEVRON_RIGHT),
-                on_click=_mk_open(rec),
-            )
-        )
+        def _update():
+            loading_ring.visible = False
+            if not meetings:
+                list_container.content = ft.Text(
+                    "Chưa có lịch sử cuộc họp.", color=ft.Colors.GREY_700
+                )
+            else:
+                items: list[ft.Control] = []
+                for rec in meetings:
+                    def _mk_open(r):
+                        return lambda _e: on_open_results(r)
 
-    if not items:
-        return ft.Container(
-            padding=ft.padding.all(18),
-            content=ft.Text("No history available yet.", color=ft.Colors.GREY_700),
-            expand=True,
-        )
+                    items.append(
+                        ft.ListTile(
+                            title=ft.Text(rec.title or "Note", weight=ft.FontWeight.W_600),
+                            subtitle=ft.Text(fmt_dt(rec.created_at), size=11, color=ft.Colors.GREY_700),
+                            leading=ft.Icon(ft.Icons.DESCRIPTION_OUTLINED),
+                            trailing=ft.Icon(ft.Icons.CHEVRON_RIGHT),
+                            on_click=_mk_open(rec),
+                        )
+                    )
+                list_container.content = ft.Container(
+                    border_radius=16,
+                    bgcolor=ft.Colors.WHITE,
+                    border=ft.border.all(1, ft.Colors.GREY_200),
+                    content=ft.Column(items, spacing=0),
+                )
+            list_container.visible = True
+            page.update()
+
+        _ui(page, _update)
+
+    threading.Thread(target=_load, daemon=True).start()
 
     return ft.Container(
         padding=ft.padding.all(18),
+        expand=True,
         content=ft.Container(
             alignment=ft.alignment.Alignment(0, -1),
             content=ft.Container(
                 width=1100,
-                border_radius=16,
-                bgcolor=ft.Colors.WHITE,
-                border=ft.border.all(1, ft.Colors.GREY_200),
-                content=ft.Column(items, spacing=0),
+                content=ft.Column([loading_ring, list_container], spacing=0),
             ),
         ),
-        expand=True,
     )

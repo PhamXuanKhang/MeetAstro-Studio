@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import threading
+
 import flet as ft
 
 from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
 from frontend.utils.helpers import fmt_dt
+
+
+def _ui(page: ft.Page, fn) -> None:
+    try:
+        page.call_from_thread(fn)
+    except Exception:
+        fn()
 
 
 def build_dashboard_view(
@@ -17,23 +26,22 @@ def build_dashboard_view(
 ) -> ft.Control:
     backend = get_backend()
 
-    def load() -> list:
-        try:
-            backend.init_db()
-            meetings = backend.list_meetings()
-            state.cached_meetings = meetings
-            return meetings
-        except Exception as exc:
-            toast(f"Failed to load meetings: {exc}", error=True)
-            return []
+    loading_ring = ft.Container(
+        padding=ft.padding.all(48),
+        content=ft.Column(
+            [
+                ft.ProgressRing(width=32, height=32, stroke_width=3),
+                ft.Text("Đang tải...", size=12, color=ft.Colors.GREY_600),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=12,
+        ),
+        alignment=ft.alignment.center,
+        visible=True,
+    )
+    cards_col = ft.Column(spacing=12, visible=False)
 
-    meetings = state.cached_meetings or load()
-
-    q = (state.search_query or "").strip().lower()
-    if q:
-        meetings = [m for m in meetings if q in (m.title or "").lower()]
-
-    def meeting_card(rec) -> ft.Control:
+    def _build_card(rec) -> ft.Control:
         def _open(_e):
             on_open_results(rec)
 
@@ -77,31 +85,58 @@ def build_dashboard_view(
             ),
         )
 
-    if not meetings:
-        empty = ft.Container(
-            padding=ft.padding.all(18),
-            border_radius=16,
-            bgcolor=ft.Colors.WHITE,
-            border=ft.border.all(1, ft.Colors.GREY_200),
-            content=ft.Column(
-                [
-                    ft.Text("No meetings yet.", size=14, weight=ft.FontWeight.W_700),
-                    ft.Text(
-                        "Start a new meeting to record, upload, and analyze.",
-                        size=12, color=ft.Colors.GREY_700
-                    ),
-                ],
-                spacing=6,
-            ),
-        )
-        return ft.Container(padding=ft.padding.all(18), content=empty, expand=True)
+    def _load() -> None:
+        try:
+            backend.init_db()
+            meetings = backend.list_meetings()
+            state.cached_meetings = meetings
+        except Exception as exc:
+            _ui(page, lambda: toast(f"Không thể tải danh sách: {exc}", error=True))
+            meetings = state.cached_meetings
 
-    cards = ft.Column([meeting_card(m) for m in meetings], spacing=12)
+        q = (state.search_query or "").strip().lower()
+        if q:
+            meetings = [m for m in meetings if q in (m.title or "").lower()]
+
+        def _update():
+            loading_ring.visible = False
+            if not meetings:
+                cards_col.controls = [
+                    ft.Container(
+                        padding=ft.padding.all(18),
+                        border_radius=16,
+                        bgcolor=ft.Colors.WHITE,
+                        border=ft.border.all(1, ft.Colors.GREY_200),
+                        content=ft.Column(
+                            [
+                                ft.Text("Chưa có cuộc họp nào.", size=14, weight=ft.FontWeight.W_700),
+                                ft.Text(
+                                    "Bắt đầu bằng cách ghi âm hoặc tải file audio.",
+                                    size=12,
+                                    color=ft.Colors.GREY_700,
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                    )
+                ]
+            else:
+                cards_col.controls = [_build_card(m) for m in meetings]
+            cards_col.visible = True
+            page.update()
+
+        _ui(page, _update)
+
+    threading.Thread(target=_load, daemon=True).start()
+
     return ft.Container(
         padding=ft.padding.all(18),
+        expand=True,
         content=ft.Container(
             alignment=ft.alignment.Alignment(0, -1),
-            content=ft.Container(width=1100, content=cards),
+            content=ft.Container(
+                width=1100,
+                content=ft.Column([loading_ring, cards_col], spacing=0),
+            ),
         ),
-        expand=True,
     )

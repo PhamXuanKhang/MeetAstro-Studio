@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Priority(str, Enum):
@@ -149,3 +149,10 @@ class ReviewItem(_BaseSchemaModel):
     edited_deadline: Optional[str] = None
     edited_priority: Optional[str] = None
     validation_notes: list[str] = Field(default_factory=list)
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _coerce_priority(cls, v):
+        if v is None:
+            return Priority.MEDIUM
+        return v
