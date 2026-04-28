@@ -440,7 +440,7 @@ def build_new_meeting_view(
                 ft.Container(
                     padding=ft.padding.symmetric(vertical=24),
                     content=hero,
-                    alignment=ft.alignment.center,
+                    alignment=ft.alignment.Alignment(0, 0),
                 ),
                 workflow_section,
             ],
