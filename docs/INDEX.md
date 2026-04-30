@@ -23,6 +23,7 @@ docs/
 │   ├── data-flow.md            <- End-to-end data flow
 │   ├── api-reference.md        <- REST endpoints + data models
 │   ├── database-schema.md      <- PostgreSQL schema + migrations
+│   ├── supabase-schema.md      <- Supabase Auth ownership + RLS
 │   ├── celery-tasks.md         <- Celery background tasks
 │   ├── frontend.md             <- Flet desktop app docs
 │   ├── security.md             <- Security considerations
@@ -63,6 +64,7 @@ docs/
 - [System Architecture](technical/architecture.md) — High-level overview
 - [Data Flow](technical/data-flow.md) — Pipeline diagram
 - [Database Schema](technical/database-schema.md) — PostgreSQL tables
+- [Supabase Schema](technical/supabase-schema.md) — Auth ownership + RLS
 - [API Reference](technical/api-reference.md) — REST endpoints
 - [Celery Tasks](technical/celery-tasks.md) — Background task processing
 
@@ -110,6 +112,7 @@ docs/
 | `technical/architecture.md` | System architecture, layer diagram, module map |
 | `technical/api-reference.md` | REST API endpoints, Pydantic models, provider interfaces |
 | `technical/database-schema.md` | PostgreSQL schema, table definitions, CRUD operations |
+| `technical/supabase-schema.md` | Supabase Auth ownership, RLS policies, Jira config metadata |
 | `technical/celery-tasks.md` | Celery background tasks, retry logic, monitoring |
 | `technical/data-flow.md` | End-to-end data pipeline, transformations, state management |
 | `technical/frontend.md` | Flet desktop app structure, views, state management |
