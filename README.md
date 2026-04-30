@@ -151,6 +151,7 @@ python frontend/main.py
 | [`docs/INDEX.md`](docs/INDEX.md) | Documentation index |
 | [`docs/technical/architecture.md`](docs/technical/architecture.md) | System architecture |
 | [`docs/technical/api-reference.md`](docs/technical/api-reference.md) | API endpoints & schemas |
+| [`docs/technical/supabase-schema.md`](docs/technical/supabase-schema.md) | Supabase Auth ownership + RLS |
 | [`docs/technical/deployment.md`](docs/technical/deployment.md) | Setup & deployment |
 | [`docs/product/spec.md`](docs/product/spec.md) | Product specification |
 | [`docs/product/roadmap.md`](docs/product/roadmap.md) | Roadmap & milestones |

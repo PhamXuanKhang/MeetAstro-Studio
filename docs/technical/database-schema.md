@@ -11,6 +11,12 @@ The database uses **PostgreSQL 16** with **SQLAlchemy async** + **asyncpg**. Mig
 Database: `ai_meeting_db`
 Connection: `POSTGRES_URL` environment variable
 
+Supabase ownership/RLS foundation is documented in
+[`supabase-schema.md`](supabase-schema.md). Revision `0003` changes user-owned
+rows to `user_id uuid references auth.users(id)`, enables RLS, and adds
+foundation tables for Jira configs, AI jobs, Jira push records, audit logs, and
+direct per-user usage ownership.
+
 ---
 
 ## Entity Relationship Diagram

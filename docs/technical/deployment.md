@@ -78,6 +78,21 @@ Services:
 - **Celery worker**: tự khởi động, listen queue `default`
 - **migrate**: tự chạy `alembic upgrade head` trước khi API start
 
+### Supabase database mode
+
+Revision `0003_supabase_rls_foundation.py` changes user-owned database rows to
+Supabase Auth ownership (`user_id uuid references auth.users(id)`) and enables
+RLS. To apply it against Supabase, set `POSTGRES_URL` to the Supabase
+PostgreSQL connection string, then run:
+
+```bash
+alembic upgrade head
+```
+
+Do not put Supabase service-role keys or plaintext Jira credentials in desktop
+or frontend configuration. Jira config rows are per-user and should store
+credential fields encrypted.
+
 ### Chỉ khởi động infrastructure (không build app)
 
 ```bash
