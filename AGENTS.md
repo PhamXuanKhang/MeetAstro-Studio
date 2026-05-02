@@ -88,26 +88,6 @@ uv pip install -e ".[all]"      # All-in-one (local dev)
 
 ---
 
-## 8. AI Prompt Logging (Automatic)
-
-Prompts được tự động log qua hooks khi dùng bất kỳ AI tool nào. Không cần log thủ công.
-
-| Tool | Config |
-|---|---|
-| Claude Code | `.claude/settings.json` |
-| Cursor | `.cursor/hooks.json` |
-| OpenAI Codex | `.codex/hooks.json` |
-| Gemini CLI | `.gemini/settings.json` |
-| GitHub Copilot | `.github/hooks/hooks.json` |
-
-Logs lưu tại `.ai-log/session.jsonl`, tự submit khi `git push`.
-
-```bash
-# Setup một lần
-bash scripts/setup_hooks.sh
-```
-
----
 
 ## 9. Pull Request Requirements
 
