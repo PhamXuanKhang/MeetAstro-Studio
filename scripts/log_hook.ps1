@@ -117,4 +117,8 @@ $logFile = Join-Path $logDir "session.jsonl"
 
 ($entry | ConvertTo-Json -Compress -Depth 20) | Add-Content -Path $logFile -Encoding UTF8
 
+if ($tool -eq "codex") {
+    exit 0
+}
+
 Write-Output '{"status":"logged"}'
