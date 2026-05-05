@@ -3,12 +3,12 @@
   "hooks": {
     "beforeSubmitPrompt": [
       {
-        "command": "python scripts/log_hook.py cursor"
+        "command": "python3 scripts/log_hook.py cursor"
       }
     ],
     "stop": [
       {
-        "command": "python scripts/log_hook.py cursor"
+        "command": "python3 scripts/log_hook.py cursor"
       }
     ]
   }

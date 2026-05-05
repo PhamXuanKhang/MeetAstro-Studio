@@ -465,3 +465,6 @@ def _step_badge(num: str, label: str, *, done: bool) -> ft.Container:
             spacing=4,
         ),
     )
+            spacing=4,
+        ),
+    )

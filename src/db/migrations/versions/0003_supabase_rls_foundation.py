@@ -29,17 +29,20 @@ USER_TABLES = (
 )
 
 
+def _exec_each(*statements: str) -> None:
+    """Một lệnh SQL mỗi execute — driver asyncpg không hỗ trợ multi-statement."""
+    for stmt in statements:
+        op.execute(stmt.strip())
+
+
 def upgrade() -> None:
-    op.execute(
-        """
-        CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-        CREATE SCHEMA IF NOT EXISTS auth;
-
-        CREATE TABLE IF NOT EXISTS auth.users (
+    _exec_each(
+        """CREATE EXTENSION IF NOT EXISTS "pgcrypto";""",
+        """CREATE SCHEMA IF NOT EXISTS auth;""",
+        """CREATE TABLE IF NOT EXISTS auth.users (
             id uuid PRIMARY KEY
-        );
-
-        DO $$
+        );""",
+        """DO $$
         BEGIN
             IF NOT EXISTS (
                 SELECT 1
@@ -61,16 +64,13 @@ def upgrade() -> None:
                     $func$;
                 $create_function$;
             END IF;
-        END $$;
-        """
+        END $$;""",
     )
 
-    op.execute(
-        """
-        ALTER TABLE public.meetings ALTER COLUMN user_id DROP DEFAULT;
-        ALTER TABLE public.provider_configs ALTER COLUMN user_id DROP DEFAULT;
-
-        ALTER TABLE public.meetings
+    _exec_each(
+        """ALTER TABLE public.meetings ALTER COLUMN user_id DROP DEFAULT;""",
+        """ALTER TABLE public.provider_configs ALTER COLUMN user_id DROP DEFAULT;""",
+        """ALTER TABLE public.meetings
             ALTER COLUMN user_id TYPE uuid
             USING (
                 CASE
@@ -78,9 +78,8 @@ def upgrade() -> None:
                     THEN user_id::uuid
                     ELSE '00000000-0000-0000-0000-000000000000'::uuid
                 END
-            );
-
-        ALTER TABLE public.provider_configs
+            );""",
+        """ALTER TABLE public.provider_configs
             ALTER COLUMN user_id TYPE uuid
             USING (
                 CASE
@@ -88,9 +87,8 @@ def upgrade() -> None:
                     THEN user_id::uuid
                     ELSE '00000000-0000-0000-0000-000000000000'::uuid
                 END
-            );
-
-        ALTER TABLE public.user_plans
+            );""",
+        """ALTER TABLE public.user_plans
             ALTER COLUMN user_id TYPE uuid
             USING (
                 CASE
@@ -98,85 +96,67 @@ def upgrade() -> None:
                     THEN user_id::uuid
                     ELSE '00000000-0000-0000-0000-000000000000'::uuid
                 END
-            );
-
-        ALTER TABLE public.meetings ALTER COLUMN user_id SET DEFAULT auth.uid();
-        ALTER TABLE public.provider_configs ALTER COLUMN user_id SET DEFAULT auth.uid();
-        ALTER TABLE public.user_plans ALTER COLUMN user_id SET DEFAULT auth.uid();
-        """
+            );""",
+        """ALTER TABLE public.meetings ALTER COLUMN user_id SET DEFAULT auth.uid();""",
+        """ALTER TABLE public.provider_configs ALTER COLUMN user_id SET DEFAULT auth.uid();""",
+        """ALTER TABLE public.user_plans ALTER COLUMN user_id SET DEFAULT auth.uid();""",
     )
 
-    op.execute(
-        """
-        ALTER TABLE public.transcripts ADD COLUMN user_id uuid;
-        ALTER TABLE public.analysis_results ADD COLUMN user_id uuid;
-        ALTER TABLE public.review_items ADD COLUMN user_id uuid;
-        ALTER TABLE public.usage_records ADD COLUMN user_id uuid;
-        ALTER TABLE public.transcripts ADD COLUMN ai_job_id uuid;
-        ALTER TABLE public.analysis_results ADD COLUMN ai_job_id uuid;
-
-        UPDATE public.transcripts t
+    _exec_each(
+        """ALTER TABLE public.transcripts ADD COLUMN user_id uuid;""",
+        """ALTER TABLE public.analysis_results ADD COLUMN user_id uuid;""",
+        """ALTER TABLE public.review_items ADD COLUMN user_id uuid;""",
+        """ALTER TABLE public.usage_records ADD COLUMN user_id uuid;""",
+        """ALTER TABLE public.transcripts ADD COLUMN ai_job_id uuid;""",
+        """ALTER TABLE public.analysis_results ADD COLUMN ai_job_id uuid;""",
+        """UPDATE public.transcripts t
         SET user_id = m.user_id
         FROM public.meetings m
-        WHERE t.meeting_id = m.id;
-
-        UPDATE public.analysis_results a
+        WHERE t.meeting_id = m.id;""",
+        """UPDATE public.analysis_results a
         SET user_id = m.user_id
         FROM public.meetings m
-        WHERE a.meeting_id = m.id;
-
-        UPDATE public.review_items r
+        WHERE a.meeting_id = m.id;""",
+        """UPDATE public.review_items r
         SET user_id = m.user_id
         FROM public.meetings m
-        WHERE r.meeting_id = m.id;
-
-        UPDATE public.usage_records u
+        WHERE r.meeting_id = m.id;""",
+        """UPDATE public.usage_records u
         SET user_id = p.user_id
         FROM public.user_plans p
-        WHERE u.user_plan_id = p.id;
-
-        ALTER TABLE public.transcripts ALTER COLUMN user_id SET NOT NULL;
-        ALTER TABLE public.analysis_results ALTER COLUMN user_id SET NOT NULL;
-        ALTER TABLE public.review_items ALTER COLUMN user_id SET NOT NULL;
-        ALTER TABLE public.usage_records ALTER COLUMN user_id SET NOT NULL;
-        """
+        WHERE u.user_plan_id = p.id;""",
+        """ALTER TABLE public.transcripts ALTER COLUMN user_id SET NOT NULL;""",
+        """ALTER TABLE public.analysis_results ALTER COLUMN user_id SET NOT NULL;""",
+        """ALTER TABLE public.review_items ALTER COLUMN user_id SET NOT NULL;""",
+        """ALTER TABLE public.usage_records ALTER COLUMN user_id SET NOT NULL;""",
     )
 
-    op.execute(
-        """
-        ALTER TABLE public.meetings
+    _exec_each(
+        """ALTER TABLE public.meetings
             ADD CONSTRAINT fk_meetings_user
-            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;
-
-        ALTER TABLE public.transcripts
+            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;""",
+        """ALTER TABLE public.transcripts
             ADD CONSTRAINT fk_transcripts_user
-            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;
-
-        ALTER TABLE public.analysis_results
+            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;""",
+        """ALTER TABLE public.analysis_results
             ADD CONSTRAINT fk_analysis_results_user
-            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;
-
-        ALTER TABLE public.review_items
+            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;""",
+        """ALTER TABLE public.review_items
             ADD CONSTRAINT fk_review_items_user
-            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;
-
-        ALTER TABLE public.provider_configs
+            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;""",
+        """ALTER TABLE public.provider_configs
             ADD CONSTRAINT fk_provider_configs_user
-            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;
-
-        ALTER TABLE public.user_plans
+            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;""",
+        """ALTER TABLE public.user_plans
             ADD CONSTRAINT fk_user_plans_user
-            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;
-
-        ALTER TABLE public.usage_records
+            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;""",
+        """ALTER TABLE public.usage_records
             ADD CONSTRAINT fk_usage_records_user
-            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;
-        """
+            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE NOT VALID;""",
     )
 
-    op.execute(
-        """
-        CREATE TABLE public.jira_configs (
+    _exec_each(
+        """CREATE TABLE public.jira_configs (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
             site_url text NOT NULL,
@@ -190,9 +170,8 @@ def upgrade() -> None:
             updated_at timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT uq_jira_configs_user_site_project
                 UNIQUE (user_id, site_url, project_key)
-        );
-
-        CREATE TABLE public.ai_jobs (
+        );""",
+        """CREATE TABLE public.ai_jobs (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
             meeting_id uuid REFERENCES public.meetings(id) ON DELETE CASCADE,
@@ -207,17 +186,14 @@ def upgrade() -> None:
             finished_at timestamptz,
             created_at timestamptz NOT NULL DEFAULT now(),
             updated_at timestamptz NOT NULL DEFAULT now()
-        );
-
-        ALTER TABLE public.transcripts
+        );""",
+        """ALTER TABLE public.transcripts
             ADD CONSTRAINT fk_transcripts_ai_job
-            FOREIGN KEY (ai_job_id) REFERENCES public.ai_jobs(id) ON DELETE SET NULL;
-
-        ALTER TABLE public.analysis_results
+            FOREIGN KEY (ai_job_id) REFERENCES public.ai_jobs(id) ON DELETE SET NULL;""",
+        """ALTER TABLE public.analysis_results
             ADD CONSTRAINT fk_analysis_results_ai_job
-            FOREIGN KEY (ai_job_id) REFERENCES public.ai_jobs(id) ON DELETE SET NULL;
-
-        CREATE TABLE public.jira_push_records (
+            FOREIGN KEY (ai_job_id) REFERENCES public.ai_jobs(id) ON DELETE SET NULL;""",
+        """CREATE TABLE public.jira_push_records (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
             meeting_id uuid NOT NULL REFERENCES public.meetings(id) ON DELETE CASCADE,
@@ -232,9 +208,8 @@ def upgrade() -> None:
             error_message text,
             created_at timestamptz NOT NULL DEFAULT now(),
             updated_at timestamptz NOT NULL DEFAULT now()
-        );
-
-        CREATE TABLE public.audit_logs (
+        );""",
+        """CREATE TABLE public.audit_logs (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
             action text NOT NULL,
@@ -244,34 +219,30 @@ def upgrade() -> None:
             ip_address inet,
             user_agent text,
             created_at timestamptz NOT NULL DEFAULT now()
-        );
-
-        CREATE INDEX ix_meetings_user_id ON public.meetings (user_id);
-        CREATE INDEX ix_transcripts_user_id ON public.transcripts (user_id);
-        CREATE INDEX ix_analysis_results_user_id ON public.analysis_results (user_id);
-        CREATE INDEX ix_review_items_user_id ON public.review_items (user_id);
-        CREATE INDEX ix_provider_configs_user_id ON public.provider_configs (user_id);
-        CREATE INDEX ix_usage_records_user_id ON public.usage_records (user_id);
-        CREATE INDEX ix_jira_configs_user_id ON public.jira_configs (user_id);
-        CREATE INDEX ix_ai_jobs_user_id_status ON public.ai_jobs (user_id, status);
-        CREATE INDEX ix_ai_jobs_meeting_id ON public.ai_jobs (meeting_id);
-        CREATE INDEX ix_jira_push_records_user_id ON public.jira_push_records (user_id);
-        CREATE INDEX ix_jira_push_records_meeting_id ON public.jira_push_records (meeting_id);
-        CREATE INDEX ix_audit_logs_user_id_created_at
-            ON public.audit_logs (user_id, created_at DESC);
-
-        COMMENT ON TABLE public.jira_configs IS
-            'Per-user Jira config metadata plus encrypted credential fields.';
-        COMMENT ON COLUMN public.jira_configs.account_email_encrypted IS
-            'Encrypted Jira account email. Do not expose plaintext to desktop clients.';
-        COMMENT ON COLUMN public.jira_configs.api_token_encrypted IS
-            'Encrypted Jira API token. Do not expose plaintext credentials.';
-        """
+        );""",
+        """CREATE INDEX ix_meetings_user_id ON public.meetings (user_id);""",
+        """CREATE INDEX ix_transcripts_user_id ON public.transcripts (user_id);""",
+        """CREATE INDEX ix_analysis_results_user_id ON public.analysis_results (user_id);""",
+        """CREATE INDEX ix_review_items_user_id ON public.review_items (user_id);""",
+        """CREATE INDEX ix_provider_configs_user_id ON public.provider_configs (user_id);""",
+        """CREATE INDEX ix_usage_records_user_id ON public.usage_records (user_id);""",
+        """CREATE INDEX ix_jira_configs_user_id ON public.jira_configs (user_id);""",
+        """CREATE INDEX ix_ai_jobs_user_id_status ON public.ai_jobs (user_id, status);""",
+        """CREATE INDEX ix_ai_jobs_meeting_id ON public.ai_jobs (meeting_id);""",
+        """CREATE INDEX ix_jira_push_records_user_id ON public.jira_push_records (user_id);""",
+        """CREATE INDEX ix_jira_push_records_meeting_id ON public.jira_push_records (meeting_id);""",
+        """CREATE INDEX ix_audit_logs_user_id_created_at
+            ON public.audit_logs (user_id, created_at DESC);""",
+        """COMMENT ON TABLE public.jira_configs IS
+            'Per-user Jira config metadata plus encrypted credential fields.';""",
+        """COMMENT ON COLUMN public.jira_configs.account_email_encrypted IS
+            'Encrypted Jira account email. Do not expose plaintext to desktop clients.';""",
+        """COMMENT ON COLUMN public.jira_configs.api_token_encrypted IS
+            'Encrypted Jira API token. Do not expose plaintext credentials.';""",
     )
 
-    op.execute(
-        """
-        CREATE FUNCTION public.enforce_meeting_user_id()
+    _exec_each(
+        """CREATE FUNCTION public.enforce_meeting_user_id()
         RETURNS trigger
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -299,9 +270,8 @@ def upgrade() -> None:
 
             RETURN NEW;
         END;
-        $$;
-
-        CREATE FUNCTION public.enforce_meeting_job_user_id()
+        $$;""",
+        """CREATE FUNCTION public.enforce_meeting_job_user_id()
         RETURNS trigger
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -355,9 +325,8 @@ def upgrade() -> None:
 
             RETURN NEW;
         END;
-        $$;
-
-        CREATE FUNCTION public.enforce_usage_record_user_id()
+        $$;""",
+        """CREATE FUNCTION public.enforce_usage_record_user_id()
         RETURNS trigger
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -385,9 +354,8 @@ def upgrade() -> None:
 
             RETURN NEW;
         END;
-        $$;
-
-        CREATE FUNCTION public.enforce_ai_job_user_id()
+        $$;""",
+        """CREATE FUNCTION public.enforce_ai_job_user_id()
         RETURNS trigger
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -415,9 +383,8 @@ def upgrade() -> None:
 
             RETURN NEW;
         END;
-        $$;
-
-        CREATE FUNCTION public.enforce_jira_push_record_user_id()
+        $$;""",
+        """CREATE FUNCTION public.enforce_jira_push_record_user_id()
         RETURNS trigger
         LANGUAGE plpgsql
         SECURITY DEFINER
@@ -481,43 +448,35 @@ def upgrade() -> None:
 
             RETURN NEW;
         END;
-        $$;
-
-        CREATE TRIGGER trg_transcripts_user_id
+        $$;""",
+        """CREATE TRIGGER trg_transcripts_user_id
             BEFORE INSERT OR UPDATE OF user_id, meeting_id, ai_job_id
             ON public.transcripts
-            FOR EACH ROW EXECUTE FUNCTION public.enforce_meeting_job_user_id();
-
-        CREATE TRIGGER trg_analysis_results_user_id
+            FOR EACH ROW EXECUTE FUNCTION public.enforce_meeting_job_user_id();""",
+        """CREATE TRIGGER trg_analysis_results_user_id
             BEFORE INSERT OR UPDATE OF user_id, meeting_id, ai_job_id
             ON public.analysis_results
-            FOR EACH ROW EXECUTE FUNCTION public.enforce_meeting_job_user_id();
-
-        CREATE TRIGGER trg_review_items_user_id
+            FOR EACH ROW EXECUTE FUNCTION public.enforce_meeting_job_user_id();""",
+        """CREATE TRIGGER trg_review_items_user_id
             BEFORE INSERT OR UPDATE OF user_id, meeting_id
             ON public.review_items
-            FOR EACH ROW EXECUTE FUNCTION public.enforce_meeting_user_id();
-
-        CREATE TRIGGER trg_usage_records_user_id
+            FOR EACH ROW EXECUTE FUNCTION public.enforce_meeting_user_id();""",
+        """CREATE TRIGGER trg_usage_records_user_id
             BEFORE INSERT OR UPDATE OF user_id, user_plan_id
             ON public.usage_records
-            FOR EACH ROW EXECUTE FUNCTION public.enforce_usage_record_user_id();
-
-        CREATE TRIGGER trg_ai_jobs_user_id
+            FOR EACH ROW EXECUTE FUNCTION public.enforce_usage_record_user_id();""",
+        """CREATE TRIGGER trg_ai_jobs_user_id
             BEFORE INSERT OR UPDATE OF user_id, meeting_id
             ON public.ai_jobs
-            FOR EACH ROW EXECUTE FUNCTION public.enforce_ai_job_user_id();
-
-        CREATE TRIGGER trg_jira_push_records_user_id
+            FOR EACH ROW EXECUTE FUNCTION public.enforce_ai_job_user_id();""",
+        """CREATE TRIGGER trg_jira_push_records_user_id
             BEFORE INSERT OR UPDATE OF user_id, meeting_id, ai_job_id, jira_config_id
             ON public.jira_push_records
-            FOR EACH ROW EXECUTE FUNCTION public.enforce_jira_push_record_user_id();
-        """
+            FOR EACH ROW EXECUTE FUNCTION public.enforce_jira_push_record_user_id();""",
     )
 
-    op.execute(
-        """
-        CREATE VIEW public.jira_config_metadata
+    _exec_each(
+        """CREATE VIEW public.jira_config_metadata
         WITH (security_invoker = true)
         AS
         SELECT
@@ -530,8 +489,7 @@ def upgrade() -> None:
             metadata,
             created_at,
             updated_at
-        FROM public.jira_configs;
-        """
+        FROM public.jira_configs;""",
     )
 
     _apply_rls()
@@ -541,82 +499,69 @@ def downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS public.jira_config_metadata")
 
     for table_name in USER_TABLES:
-        op.execute(
-            f"""
-            DROP POLICY IF EXISTS user_is_owner ON public.{table_name};
-            ALTER TABLE IF EXISTS public.{table_name} DISABLE ROW LEVEL SECURITY;
-            ALTER TABLE IF EXISTS public.{table_name} NO FORCE ROW LEVEL SECURITY;
-            """
+        _exec_each(
+            f"DROP POLICY IF EXISTS user_is_owner ON public.{table_name};",
+            f"ALTER TABLE IF EXISTS public.{table_name} DISABLE ROW LEVEL SECURITY;",
+            f"ALTER TABLE IF EXISTS public.{table_name} NO FORCE ROW LEVEL SECURITY;",
         )
 
-    op.execute(
-        """
-        DROP TRIGGER IF EXISTS trg_jira_push_records_user_id ON public.jira_push_records;
-        DROP TRIGGER IF EXISTS trg_ai_jobs_user_id ON public.ai_jobs;
-        DROP TRIGGER IF EXISTS trg_usage_records_user_id ON public.usage_records;
-        DROP TRIGGER IF EXISTS trg_review_items_user_id ON public.review_items;
-        DROP TRIGGER IF EXISTS trg_analysis_results_user_id ON public.analysis_results;
-        DROP TRIGGER IF EXISTS trg_transcripts_user_id ON public.transcripts;
-
-        DROP FUNCTION IF EXISTS public.enforce_jira_push_record_user_id();
-        DROP FUNCTION IF EXISTS public.enforce_ai_job_user_id();
-        DROP FUNCTION IF EXISTS public.enforce_usage_record_user_id();
-        DROP FUNCTION IF EXISTS public.enforce_meeting_job_user_id();
-        DROP FUNCTION IF EXISTS public.enforce_meeting_user_id();
-
-        ALTER TABLE public.analysis_results DROP CONSTRAINT IF EXISTS fk_analysis_results_ai_job;
-        ALTER TABLE public.transcripts DROP CONSTRAINT IF EXISTS fk_transcripts_ai_job;
-        ALTER TABLE public.usage_records DROP CONSTRAINT IF EXISTS fk_usage_records_user;
-        ALTER TABLE public.user_plans DROP CONSTRAINT IF EXISTS fk_user_plans_user;
-        ALTER TABLE public.provider_configs DROP CONSTRAINT IF EXISTS fk_provider_configs_user;
-        ALTER TABLE public.review_items DROP CONSTRAINT IF EXISTS fk_review_items_user;
-        ALTER TABLE public.analysis_results DROP CONSTRAINT IF EXISTS fk_analysis_results_user;
-        ALTER TABLE public.transcripts DROP CONSTRAINT IF EXISTS fk_transcripts_user;
-        ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS fk_meetings_user;
-
-        DROP TABLE IF EXISTS public.audit_logs;
-        DROP TABLE IF EXISTS public.jira_push_records;
-        DROP TABLE IF EXISTS public.jira_configs;
-        DROP TABLE IF EXISTS public.ai_jobs;
-
-        DROP INDEX IF EXISTS public.ix_usage_records_user_id;
-        DROP INDEX IF EXISTS public.ix_provider_configs_user_id;
-        DROP INDEX IF EXISTS public.ix_review_items_user_id;
-        DROP INDEX IF EXISTS public.ix_analysis_results_user_id;
-        DROP INDEX IF EXISTS public.ix_transcripts_user_id;
-        DROP INDEX IF EXISTS public.ix_meetings_user_id;
-
-        ALTER TABLE public.analysis_results DROP COLUMN IF EXISTS ai_job_id;
-        ALTER TABLE public.transcripts DROP COLUMN IF EXISTS ai_job_id;
-        ALTER TABLE public.usage_records DROP COLUMN IF EXISTS user_id;
-        ALTER TABLE public.review_items DROP COLUMN IF EXISTS user_id;
-        ALTER TABLE public.analysis_results DROP COLUMN IF EXISTS user_id;
-        ALTER TABLE public.transcripts DROP COLUMN IF EXISTS user_id;
-
-        ALTER TABLE public.user_plans
-            ALTER COLUMN user_id TYPE text USING user_id::text;
-        ALTER TABLE public.provider_configs
-            ALTER COLUMN user_id TYPE text USING user_id::text;
-        ALTER TABLE public.meetings
-            ALTER COLUMN user_id TYPE text USING user_id::text;
-
-        ALTER TABLE public.provider_configs ALTER COLUMN user_id SET DEFAULT 'default_user';
-        ALTER TABLE public.meetings ALTER COLUMN user_id SET DEFAULT 'default_user';
-        """
+    _exec_each(
+        """DROP TRIGGER IF EXISTS trg_jira_push_records_user_id ON public.jira_push_records;""",
+        """DROP TRIGGER IF EXISTS trg_ai_jobs_user_id ON public.ai_jobs;""",
+        """DROP TRIGGER IF EXISTS trg_usage_records_user_id ON public.usage_records;""",
+        """DROP TRIGGER IF EXISTS trg_review_items_user_id ON public.review_items;""",
+        """DROP TRIGGER IF EXISTS trg_analysis_results_user_id ON public.analysis_results;""",
+        """DROP TRIGGER IF EXISTS trg_transcripts_user_id ON public.transcripts;""",
+        """DROP FUNCTION IF EXISTS public.enforce_jira_push_record_user_id();""",
+        """DROP FUNCTION IF EXISTS public.enforce_ai_job_user_id();""",
+        """DROP FUNCTION IF EXISTS public.enforce_usage_record_user_id();""",
+        """DROP FUNCTION IF EXISTS public.enforce_meeting_job_user_id();""",
+        """DROP FUNCTION IF EXISTS public.enforce_meeting_user_id();""",
+        """ALTER TABLE public.analysis_results DROP CONSTRAINT IF EXISTS fk_analysis_results_ai_job;""",
+        """ALTER TABLE public.transcripts DROP CONSTRAINT IF EXISTS fk_transcripts_ai_job;""",
+        """ALTER TABLE public.usage_records DROP CONSTRAINT IF EXISTS fk_usage_records_user;""",
+        """ALTER TABLE public.user_plans DROP CONSTRAINT IF EXISTS fk_user_plans_user;""",
+        """ALTER TABLE public.provider_configs DROP CONSTRAINT IF EXISTS fk_provider_configs_user;""",
+        """ALTER TABLE public.review_items DROP CONSTRAINT IF EXISTS fk_review_items_user;""",
+        """ALTER TABLE public.analysis_results DROP CONSTRAINT IF EXISTS fk_analysis_results_user;""",
+        """ALTER TABLE public.transcripts DROP CONSTRAINT IF EXISTS fk_transcripts_user;""",
+        """ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS fk_meetings_user;""",
+        """DROP TABLE IF EXISTS public.audit_logs;""",
+        """DROP TABLE IF EXISTS public.jira_push_records;""",
+        """DROP TABLE IF EXISTS public.jira_configs;""",
+        """DROP TABLE IF EXISTS public.ai_jobs;""",
+        """DROP INDEX IF EXISTS public.ix_usage_records_user_id;""",
+        """DROP INDEX IF EXISTS public.ix_provider_configs_user_id;""",
+        """DROP INDEX IF EXISTS public.ix_review_items_user_id;""",
+        """DROP INDEX IF EXISTS public.ix_analysis_results_user_id;""",
+        """DROP INDEX IF EXISTS public.ix_transcripts_user_id;""",
+        """DROP INDEX IF EXISTS public.ix_meetings_user_id;""",
+        """ALTER TABLE public.analysis_results DROP COLUMN IF EXISTS ai_job_id;""",
+        """ALTER TABLE public.transcripts DROP COLUMN IF EXISTS ai_job_id;""",
+        """ALTER TABLE public.usage_records DROP COLUMN IF EXISTS user_id;""",
+        """ALTER TABLE public.review_items DROP COLUMN IF EXISTS user_id;""",
+        """ALTER TABLE public.analysis_results DROP COLUMN IF EXISTS user_id;""",
+        """ALTER TABLE public.transcripts DROP COLUMN IF EXISTS user_id;""",
+        """ALTER TABLE public.user_plans
+            ALTER COLUMN user_id TYPE text USING user_id::text;""",
+        """ALTER TABLE public.provider_configs
+            ALTER COLUMN user_id TYPE text USING user_id::text;""",
+        """ALTER TABLE public.meetings
+            ALTER COLUMN user_id TYPE text USING user_id::text;""",
+        """ALTER TABLE public.provider_configs ALTER COLUMN user_id SET DEFAULT 'default_user';""",
+        """ALTER TABLE public.meetings ALTER COLUMN user_id SET DEFAULT 'default_user';""",
     )
 
 
 def _apply_rls() -> None:
     for table_name in USER_TABLES:
-        op.execute(
-            f"""
-            ALTER TABLE public.{table_name} ENABLE ROW LEVEL SECURITY;
-            ALTER TABLE public.{table_name} FORCE ROW LEVEL SECURITY;
-            DROP POLICY IF EXISTS user_is_owner ON public.{table_name};
-            CREATE POLICY user_is_owner
+        _exec_each(
+            f"ALTER TABLE public.{table_name} ENABLE ROW LEVEL SECURITY;",
+            f"ALTER TABLE public.{table_name} FORCE ROW LEVEL SECURITY;",
+            f"DROP POLICY IF EXISTS user_is_owner ON public.{table_name};",
+            f"""CREATE POLICY user_is_owner
                 ON public.{table_name}
                 FOR ALL
                 USING (user_id = auth.uid())
-                WITH CHECK (user_id = auth.uid());
-            """
+                WITH CHECK (user_id = auth.uid());""",
         )

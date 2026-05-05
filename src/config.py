@@ -59,6 +59,18 @@ class Settings(BaseSettings):
     # ── App Secret (Fernet key for credential encryption) ──
     app_secret_key: Optional[str] = Field(default=None, alias="APP_SECRET_KEY")
 
+    # ── Audio Ingestion ──
+    audio_max_upload_mb: int = Field(
+        default=500,
+        alias="AUDIO_MAX_UPLOAD_MB",
+        description="Maximum upload file size in megabytes",
+    )
+    audio_storage_base: str = Field(
+        default="data/meeting-audio",
+        alias="AUDIO_STORAGE_BASE",
+        description="Base directory for normalized audio storage",
+    )
+
     # ── Chunked Transcription ──
     transcription_chunk_seconds: int = Field(
         default=60, alias="TRANSCRIPTION_CHUNK_SECONDS"

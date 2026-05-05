@@ -16,7 +16,11 @@ VN_TZ = timezone(timedelta(hours=7))
 
 
 def _configure_utf8_stdio() -> None:
-    """Use UTF-8 for stdout/stderr so Windows consoles do not choke on Vietnamese or ensure_ascii=False JSON."""
+    """Ép stdout/stderr UTF-8 (Windows console).
+
+    Tránh crash khi print/log tiếng Việt hoặc JSON ensure_ascii=False.
+    Dùng TextIOWrapper(sys.stdout.buffer, ...) khi không có reconfigure().
+    """
     for name in ("stdout", "stderr"):
         stream = getattr(sys, name, None)
         if stream is None:
@@ -35,6 +39,10 @@ def _configure_utf8_stdio() -> None:
                 setattr(sys, name, wrapper)
         except (AttributeError, OSError, ValueError):
             pass
+
+
+# Chạy ngay khi load script — trước main() và trước mọi output có thể chứa Unicode.
+_configure_utf8_stdio()
 
 
 def git(cmd):
@@ -159,8 +167,8 @@ def normalize(data: dict, tool: str) -> Optional[dict]:
 
 
 def main():
-    _configure_utf8_stdio()
-    # Cursor on Windows may prefix JSON with a UTF-8 BOM; utf-8-sig strips it so json.loads works.
+    # UTF-8 BOM: Cursor trên Windows có thể gửi JSON bắt đầu bằng BOM — json.loads() lỗi nếu không strip.
+    # Chỉ decode("utf-8-sig") mới loại BOM đúng cách trước khi json.loads.
     raw_bytes = sys.stdin.buffer.read()
     if not raw_bytes.strip():
         sys.exit(0)
