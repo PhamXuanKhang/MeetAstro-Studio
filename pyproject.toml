@@ -28,13 +28,15 @@ server = [
     "celery>=5.3",
     "redis>=5.0",
     "slowapi>=0.1.9",
+    "ffmpeg-python>=0.2.0",
 ]
 
 # Frontend: Flet desktop app + local audio recording
 frontend = [
     "flet[all]>=0.28",
     "sounddevice>=0.5.0",
-    "pysysaudio==0.1.3",
+    # Upstream explicitly rejects Linux; only macOS / Windows wheels exist.
+    "pysysaudio==0.1.3; sys_platform == 'darwin' or sys_platform == 'win32'",
     "numpy>=1.26.0",
 ]
 
