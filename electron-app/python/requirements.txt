@@ -1,0 +1,6 @@
+pysysaudio
+sounddevice
+numpy
+python-dotenv
+pydantic>=2
+pydantic-settings>=2
