@@ -7,9 +7,6 @@ GET  /meetings/{id}            Get meeting details
 DELETE /meetings/{id}          Delete meeting
 POST /meetings/{id}/audio      Upload audio -> queue pipeline
 """
-import datetime as dt
-import os
-import shutil
 import uuid
 from typing import Annotated, Optional
 
@@ -23,7 +20,6 @@ from src.api.schemas.meeting_schemas import (
     MeetingListResponse,
     MeetingResponse,
 )
-from src.config import get_settings
 from src.db.crud.meeting_crud import (
     create_meeting,
     delete_meeting,
@@ -34,6 +30,8 @@ from src.db.crud.meeting_crud import (
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
+ZERO_UUID = uuid.UUID(int=0)
+
 
 @router.post("", response_model=MeetingResponse, status_code=status.HTTP_201_CREATED)
 async def create_meeting_endpoint(
@@ -42,7 +40,7 @@ async def create_meeting_endpoint(
 ) -> MeetingResponse:
     """Create a new meeting record."""
     meeting = await create_meeting(
-        db, title=payload.title, user_id=payload.user_id
+        db, title=payload.title, user_id=(payload.user_id or ZERO_UUID)
     )
     return MeetingResponse.model_validate(meeting)
 
@@ -53,7 +51,7 @@ async def list_meetings_endpoint(
     status: Optional[str] = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    user_id: str = Query(default="default_user"),
+    user_id: uuid.UUID = Query(default=ZERO_UUID),
 ) -> MeetingListResponse:
     """Get list of meetings with pagination."""
     items, total = await list_meetings(
@@ -99,10 +97,21 @@ async def upload_audio_endpoint(
     language: str = Form(default="en"),
 ) -> AudioUploadResponse:
     """
-    Upload audio file and queue transcribe -> analyze pipeline.
+    Upload audio/video file, normalize to WAV 16kHz mono, and queue pipeline.
+
+    Supported formats:
+    - Audio: .mp3, .wav, .m4a, .ogg
+    - Video: .mp4, .mkv, .webm (audio track is extracted)
 
     Returns job_id for polling progress via GET /jobs/{job_id}.
     """
+    from src.services.audio_ingestion_service import (
+        AudioProcessingError,
+        FileTooLarge,
+        UnsupportedFileFormat,
+        process_upload,
+    )
+
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
@@ -112,27 +121,38 @@ async def upload_audio_endpoint(
             detail=f"Meeting is in '{meeting.status}' state, cannot re-upload.",
         )
 
-    settings = get_settings()
-    audio_dir = settings.audio_output_dir
-    os.makedirs(audio_dir, exist_ok=True)
+    # ── Validate & process upload ──
+    try:
+        audio_path, storage_path, duration = process_upload(
+            file_stream=file.file,
+            filename=file.filename or "upload.wav",
+            user_id=meeting.user_id,
+            meeting_id=str(meeting_id),
+            file_size=file.size,
+        )
+    except UnsupportedFileFormat as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc))
+    except AudioProcessingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
-    timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    ext = os.path.splitext(file.filename or "audio.wav")[1] or ".wav"
-    audio_path = os.path.join(audio_dir, f"upload_{timestamp}_{meeting_id}{ext}")
-
-    with open(audio_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
-    await update_meeting_status(db, meeting_id, status="pending")
+    # ── Update meeting record ──
     from sqlalchemy import update as sa_update
-
     from src.db.models import Meeting as MeetingModel
+
     await db.execute(
         sa_update(MeetingModel)
         .where(MeetingModel.id == meeting_id)
-        .values(audio_path=audio_path)
+        .values(
+            audio_path=audio_path,
+            audio_storage_path=storage_path,
+            audio_duration_seconds=duration,
+        )
     )
+    await update_meeting_status(db, meeting_id, status="pending")
 
+    # ── Queue pipeline ──
     from src.workers.pipeline import run_pipeline
     task = run_pipeline.delay(
         str(meeting_id), audio_path, diarize=diarize, language=language
@@ -145,4 +165,6 @@ async def upload_audio_endpoint(
     return AudioUploadResponse(
         meeting_id=meeting_id,
         job_id=task.id,
+        audio_storage_path=storage_path,
+        audio_duration_seconds=duration,
     )

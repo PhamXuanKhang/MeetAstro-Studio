@@ -10,7 +10,7 @@ data/recordings
 data/*.db
 docs/
 tests/
-frontend/
+# frontend/
 *.md
 *.log
 .env

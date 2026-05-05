@@ -6,6 +6,7 @@ Tất cả hàm nhận AsyncSession từ FastAPI dependency injection.
 import uuid
 from typing import Optional
 
+from sqlalchemy import text
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,14 +14,23 @@ from sqlalchemy.orm import selectinload
 from src.db.models import AnalysisResult, Meeting, Transcript
 
 
+async def _ensure_auth_user(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Đảm bảo user tồn tại trong auth.users để satisfy FK (local/dev không có Supabase)."""
+    await db.execute(
+        text("INSERT INTO auth.users (id) VALUES (:id) ON CONFLICT (id) DO NOTHING"),
+        {"id": user_id},
+    )
+
+
 async def create_meeting(
     db: AsyncSession,
     *,
     title: str,
     audio_path: Optional[str] = None,
-    user_id: str = "default_user",
+    user_id: uuid.UUID = uuid.UUID(int=0),
 ) -> Meeting:
     """Tạo meeting mới với trạng thái pending."""
+    await _ensure_auth_user(db, user_id)
     meeting = Meeting(title=title, audio_path=audio_path, user_id=user_id)
     db.add(meeting)
     await db.flush()
@@ -45,7 +55,7 @@ async def get_meeting(
 async def list_meetings(
     db: AsyncSession,
     *,
-    user_id: str = "default_user",
+    user_id: uuid.UUID = uuid.UUID(int=0),
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,

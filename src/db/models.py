@@ -49,8 +49,14 @@ class Meeting(Base):
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     audio_path: Mapped[Optional[str]] = mapped_column(Text)
+    audio_storage_path: Mapped[Optional[str]] = mapped_column(Text)
+    audio_duration_seconds: Mapped[Optional[float]] = mapped_column(Float)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
-    user_id: Mapped[str] = mapped_column(Text, nullable=False, default="default_user")
+    # NOTE: Migration 0003 converts user_id to UUID (Supabase auth ownership).
+    # For local/dev runs without Supabase JWT, we use the "zero UUID" as a stable default.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, default=uuid.UUID(int=0)
+    )
     celery_task_id: Mapped[Optional[str]] = mapped_column(Text)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(

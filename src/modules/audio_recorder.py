@@ -151,7 +151,17 @@ class AudioRecorder:
 
     def _record_loop(self) -> None:  # noqa: C901
         """Capture system audio, optionally mix mic, write WAV continuously."""
-        from pysysaudio import SystemAudioRecorder as SysRecorder
+        try:
+            from pysysaudio import SystemAudioRecorder as SysRecorder
+        except ImportError:
+            msg = (
+                "pysysaudio is unavailable on this platform (not installed or "
+                "unsupported — Linux has no build). Use audio file upload, or run "
+                "the desktop recorder on macOS/Windows."
+            )
+            self._error = msg
+            logger.error(msg)
+            return
 
         sampwidth = 2  # int16
 
