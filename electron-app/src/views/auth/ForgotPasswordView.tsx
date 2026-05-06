@@ -1,17 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { isSupabaseConfigured } from '../../lib/supabase'
+import { alertError, alertSuccess, alertWarning, buttonPrimary, inputStyle } from '../../styles/designTokens'
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 12px',
-  border: '1px solid #cbd5e1',
-  borderRadius: 8,
-  fontSize: 13,
-  outline: 'none',
-  background: '#f8fafc',
-  boxSizing: 'border-box',
-}
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 interface Props {
   onGoLogin: () => void
@@ -27,6 +19,10 @@ export default function ForgotPasswordView({ onGoLogin }: Props) {
     async (e: React.FormEvent) => {
       e.preventDefault()
       setError(null)
+      if (!EMAIL_PATTERN.test(email.trim())) {
+        setError('Email không hợp lệ.')
+        return
+      }
       try {
         await forgotPassword(email.trim())
         setSent(true)
@@ -43,16 +39,7 @@ export default function ForgotPasswordView({ onGoLogin }: Props) {
         <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 16 }}>
           Email đã gửi
         </h2>
-        <div
-          style={{
-            padding: '14px 16px',
-            background: '#dcfce7',
-            borderRadius: 8,
-            fontSize: 13,
-            color: '#166534',
-            marginBottom: 20,
-          }}
-        >
+        <div style={{ ...alertSuccess, marginBottom: 20 }}>
           Link đặt lại mật khẩu đã được gửi đến <strong>{email}</strong>. Vui lòng kiểm tra hộp thư.
         </div>
         <button
@@ -74,20 +61,14 @@ export default function ForgotPasswordView({ onGoLogin }: Props) {
         Nhập email tài khoản — chúng tôi sẽ gửi link đặt lại mật khẩu.
       </p>
 
-      {error && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: '10px 14px',
-            background: '#fee2e2',
-            borderRadius: 8,
-            fontSize: 13,
-            color: '#991b1b',
-          }}
-        >
-          {error}
+      {!isSupabaseConfigured && (
+        <div style={{ ...alertWarning, marginBottom: 16 }}>
+          Supabase chưa được cấu hình. Vui lòng thêm <code>VITE_SUPABASE_URL</code> và{' '}
+          <code>VITE_SUPABASE_ANON_KEY</code> vào <code>.env</code>.
         </div>
       )}
+
+      {error && <div style={{ ...alertError, marginBottom: 16 }}>{error}</div>}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input
@@ -103,18 +84,7 @@ export default function ForgotPasswordView({ onGoLogin }: Props) {
         <button
           type="submit"
           disabled={loading || !isSupabaseConfigured}
-          style={{
-            padding: '10px 0',
-            background: '#0ea5e9',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            fontWeight: 700,
-            fontSize: 14,
-            cursor: loading || !isSupabaseConfigured ? 'not-allowed' : 'pointer',
-            opacity: loading || !isSupabaseConfigured ? 0.7 : 1,
-            marginTop: 4,
-          }}
+          style={{ ...buttonPrimary, cursor: loading || !isSupabaseConfigured ? 'not-allowed' : 'pointer', opacity: loading || !isSupabaseConfigured ? 0.7 : 1, marginTop: 4 }}
         >
           {loading ? 'Đang gửi...' : 'Gửi link đặt lại'}
         </button>

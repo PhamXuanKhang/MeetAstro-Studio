@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { PythonRecorder } from './audio/pythonRecorder'
@@ -7,6 +7,66 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
 let pythonRecorder: PythonRecorder | null = null
+let rendererReady = false
+const pendingDeepLinks: string[] = []
+
+function isMeetastroUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'meetastro:'
+  } catch {
+    return false
+  }
+}
+
+function findDeepLink(argv: string[]): string | null {
+  return argv.find((arg) => arg.startsWith('meetastro://')) ?? null
+}
+
+function sendDeepLink(url: string) {
+  if (!isMeetastroUrl(url)) return
+  if (!mainWindow || mainWindow.isDestroyed() || !rendererReady) {
+    pendingDeepLinks.push(url)
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.focus()
+  mainWindow.webContents.send('auth:deepLink', url)
+}
+
+function flushDeepLinks() {
+  while (pendingDeepLinks.length > 0) {
+    const url = pendingDeepLinks.shift()
+    if (url) sendDeepLink(url)
+  }
+}
+
+function registerProtocol() {
+  if (process.platform === 'win32' && isDev) {
+    app.setAsDefaultProtocolClient('meetastro', process.execPath, [path.resolve(process.argv[1])])
+    return
+  }
+  app.setAsDefaultProtocolClient('meetastro')
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const deepLink = findDeepLink(argv)
+    if (deepLink) sendDeepLink(deepLink)
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  sendDeepLink(url)
+})
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -30,12 +90,19 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  mainWindow.webContents.once('did-finish-load', () => {
+    rendererReady = true
+    flushDeepLinks()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
+    rendererReady = false
   })
 }
 
 app.whenReady().then(() => {
+  registerProtocol()
   createWindow()
   pythonRecorder = new PythonRecorder()
 
@@ -98,4 +165,14 @@ ipcMain.handle('file:readBytes', async (_event, filePath: string) => {
 // IPC: Config
 ipcMain.handle('config:getApiUrl', () => {
   return process.env.VITE_API_BASE_URL || 'http://localhost:8000'
+})
+
+// IPC: Auth
+ipcMain.handle('auth:openExternalUrl', async (_event, url: string) => {
+  const parsed = new URL(url)
+  const allowedHost = parsed.hostname.endsWith('.supabase.co') || parsed.hostname === 'accounts.google.com'
+  if (parsed.protocol !== 'https:' || !allowedHost) {
+    throw new Error('Auth URL không hợp lệ.')
+  }
+  await shell.openExternal(url)
 })

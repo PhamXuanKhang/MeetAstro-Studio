@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
-
-const STORAGE_KEY = 'settings:jira'
+import { useCallback, useEffect, useState } from 'react'
+import { deleteProviderConfig, listProviderConfigs, setProviderConfig } from '../../api/settings'
+import { alertError, alertSuccess, alertWarning, buttonDanger, buttonDisabled, buttonPrimary, buttonSecondary, colors, inputStyle } from '../../styles/designTokens'
 
 interface JiraConfig {
   url: string
@@ -11,27 +11,6 @@ interface JiraConfig {
 
 const EMPTY: JiraConfig = { url: '', email: '', token: '', projectKey: '' }
 
-function loadFromStorage(): JiraConfig {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return EMPTY
-    return { ...EMPTY, ...JSON.parse(raw) }
-  } catch {
-    return EMPTY
-  }
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '9px 12px',
-  border: '1px solid #cbd5e1',
-  borderRadius: 8,
-  fontSize: 13,
-  outline: 'none',
-  background: '#f8fafc',
-  boxSizing: 'border-box',
-}
-
 interface Props {
   onSaved?: () => void
 }
@@ -39,54 +18,91 @@ interface Props {
 export default function JiraSettingsTab({ onSaved }: Props) {
   const [config, setConfig] = useState<JiraConfig>(EMPTY)
   const [showToken, setShowToken] = useState(false)
+  const [configured, setConfigured] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    setConfig(loadFromStorage())
+    let alive = true
+    setLoading(true)
+    listProviderConfigs()
+      .then((providers) => {
+        if (alive) setConfigured(providers.includes('jira'))
+      })
+      .catch((err) => {
+        if (alive) setError(err instanceof Error ? err.message : 'Không tải được trạng thái Jira.')
+      })
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   const set = (key: keyof JiraConfig) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setConfig((prev) => ({ ...prev, [key]: e.target.value }))
 
-  const handleSave = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-    onSaved?.()
+  const handleSave = useCallback(async () => {
+    setError(null)
+    setSaved(false)
+    if (!config.url.trim() || !config.email.trim() || !config.token.trim() || !config.projectKey.trim()) {
+      setError('Vui lòng nhập đủ URL, email, token và project key.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await setProviderConfig('jira', {
+        url: config.url.trim(),
+        email: config.email.trim(),
+        token: config.token,
+        projectKey: config.projectKey.trim(),
+      })
+      setConfigured(true)
+      setConfig(EMPTY)
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 2000)
+      onSaved?.()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không lưu được Jira settings.')
+    } finally {
+      setLoading(false)
+    }
   }, [config, onSaved])
 
-  const handleDelete = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY)
-    setConfig(EMPTY)
+  const handleDelete = useCallback(async () => {
+    setError(null)
     setSaved(false)
+    setLoading(true)
+    try {
+      await deleteProviderConfig('jira')
+      setConfigured(false)
+      setConfig(EMPTY)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không xóa được Jira settings.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
-
-  const isSaved = Boolean(loadFromStorage().url || loadFromStorage().token)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ marginBottom: 4 }}>
-        <span style={{ fontSize: 13, color: isSaved ? '#166534' : '#94a3b8', fontWeight: 600 }}>
-          {isSaved ? '✓ Đã cấu hình' : 'Chưa cấu hình'}
+        <span style={{ fontSize: 13, color: configured ? colors.success : '#94a3b8', fontWeight: 600 }}>
+          {configured ? 'Đã cấu hình trên server' : 'Chưa cấu hình'}
         </span>
       </div>
 
-      <input
-        placeholder="Base URL (https://yourco.atlassian.net)"
-        value={config.url}
-        onChange={set('url')}
-        style={inputStyle}
-      />
-      <input
-        placeholder="Email"
-        type="email"
-        value={config.email}
-        onChange={set('email')}
-        style={inputStyle}
-      />
+      {error && <div style={alertError}>{error}</div>}
+      {saved && <div style={alertSuccess}>Đã lưu cấu hình Jira.</div>}
+
+      <input placeholder="Base URL (https://yourco.atlassian.net)" value={config.url} onChange={set('url')} style={inputStyle} />
+      <input placeholder="Email" type="email" value={config.email} onChange={set('email')} style={inputStyle} />
       <div style={{ position: 'relative' }}>
         <input
-          placeholder="API Token"
+          placeholder={configured ? 'API Token mới (để trống nếu không lưu lại)' : 'API Token'}
           type={showToken ? 'text' : 'password'}
           value={config.token}
           onChange={set('token')}
@@ -94,73 +110,24 @@ export default function JiraSettingsTab({ onSaved }: Props) {
         />
         <button
           onClick={() => setShowToken((v) => !v)}
-          style={{
-            position: 'absolute', right: 10, top: '50%',
-            transform: 'translateY(-50%)',
-            background: 'none', border: 'none', cursor: 'pointer', fontSize: 16,
-          }}
+          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13 }}
         >
-          {showToken ? '🙈' : '👁️'}
+          {showToken ? 'Ẩn' : 'Hiện'}
         </button>
       </div>
-      <input
-        placeholder="Project Key (ví dụ: PROJ)"
-        value={config.projectKey}
-        onChange={set('projectKey')}
-        style={inputStyle}
-      />
+      <input placeholder="Project Key (ví dụ: PROJ)" value={config.projectKey} onChange={set('projectKey')} style={inputStyle} />
 
-      <div style={{ padding: '10px 12px', background: '#fef9c3', borderRadius: 8, fontSize: 12, color: '#713f12' }}>
-        Prototype mode: Jira token được lưu plaintext trong localStorage của Electron renderer. Chỉ dùng cho môi trường dev/demo; bản production nên chuyển sang secure storage hoặc backend encrypted config.
-      </div>
+      <div style={alertWarning}>Credentials được lưu encrypted trên server. Vì backend chưa có endpoint đọc masked config, form sẽ để trống sau khi lưu.</div>
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-        <button
-          onClick={handleSave}
-          style={{
-            padding: '9px 20px',
-            background: saved ? '#22c55e' : '#0ea5e9',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-          }}
-        >
-          {saved ? '✓ Đã lưu' : '💾 Lưu cấu hình'}
+      <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+        <button onClick={handleSave} disabled={loading} style={{ ...buttonPrimary, ...(loading ? buttonDisabled : {}) }}>
+          {loading ? 'Đang xử lý...' : 'Lưu cấu hình'}
         </button>
-        <button
-          onClick={handleDelete}
-          style={{
-            padding: '9px 20px',
-            background: '#fff',
-            color: '#ef4444',
-            border: '1px solid #fca5a5',
-            borderRadius: 8,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
-          🗑️ Xóa
+        <button onClick={handleDelete} disabled={loading || !configured} style={{ ...buttonDanger, ...((loading || !configured) ? buttonDisabled : {}) }}>
+          Xóa
         </button>
-        <button
-          disabled
-          style={{
-            padding: '9px 20px',
-            background: '#f1f5f9',
-            color: '#94a3b8',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'not-allowed',
-          }}
-          title="Tính năng sẽ có sau khi backend sẵn sàng"
-        >
-          🔗 Test connection
+        <button disabled style={{ ...buttonSecondary, ...buttonDisabled }} title="Chờ backend endpoint test-connection">
+          Test connection
         </button>
       </div>
     </div>

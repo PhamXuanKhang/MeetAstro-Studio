@@ -1,6 +1,5 @@
 import axios, { AxiosInstance } from 'axios'
-
-export const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000'
+import { useAuthStore } from '../store/authStore'
 
 let _baseURL = 'http://localhost:8000'
 
@@ -14,6 +13,12 @@ export function getApiBaseUrl(): string {
   return _baseURL
 }
 
+export function getCurrentUserId(): string {
+  const userId = useAuthStore.getState().user?.userId
+  if (!userId) throw new Error('Bạn cần đăng nhập trước khi gọi API này.')
+  return userId
+}
+
 function createClient(): AxiosInstance {
   const instance = axios.create({
     baseURL: `${_baseURL}/api/v1`,
@@ -21,6 +26,14 @@ function createClient(): AxiosInstance {
     headers: {
       'Content-Type': 'application/json',
     },
+  })
+
+  instance.interceptors.request.use((config) => {
+    const accessToken = useAuthStore.getState().user?.accessToken
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`
+    }
+    return config
   })
 
   instance.interceptors.response.use(

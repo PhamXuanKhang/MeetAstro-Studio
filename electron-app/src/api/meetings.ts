@@ -1,4 +1,4 @@
-import { DEFAULT_USER_ID, getClient } from './client'
+import { getClient, getCurrentUserId } from './client'
 import { pollJob } from './jobs'
 import type {
   MeetingResponse,
@@ -11,12 +11,12 @@ import type {
 
 // --- Meeting CRUD ---
 
-export async function createMeeting(title: string, userId = DEFAULT_USER_ID): Promise<MeetingResponse> {
+export async function createMeeting(title: string, userId = getCurrentUserId()): Promise<MeetingResponse> {
   const { data } = await getClient().post<MeetingResponse>('/meetings', { title, user_id: userId })
   return data
 }
 
-export async function listMeetings(userId = DEFAULT_USER_ID, page = 1, pageSize = 50): Promise<MeetingListResponse> {
+export async function listMeetings(userId = getCurrentUserId(), page = 1, pageSize = 50): Promise<MeetingListResponse> {
   const { data } = await getClient().get<MeetingListResponse>('/meetings', {
     params: { user_id: userId, page, page_size: pageSize },
   })
