@@ -1,3 +1,5 @@
+import { useAuthStore } from '../store/authStore'
+
 const NAV_ITEMS = [
   { route: 'home', label: 'Dashboard', icon: '🏠' },
   { route: 'new_meeting', label: 'Cuộc họp mới', icon: '➕' },
@@ -11,7 +13,12 @@ interface Props {
 }
 
 export default function Sidebar({ currentRoute, onNavigate }: Props) {
+  const { user, logout } = useAuthStore()
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+    : user?.email?.[0]?.toUpperCase() ?? '?'
 
   return (
     <aside
@@ -79,7 +86,53 @@ export default function Sidebar({ currentRoute, onNavigate }: Props) {
         })}
       </nav>
 
-      <div style={{ padding: '12px 20px', fontSize: 11, color: '#475569' }}>
+      {/* User info + logout */}
+      <div style={{ borderTop: '1px solid #334155', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: '50%',
+            background: '#0ea5e9',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 13,
+            fontWeight: 700,
+            color: '#fff',
+            flexShrink: 0,
+          }}
+        >
+          {initials}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {user?.name && (
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user.name}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {user?.email}
+          </div>
+        </div>
+        <button
+          onClick={logout}
+          title="Đăng xuất"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            fontSize: 16,
+            padding: 4,
+            flexShrink: 0,
+          }}
+        >
+          ↩
+        </button>
+      </div>
+
+      <div style={{ padding: '8px 20px', fontSize: 11, color: '#334155' }}>
         v0.1.0 • AI Meeting Assistant
       </div>
     </aside>
