@@ -5,7 +5,11 @@ import { exportMarkdown, exportJson, exportCsv } from '../api/exports'
 import { useRecording } from '../hooks/useRecording'
 import { useFileDialog } from '../hooks/useFileDialog'
 import StepBadge from '../components/StepBadge'
+import UploadTab from '../components/meeting/UploadTab'
+import RecordTab from '../components/meeting/RecordTab'
 import type { MeetingResponse } from '../types/schema'
+
+type AudioTab = 'upload' | 'record'
 
 interface Props {
   onOpenResults: (meeting: MeetingResponse) => void
@@ -29,6 +33,7 @@ export default function NewMeetingView({ onOpenResults, onOpenReview, setBusy }:
   } = useAppStore()
 
   const [title, setTitle] = useState('')
+  const [audioTab, setAudioTab] = useState<AudioTab>('upload')
   const [diarize, setDiarize] = useState(false)
   const [editableTranscript, setEditableTranscript] = useState(transcript)
   const [transcribing, setTranscribing] = useState(false)
@@ -236,59 +241,67 @@ export default function NewMeetingView({ onOpenResults, onOpenReview, setBusy }:
       )}
 
       {/* STEP 1: Audio */}
-      <section style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, marginBottom: 16 }}>
-        <h3 style={{ fontWeight: 700, fontSize: 15, marginBottom: 14, color: '#0f172a' }}>
-          🎙️ Bước 1: Audio
-        </h3>
-
-        <input
-          placeholder="Tiêu đề cuộc họp (tùy chọn)"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={{ ...inputStyle, marginBottom: 12 }}
-        />
-
-        {/* Recording controls */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-          {!isRecording ? (
-            <button
-              onClick={handleStartRecord}
-              style={{ ...btnBase, background: '#ef4444', color: '#fff' }}
-            >
-              ⏺ Ghi âm
-            </button>
-          ) : (
-            <>
+      <section style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 16, overflow: 'hidden' }}>
+        {/* Tab header */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ padding: '14px 20px', flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h3 style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', margin: 0 }}>🎙️ Bước 1: Audio</h3>
+          </div>
+          {(['upload', 'record'] as AudioTab[]).map((tab) => {
+            const isActive = audioTab === tab
+            return (
               <button
-                onClick={handleStopRecord}
-                style={{ ...btnBase, background: '#1e293b', color: '#fff' }}
+                key={tab}
+                onClick={() => setAudioTab(tab)}
+                style={{
+                  padding: '14px 20px',
+                  background: isActive ? '#fff' : '#f8fafc',
+                  border: 'none',
+                  borderBottom: isActive ? '2px solid #0ea5e9' : '2px solid transparent',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: isActive ? 700 : 400,
+                  color: isActive ? '#0ea5e9' : '#64748b',
+                  transition: 'all 0.15s',
+                }}
               >
-                ⏹ Dừng ({fmtTime(elapsedSeconds)})
+                {tab === 'upload' ? '📂 Upload' : '⏺ Ghi âm'}
               </button>
-              <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 600 }}>
-                ● ĐANG GHI ({fmtTime(elapsedSeconds)})
-              </span>
-            </>
-          )}
-          <button
-            onClick={handlePickFile}
-            style={{ ...btnBase, background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0' }}
-          >
-            📂 Tải file audio
-          </button>
+            )
+          })}
         </div>
 
-        {audioPath && (
-          <div style={{ fontSize: 12, color: '#16a34a', padding: '6px 10px', background: '#f0fdf4', borderRadius: 6 }}>
-            ✓ {audioPath.split(/[\\/]/).pop()}
-          </div>
-        )}
+        <div style={{ padding: 20 }}>
+          <input
+            placeholder="Tiêu đề cuộc họp (tùy chọn)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            style={{ ...inputStyle, marginBottom: 14 }}
+          />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-          <input type="checkbox" id="diarize" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} />
-          <label htmlFor="diarize" style={{ fontSize: 12, color: '#64748b' }}>
-            Phân biệt người nói (Diarization) — chậm hơn
-          </label>
+          {audioTab === 'upload' ? (
+            <UploadTab
+              audioPath={audioPath}
+              onAudioPicked={setAudioPath}
+              openFile={openFile}
+              onToast={showToast}
+            />
+          ) : (
+            <RecordTab
+              isRecording={isRecording}
+              elapsedSeconds={elapsedSeconds}
+              audioPath={audioPath}
+              onStart={handleStartRecord}
+              onStop={handleStopRecord}
+            />
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+            <input type="checkbox" id="diarize" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} />
+            <label htmlFor="diarize" style={{ fontSize: 12, color: '#64748b' }}>
+              Phân biệt người nói (Diarization) — chậm hơn
+            </label>
+          </div>
         </div>
       </section>
 

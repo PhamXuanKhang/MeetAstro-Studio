@@ -1,5 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
 
+export const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000'
+
 let _baseURL = 'http://localhost:8000'
 
 // Allow updating the base URL at runtime (from Settings or electron IPC)
