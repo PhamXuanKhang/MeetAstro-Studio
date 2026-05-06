@@ -51,7 +51,7 @@ function registerProtocol() {
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
-  app.quit()
+  app.exit(0)
 } else {
   app.on('second-instance', (_event, argv) => {
     const deepLink = findDeepLink(argv)
@@ -105,6 +105,9 @@ app.whenReady().then(() => {
   registerProtocol()
   createWindow()
   pythonRecorder = new PythonRecorder()
+
+  const launchDeepLink = findDeepLink(process.argv)
+  if (launchDeepLink) sendDeepLink(launchDeepLink)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
