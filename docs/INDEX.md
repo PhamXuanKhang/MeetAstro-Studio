@@ -63,6 +63,7 @@ docs/
 ### Architecture
 - [System Architecture](technical/architecture.md) — High-level overview
 - [Data Flow](technical/data-flow.md) — Pipeline diagram
+- [Backend Contract v1](technical/backend-contract-v1.md) — Supabase migration contract
 - [Database Schema](technical/database-schema.md) — PostgreSQL tables
 - [Supabase Schema](technical/supabase-schema.md) — Auth ownership + RLS
 - [API Reference](technical/api-reference.md) — REST endpoints
@@ -115,6 +116,7 @@ docs/
 | `technical/supabase-schema.md` | Supabase Auth ownership, RLS policies, Jira config metadata |
 | `technical/celery-tasks.md` | Celery background tasks, retry logic, monitoring |
 | `technical/data-flow.md` | End-to-end data pipeline, transformations, state management |
+| `technical/backend-contract-v1.md` | Supabase migration data/API contract for UI, backend, AI pipeline, and Jira sync |
 | `technical/frontend.md` | Flet desktop app structure, views, state management |
 | `technical/security.md` | Security measures, credential vault, threat mitigations |
 | `technical/deployment.md` | Installation, Docker setup, production deployment |

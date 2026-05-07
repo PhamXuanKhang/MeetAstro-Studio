@@ -39,13 +39,6 @@ def build_sidebar(
             on_click=_click,
         )
 
-    try:
-        from src.config import get_settings
-
-        api_base = get_settings().api_base_url
-    except Exception:
-        api_base = "http://localhost:8000"
-
     profile = ft.Container(
         content=ft.Row(
             [
@@ -55,7 +48,7 @@ def build_sidebar(
                 ft.Column(
                     [
                         ft.Text("AI Meeting Assistant", size=13, weight=ft.FontWeight.W_700),
-                        ft.Text("HTTP workspace", size=11, color=ft.Colors.GREY_600),
+                        ft.Text("Mock workspace", size=11, color=ft.Colors.GREY_600),
                     ],
                     spacing=2,
                     tight=True,
@@ -92,7 +85,7 @@ def build_sidebar(
                     content=ft.Column(
                         [
                             ft.Text("API connection", size=11, color=ft.Colors.GREY_600),
-                            ft.Text(api_base, size=10, color=ft.Colors.GREY_700),
+                            ft.Text("Disconnected UI mode", size=10, color=ft.Colors.GREY_700),
                         ],
                         spacing=8,
                     ),

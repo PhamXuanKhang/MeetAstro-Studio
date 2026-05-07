@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import json
-
 import flet as ft
 
-from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
 
 
@@ -15,135 +12,92 @@ def build_settings_view(
     toast,
     set_busy,
 ) -> ft.Control:
-    backend = get_backend()
-    providers = ["jira", "trello", "notion", "slack", "teams"]
+    jira_site = ft.TextField(label="Jira site URL", value="https://company.atlassian.net")
+    jira_email = ft.TextField(label="Jira email", value="user@example.com")
+    jira_token = ft.TextField(label="Jira API token", password=True, can_reveal_password=True)
+    jira_project = ft.TextField(label="Project key", value="DEV")
 
-    provider_dd = ft.Dropdown(
-        options=[ft.dropdown.Option(p) for p in providers],
-        value="jira",
-        width=200,
+    openai_key = ft.TextField(label="OpenAI API key", password=True, can_reveal_password=True)
+    openai_model = ft.TextField(label="Default model", value="gpt-4o")
+
+    def save_mock(_e) -> None:
+        toast("Mock settings saved locally. No API call was made.")
+
+    jira_content = ft.Container(
+        padding=ft.padding.all(16),
+        content=ft.Column(
+            [jira_site, jira_email, jira_token, jira_project, _save_button(save_mock)],
+            spacing=10,
+        ),
+    )
+    openai_content = ft.Container(
+        padding=ft.padding.all(16),
+        visible=False,
+        content=ft.Column(
+            [openai_key, openai_model, _save_button(save_mock)],
+            spacing=10,
+        ),
     )
 
-    status_text = ft.Text("", size=12, color=ft.Colors.GREY_700)
-
-    def refresh_status() -> None:
-        try:
-            backend.init_db()
-            active = set(backend.list_provider_configs())
-            p = provider_dd.value
-            if p in active:
-                status_text.value = f"✓ {p} configured"
-                status_text.color = ft.Colors.GREEN_700
-            else:
-                status_text.value = f"{p} not configured"
-                status_text.color = ft.Colors.GREY_700
-        except Exception as exc:
-            status_text.value = f"Error: {exc}"
-            status_text.color = ft.Colors.RED_700
-
-    url = ft.TextField(label="Base URL", hint_text="https://yourcompany.atlassian.net", dense=True)
-    email = ft.TextField(label="Email", dense=True)
-    token = ft.TextField(label="API Token", password=True, can_reveal_password=True, dense=True)
-    project_key = ft.TextField(label="Project Key", hint_text="PROJ", dense=True)
-
-    generic_kv = ft.TextField(
-        label="Config JSON (for non-Jira providers)",
-        hint_text='{"token":"..."}',
-        multiline=True,
-        min_lines=4,
-        max_lines=6,
-        dense=True,
-    )
-
-    def on_provider_change(_e) -> None:
-        refresh_status()
-        render_form()
-
-    provider_dd.on_change = on_provider_change
-
-    form_host = ft.Container()
-
-    def render_form() -> None:
-        p = provider_dd.value
-        if p == "jira":
-            form_host.content = ft.Column([url, email, token, project_key], spacing=10)
-        else:
-            form_host.content = ft.Column([generic_kv], spacing=10)
+    def show_jira_tab(_e) -> None:
+        jira_content.visible = True
+        openai_content.visible = False
+        jira_tab_button.disabled = True
+        openai_tab_button.disabled = False
         page.update()
 
-    def save_config(_e) -> None:
-        p = provider_dd.value
-        try:
-            backend.init_db()
-            if p == "jira":
-                cfg = {
-                    "url": (url.value or "").strip(),
-                    "email": (email.value or "").strip(),
-                    "token": (token.value or "").strip(),
-                    "project_key": (project_key.value or "").strip(),
-                }
-                cfg = {k: v for k, v in cfg.items() if v}
-            else:
-                raw = (generic_kv.value or "").strip()
-                if not raw:
-                    cfg = {}
-                else:
-                    try:
-                        cfg = json.loads(raw)
-                        if not isinstance(cfg, dict):
-                            raise ValueError("JSON must be an object.")
-                    except (ValueError, json.JSONDecodeError) as exc:
-                        toast(f"Invalid JSON: {exc}", error=True)
-                        return
-            if not cfg:
-                toast("Please fill at least one field.", error=True)
-                return
-            backend.set_provider_config(p, cfg)
-            toast(f"Saved {p} configuration.")
-            refresh_status()
-            page.update()
-        except Exception as exc:
-            toast(f"Failed to save config: {exc}", error=True)
+    def show_openai_tab(_e) -> None:
+        jira_content.visible = False
+        openai_content.visible = True
+        jira_tab_button.disabled = False
+        openai_tab_button.disabled = True
+        page.update()
 
-    def delete_config(_e) -> None:
-        p = provider_dd.value
-        try:
-            backend.delete_provider_config(p)
-            toast(f"Deleted {p} configuration.")
-            refresh_status()
-            page.update()
-        except Exception as exc:
-            toast(f"Failed to delete config: {exc}", error=True)
-
-    refresh_status()
-    render_form()
-
-    card = ft.Container(
-        width=1100,
-        bgcolor=ft.Colors.WHITE,
-        border_radius=16,
-        border=ft.border.all(1, ft.Colors.GREY_200),
-        padding=ft.padding.all(18),
-        content=ft.Column(
-            [
-                ft.Text("Integrations", size=16, weight=ft.FontWeight.W_800),
-                ft.Row([ft.Text("Provider", size=12), provider_dd, status_text], spacing=12),
-                ft.Divider(height=1),
-                form_host,
-                ft.Row(
-                    [
-                        ft.ElevatedButton("Save configuration", icon=ft.Icons.SAVE, on_click=save_config),
-                        ft.OutlinedButton("Delete configuration", icon=ft.Icons.DELETE_OUTLINE, on_click=delete_config),
-                    ],
-                    spacing=12,
-                ),
-            ],
-            spacing=12,
-        ),
+    jira_tab_button = ft.ElevatedButton(
+        "Jira",
+        icon=ft.Icons.INTEGRATION_INSTRUCTIONS_OUTLINED,
+        disabled=True,
+        on_click=show_jira_tab,
+    )
+    openai_tab_button = ft.OutlinedButton(
+        "OpenAI",
+        icon=ft.Icons.KEY_OUTLINED,
+        on_click=show_openai_tab,
+    )
+    content = ft.Column(
+        [
+            ft.Row([jira_tab_button, openai_tab_button], spacing=8),
+            jira_content,
+            openai_content,
+        ],
+        spacing=0,
     )
 
     return ft.Container(
         padding=ft.padding.all(18),
-        content=ft.Container(alignment=ft.alignment.Alignment(0, -1), content=card),
         expand=True,
+        bgcolor=ft.Colors.GREY_50,
+        content=ft.Container(
+            width=960,
+            bgcolor=ft.Colors.WHITE,
+            border=ft.border.all(1, ft.Colors.GREY_200),
+            border_radius=8,
+            padding=ft.padding.all(12),
+            content=ft.Column(
+                [
+                    ft.Text("Settings", size=20, weight=ft.FontWeight.W_700),
+                    ft.Text(
+                        "Mock provider settings UI. Real Fernet save happens via FastAPI later.",
+                        size=12,
+                        color=ft.Colors.GREY_700,
+                    ),
+                    content,
+                ],
+                spacing=10,
+            ),
+        ),
     )
+
+
+def _save_button(on_click) -> ft.Control:
+    return ft.ElevatedButton("Save mock config", icon=ft.Icons.SAVE, on_click=on_click)
