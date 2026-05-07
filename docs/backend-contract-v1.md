@@ -1,8 +1,10 @@
 # Hybrid Contract v1 - Phase 1.1
 
 Status: Draft
-Scope: Supabase migration foundation + current P0 use cases
-Architecture: Flet UI uses Supabase directly for Auth/basic data and FastAPI for heavy/server-only actions.
+Scope: Phase 1.1 P0 use cases — target architecture only (không phải migration guide)
+Target Frontend: Electron (Flet là tạm thời, sẽ xóa sau khi Electron build xong)
+Architecture: Electron dùng Supabase SDK trực tiếp cho Auth/basic data; FastAPI cho heavy/server-only actions.
+Storage Convention: storage_provider="local" nghĩa là audio file lưu trên máy người dùng (không phải VPS). audio_storage_path là file:// URI trỏ tới path gốc trên client. VPS chỉ giữ temp copy trong lúc xử lý Whisper.
 
 ## Routing Rules
 
@@ -12,8 +14,8 @@ Supabase SDK:
 - Lightweight user edits protected by RLS.
 - Realtime subscriptions.
 
-FastAPI (VPS):
-- Upload audio and trigger AI jobs.
+FastAPI (VPS) — base path: /api/v1:
+- Upload audio/video và trigger AI jobs.
 - Provider secrets encryption/decryption.
 - Jira integration.
 - Any operation needing service role, Fernet key, Celery, OpenAI, or external APIs.
@@ -35,6 +37,8 @@ Meeting:
   "updated_at": "2026-05-05T10:00:00Z"
 }
 ```
+
+Status enum (8 states): `pending` → `transcribing` → `transcribed` → `analyzing` → `draft` → `approved` → `pushed` | `failed`
 
 Transcript segment:
 ```json
@@ -243,7 +247,8 @@ Response:
 
 ## B1 - Save Jira Credentials
 
-Routing: FastAPI (VPS). UI must not write plaintext keys directly to Supabase.
+Routing: FastAPI (VPS). `PUT /api/v1/settings/providers/jira`
+UI must not write plaintext keys directly to Supabase.
 
 Request:
 ```json
@@ -269,7 +274,7 @@ Response:
 
 ## B2 - Test Jira Connection
 
-Routing: FastAPI (VPS).
+Routing: FastAPI (VPS). `POST /api/v1/settings/providers/jira/test`
 
 Request:
 ```json
@@ -294,7 +299,8 @@ Response:
 
 ## B4 - Save OpenAI API Key
 
-Routing: FastAPI (VPS). UI must not write plaintext keys directly to Supabase.
+Routing: FastAPI (VPS). `PUT /api/v1/settings/providers/openai`
+UI must not write plaintext keys directly to Supabase.
 
 Request:
 ```json
@@ -347,42 +353,23 @@ Response:
 }
 ```
 
-## C2 - Upload Audio
+## C2/C3 - Upload Audio or Video
 
-Routing: FastAPI (VPS).
+Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/upload`
 
-Request:
+Chấp nhận audio (mp3/wav/m4a/ogg) và video (mp4/mkv/webm). Backend infer loại file từ MIME type và tự extract audio nếu là video.
+
+Request (multipart/form-data):
 ```json
 {
-  "meeting_id": "uuid",
   "file": "multipart-binary",
   "language": "vi",
   "diarize": true
 }
 ```
 
-Response:
-```json
-{
-  "meeting_id": "uuid",
-  "job_id": "celery-task-id",
-  "status": "queued"
-}
-```
-
-## C3 - Upload Video
-
-Routing: FastAPI (VPS).
-
-Request:
-```json
-{
-  "meeting_id": "uuid",
-  "file": "multipart-binary",
-  "language": "vi",
-  "diarize": true
-}
-```
+- `language`: optional, default `"vi"`
+- `diarize`: optional, default `true`
 
 Response:
 ```json
@@ -569,7 +556,7 @@ Response:
 
 ## E1 - Trigger Analysis
 
-Routing: FastAPI (VPS).
+Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/analyze`
 
 Request:
 ```json
@@ -765,7 +752,11 @@ Response:
 
 ## G1 - Push Selected Items To Jira
 
-Routing: FastAPI (VPS).
+Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/jira/push`
+
+Partial push được phép — chỉ push items có `is_selected=true` và `review_status="approved"`. Items còn `review_status="draft"` không bị block nhưng bị bỏ qua; response trả về `unreviewed_count` để UI hiển thị warning.
+
+Phase 1: không set Jira assignee field. Assignee chỉ ghi vào description/context của issue.
 
 Request:
 ```json
@@ -779,7 +770,8 @@ Response:
 {
   "meeting_id": "uuid",
   "job_id": "celery-task-id",
-  "status": "queued"
+  "status": "queued",
+  "unreviewed_count": 3
 }
 ```
 
@@ -809,7 +801,7 @@ Response:
 
 ## G3 - Retry Failed Push
 
-Routing: FastAPI (VPS).
+Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/jira/retry`
 
 Request:
 ```json

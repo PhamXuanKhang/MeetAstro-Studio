@@ -48,7 +48,7 @@ Lưu trữ thông tin cốt lõi và metadata của từng cuộc họp.
 | `id` | uuid | Primary Key | |
 | `user_id` | uuid | Foreign Key | FK -> `profiles.id` |
 | `title` | text | | |
-| `status` | string | | Enum: pending, transcribed, draft, approved, pushed, failed |
+| `status` | string | | Enum: pending, transcribing, transcribed, analyzing, draft, approved, pushed, failed |
 | `error_message` | text | | For AI/Whisper debug |
 | `storage_provider`| string | | Enum: local, cloud |
 | `audio_storage_path`| text | | |
