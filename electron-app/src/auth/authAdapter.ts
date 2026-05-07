@@ -14,6 +14,9 @@ export interface AuthAdapter {
   login: (email: string, password: string) => Promise<AuthResult>
   register: (email: string, password: string, name?: string) => Promise<AuthResult>
   forgotPassword: (email: string) => Promise<void>
+  getOAuthUrl: (provider: 'google', redirectTo: string) => Promise<{ url: string }>
+  setSession: (accessToken: string, refreshToken: string) => Promise<UserSession>
+  updatePassword: (newPassword: string) => Promise<void>
   logout: () => Promise<void>
   getSession: () => Promise<UserSession | null>
   onAuthStateChange: (callback: (session: UserSession | null) => void) => () => void

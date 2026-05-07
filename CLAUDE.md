@@ -6,7 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Ứng dụng chuyển đổi audio trong cuộc họp thành biên bản hoàn chỉnh và action items có cấu trúc (Epic → Task → Subtask) để tích hợp tự động vào Jira. Kiến trúc client-server: backend deploy Docker, frontend đóng gói `.exe`.
 
 ## Current Tech Stack
-Python 3.11 (server) / Python 3.9+ (shared) / Flet / OpenAI API (GPT-4o + Whisper API + Diarization) / PostgreSQL / Celery + Redis / Jira REST API v3 / `uv` / Pydantic / FastAPI / SQLAlchemy (async).
+- **Backend**: Python 3.11, FastAPI, SQLAlchemy (async + asyncpg), Celery + Redis, Alembic, Pydantic / pydantic-settings.
+- **AI**: OpenAI API (GPT-4o + Whisper API + Diarization). Structured JSON output → Jira schema.
+- **Database**: PostgreSQL 16. Quota/plan system (UserPlan, UsageRecord, QuotaLimit models).
+- **Flet Frontend**: Python 3.9+, Flet desktop app (`frontend/`). HTTP-only client via `httpx`.
+- **Electron Frontend**: TypeScript + React + Vite + Electron (`electron-app/`). Axios API client, Zustand store, Supabase auth. Python sidecar for audio recording.
+- **Integrations**: Jira REST API v3, Supabase Auth (Electron only, backend enforcement WIP).
+- **Tooling**: `uv` package manager, Docker Compose, ffmpeg (audio normalization).
 
 ## Commands
 ```bash
@@ -26,6 +32,12 @@ celery -A src.workers.celery_app worker -Q default --loglevel=info
 
 # Run Flet desktop app
 python -m frontend.main
+
+# Electron frontend (separate from Flet)
+cd electron-app && npm install && npm run dev   # Dev mode (Vite + Electron)
+cd electron-app && npm run build                # Production build (.exe via electron-builder)
+cd electron-app && npm run lint                  # ESLint
+cd electron-app && npm run typecheck             # TypeScript check
 
 # Docker (full backend stack: PostgreSQL + Redis + Alembic migrate + API + Worker)
 docker-compose up --build
@@ -50,16 +62,19 @@ Sau mỗi thay đổi: `flake8 . --max-line-length=100 && mypy . --ignore-missin
 ## Architecture (Client-Server)
 
 ### Layered View
-- **Desktop App (Flet)**: `frontend/` — HTTP client gọi FastAPI qua `HttpBackend`. Audio recording chạy local.
-- **API Layer**: `src/api/` — FastAPI routers (meetings, transcriptions, analysis, reviews, jira, exports, settings). Health: `/api/v1/health`. Job polling: `/api/v1/jobs/{job_id}`.
-- **Worker Layer**: `src/workers/` — Celery tasks xử lý pipeline nặng (transcribe, analyze, jira push). Beat schedule: cleanup mỗi 2h.
-- **Service Layer**: `src/services/` — orchestration logic (analysis, transcription, jira, validation).
+- **Flet Desktop App**: `frontend/` — HTTP-only client (`HttpBackend` wraps `httpx.Client`, sync). Audio recording chạy local via `src.services.recording_service`. State: in-memory `AppState` dataclass.
+- **Electron Desktop App**: `electron-app/` — React + TypeScript + Vite. Axios API client mirrors `HttpBackend`. Zustand store mirrors `AppState`. Supabase email/password auth. Python sidecar cho audio recording via IPC.
+- **API Layer**: `src/api/` — FastAPI routers (meetings, transcriptions, analysis, reviews, jira, exports, settings). Health: `/api/v1/health`. Job polling: `/api/v1/jobs/{job_id}`. Rate limiting via `slowapi`. No auth middleware currently enforced.
+- **Worker Layer**: `src/workers/` — Celery tasks xử lý pipeline nặng (transcribe, analyze, jira push). `pipeline.py` orchestrates sequentially within one task. Beat schedule: cleanup mỗi 2h.
+- **Service Layer**: `src/services/` — orchestration logic (analysis, transcription, jira, validation, audio ingestion, summarization, cleanup).
+- **Audio Ingestion**: `src/services/audio_ingestion_service.py` — upload validation, ffmpeg normalization (→ WAV 16kHz mono), video-to-audio extraction. Supports mp3/wav/m4a/ogg + mp4/mkv/webm. Canonical storage under `AUDIO_STORAGE_BASE`.
 - **Provider Layer**: `src/providers/` — OpenAI Whisper, GPT-4o analyzer, diarize transcriber. Kế thừa ABC (`BaseAnalyzer`, `BaseTranscriber`).
-- **DB Layer**: `src/db/` — SQLAlchemy async models + CRUD + Alembic migrations. Script location: `src/db/migrations/`.
+- **DB Layer**: `src/db/` — SQLAlchemy async models (Meeting, Transcript, AnalysisResult, ReviewItem, ProviderConfig, UserPlan, UsageRecord, QuotaLimit) + CRUD + Alembic migrations. Script location: `src/db/migrations/`.
 - **Integration Layer**: `src/modules/` — Jira client, audio recorder, exporter, credential vault.
 - **Data Contracts**: `src/schema.py` — Pydantic models: MeetingAnalysis, Epic, Task, Subtask, ReviewItem, Priority enum, ReviewStatus enum, MeetingStatus enum.
 - **DI Container**: `src/core/container.py` — Lazy initialization of providers. Falls back to `MockAnalyzer` when `OPENAI_API_KEY` empty. `JiraClient` auto-stubs when Jira credentials missing. Use `get_container()` globally, `Container(settings=mock)` for tests.
 - **Prompt Assets**: `src/prompts/` — prompt templates (vd: `extract_action_items.md`).
+- **Design System**: `DESIGN.md` — Notion-based design tokens (colors, typography, spacing, components). Tham chiếu khi build/style frontend components.
 
 ### Data Flow
 ```
@@ -83,9 +98,16 @@ Sau mỗi thay đổi: `flake8 . --max-line-length=100 && mypy . --ignore-missin
 
 **Structured Output**: OpenAI JSON mode for action items extraction. Output maps to Jira schema: Epic → Task → Subtask with assignee, deadline, priority.
 
+**Two Frontends, One API**: Both Flet and Electron call the same FastAPI `/api/v1` endpoints. Flet uses sync `httpx`, Electron uses `axios`. Audio recording is local in both (Flet: Python in-process, Electron: Python sidecar via IPC/JSON-lines).
+
+**Supabase Auth (In-Progress)**: Electron has Supabase email/password auth + session tracking. DB model uses UUID `Meeting.user_id` (zero UUID fallback for local/dev, migration 0003). Backend does NOT currently enforce JWT auth — no middleware or `Authorization` header injection in either frontend's API client. Supabase env vars are in `.env` but not declared in `src/config.py`.
+
+**Quota System**: `UserPlan` / `UsageRecord` / `QuotaLimit` models support plan-based usage limits. Migration 0002.
+
 ### CI/CD
-- `.github/workflows/deploy.yml`: On push to `main` → build Docker image → push to `ghcr.io` → trigger Coolify webhook deploy.
+- `.github/workflows/deploy.yml`: On push to `main` → build Docker image → push to `ghcr.io` → trigger Coolify webhook deploy. No test/lint CI workflow — only deployment.
 - Docker Compose runs Alembic migration as a separate `migrate` service before API/Worker start.
+- Docker Compose is backend-only (Postgres, Redis, migrate, API, worker). Does NOT run Flet or Electron frontend.
 
 ## Action Items Schema (Jira integration target)
 - **Epic**: Chủ đề lớn / quyết định chính
@@ -101,7 +123,11 @@ Sau mỗi thay đổi: `flake8 . --max-line-length=100 && mypy . --ignore-missin
 - Pure functions khi có thể. Không global state ngoài config.
 
 ## Environment Variables
-Xem `.env.example` cho đầy đủ. Config loading qua `src/config.py` (`pydantic-settings`).
+Config loading qua `src/config.py` (`pydantic-settings`, `@lru_cache` singleton). Xem `.env.example` cho đầy đủ.
+
+**Electron-only env vars** (Vite, in `electron-app/.env`): `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+
+**Supabase env vars** (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) are in `.env` but NOT yet declared in `src/config.py` — backend doesn't read them.
 
 ## Agent Behavior
 

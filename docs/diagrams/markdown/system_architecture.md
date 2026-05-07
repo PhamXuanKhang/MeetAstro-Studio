@@ -1,14 +1,17 @@
 flowchart LR
-  U[Users<br/>(User 1, user 2,<br/>user ...)]
-  F[Frontend (Flet)]
-  AU[Auth]
-  API[FastAPI API]
-  FS[File storage<br/>(audio path)]
+  U[Users<br/>(User 1, User 2,<br/>User ...)]
+  E[Frontend<br/>(Electron)]
+  SB[(Supabase<br/>DB + Auth + Realtime)]
+  API[FastAPI API<br/>/api/v1]
+  FS[Audio<br/>(local — user machine)]
   RQ[Redis queue]
 
-  U -->|Request| F --> AU --> API
-  API -->|Save audio + create meeting status| FS
-  API -->|Enqueue or update job| RQ
+  U -->|Interact| E
+  E -->|Supabase SDK<br/>Auth, CRUD, Realtime| SB
+  E -->|HTTP<br/>Upload, AI jobs,<br/>Jira push, Provider settings| API
+
+  API -->|audio_storage_path ref| FS
+  API -->|Enqueue job| RQ
 
   subgraph CW[Celery Workers]
     W1[Worker instance #1]
@@ -18,7 +21,7 @@ flowchart LR
   RQ -->|2 jobs in queue concurrently| W1
   RQ -->|2 jobs /x sec concurrently| WN
 
-  subgraph WI[Worker instances]
+  subgraph WI[Worker pipeline]
     AT[Audio transcription<br/>(Whisper API)]
     AI[Action item analysis<br/>(GPT-4o)]
     AT --> AI
@@ -27,8 +30,8 @@ flowchart LR
   W1 --> AT
   WN --> AT
 
-  PG[(PostgreSQL<br/>db)]
   J[Jira]
 
-  AI -->|Save to| PG
-  AI -->|Push to| J
+  AI -->|Save transcript_segments,<br/>analysis_results, action_items| SB
+  AI -->|Push issues| J
+  SB -->|Realtime events<br/>(status, segments, sync_status)| E

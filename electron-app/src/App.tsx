@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from './store/appStore'
 import { useAuthStore } from './store/authStore'
 import Sidebar from './components/Sidebar'
@@ -14,9 +14,10 @@ import AuthLayout from './views/auth/AuthLayout'
 import LoginView from './views/auth/LoginView'
 import RegisterView from './views/auth/RegisterView'
 import ForgotPasswordView from './views/auth/ForgotPasswordView'
+import ResetPasswordView from './views/auth/ResetPasswordView'
 import type { MeetingResponse } from './types/schema'
 
-type AuthRoute = 'login' | 'register' | 'forgot'
+type AuthRoute = 'login' | 'register' | 'forgot' | 'reset'
 
 const ROUTE_TITLES: Record<string, string> = {
   home: 'Dashboard',
@@ -28,12 +29,26 @@ const ROUTE_TITLES: Record<string, string> = {
 }
 
 export default function App() {
-  const { user, initialized, loading: authLoading } = useAuthStore()
+  const { user, initialized, initializing, handleAuthCallback } = useAuthStore()
   const { route, setRoute, busy, progressText, searchQuery, setSearchQuery, setBusy } = useAppStore()
   const { setSelectedMeeting, setAnalysis, setTranscript, setCurrentMeetingId } = useAppStore()
   const [authRoute, setAuthRoute] = useState<AuthRoute>('login')
 
   const navigate = useCallback((r: string) => setRoute(r), [setRoute])
+
+  useEffect(() => {
+    if (!window.electronAPI?.onAuthDeepLink) return undefined
+    return window.electronAPI.onAuthDeepLink(async (url) => {
+      const result = await handleAuthCallback(url)
+      if (result.route === 'reset') {
+        setAuthRoute('reset')
+        return
+      }
+      if (result.error) {
+        setAuthRoute('login')
+      }
+    })
+  }, [handleAuthCallback])
 
   const openResults = useCallback(
     (meeting: MeetingResponse) => {
@@ -79,7 +94,7 @@ export default function App() {
     }
   }
 
-  if (!initialized || authLoading) {
+  if (!initialized || initializing) {
     return (
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
         <div style={{ width: 32, height: 32, border: '3px solid #0ea5e9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -103,6 +118,17 @@ export default function App() {
         {authRoute === 'forgot' && (
           <ForgotPasswordView onGoLogin={() => setAuthRoute('login')} />
         )}
+        {authRoute === 'reset' && (
+          <ResetPasswordView onDone={() => setAuthRoute('login')} />
+        )}
+      </AuthLayout>
+    )
+  }
+
+  if (authRoute === 'reset') {
+    return (
+      <AuthLayout>
+        <ResetPasswordView onDone={() => setAuthRoute('login')} />
       </AuthLayout>
     )
   }

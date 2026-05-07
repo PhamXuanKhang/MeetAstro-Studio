@@ -22,4 +22,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Config
   getApiUrl: () =>
     ipcRenderer.invoke('config:getApiUrl'),
+
+  // Auth deep links
+  openExternalAuthUrl: (url: string) =>
+    ipcRenderer.invoke('auth:openExternalUrl', url),
+  onAuthDeepLink: (callback: (url: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, url: string) => callback(url)
+    ipcRenderer.on('auth:deepLink', listener)
+    return () => ipcRenderer.removeListener('auth:deepLink', listener)
+  },
 })

@@ -17,7 +17,7 @@
 **Phân công cố định:**
 - **Duy** — Supabase, database schema, migrations, FastAPI endpoints, RLS policies
 - **Thức** — AI pipeline (Whisper, GPT-4o), Celery workers, chunking, audio processing
-- **Khang** — Flet UI screens, API contract design; có thể nhận task overlap AI/DB khi cần
+- **Khang** — Electron UI screens (React/TypeScript), API contract design; Flet là tạm thời và sẽ được xóa sau khi Electron hoàn thiện
 
 ---
 
@@ -42,15 +42,15 @@
 - **Output:** Google OAuth provider được enable; RLS enabled trên tất cả app tables; policies "user chỉ thấy data của mình" được verify; trigger tự tạo `profiles` row khi `auth.users` insert
 - **Ghi chú:** Test bằng 2 test accounts khác nhau — account A không đọc được data account B
 
-**[1.1-A.3] FastAPI Auth endpoints** 🟥 P0
-- **Input:** Supabase JWT secret, Supabase Auth SDK
-- **Output:** Các endpoints hoạt động: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/google`, `GET /auth/callback`, `POST /auth/forgot-password`, `POST /auth/reset-password`; JWT middleware verify token cho protected routes
-- **Ghi chú:** Không tự build auth logic — proxy qua Supabase Auth SDK; trả về JWT token cho client lưu
+**[1.1-A.3] FastAPI JWT middleware cho protected routes** 🟥 P0
+- **Input:** Supabase JWT secret (từ Supabase project settings)
+- **Output:** FastAPI middleware verify `Authorization: Bearer <jwt>` trên tất cả protected endpoints (`/api/v1/settings/*`, `/api/v1/meetings/*`); extract `user_id` từ JWT claims, inject vào request context; trả 401 nếu token invalid/expired
+- **Ghi chú:** ~~FastAPI Auth proxy endpoints đã bị loại~~. Auth (register/login/OAuth/forgot-password) do Electron xử lý trực tiếp qua Supabase SDK. FastAPI chỉ verify token, không proxy auth.
 
 **[1.1-A.4] CRUD endpoints cho Provider Configs (Jira + OpenAI)** 🟥 P0
 - **Input:** `PROVIDER_CONFIGS` table, Fernet encryption helper
-- **Output:** `POST/PUT /settings/jira` (lưu encrypted), `GET /settings/jira` (trả về masked), `DELETE /settings/jira`; tương tự cho `/settings/openai`; `POST /settings/jira/test-connection` gọi Jira `/rest/api/3/myself` verify; `POST /settings/openai/validate` gọi `/v1/models`
-- **Ghi chú:** `api_key` và `api_token` phải Fernet-encrypt trước khi lưu DB; GET response mask giá trị (chỉ trả `***` + 4 ký tự cuối)
+- **Output:** `PUT /api/v1/settings/providers/jira` (lưu encrypted), `GET /api/v1/settings/providers/jira` (trả về masked), `DELETE /api/v1/settings/providers/jira`; tương tự cho `/api/v1/settings/providers/openai`; `POST /api/v1/settings/providers/jira/test` gọi Jira `/rest/api/3/myself` verify; `POST /api/v1/settings/providers/openai/test` gọi `/v1/models`
+- **Ghi chú:** `api_key` phải Fernet-encrypt trước khi lưu DB; GET response mask giá trị (chỉ trả `***` + 4 ký tự cuối); generic pattern `/api/v1/settings/providers/{provider_name}` để dễ mở rộng
 
 **[1.1-A.5] Indexes & performance baseline** 🟧 P1
 - **Input:** Schema đã tạo ở A.1
@@ -76,9 +76,9 @@
 - **Ghi chú:** Duy cần module này cho 1.1-A.4 — cần deliver trước hoặc song song
 
 **[1.1-B.2] File ingestion: audio upload & video-to-audio extraction** 🟥 P0
-- **Input:** File `.mp3/.wav/.m4a/.ogg` hoặc `.mp4/.mkv/.webm` từ client upload
-- **Output:** Audio file được normalize về `.wav` 16kHz mono (Whisper optimal format); lưu lên Supabase Storage tại `meeting-audio/{user_id}/{meeting_id}.wav`; `meetings.audio_storage_path` được update; `meetings.audio_duration_seconds` được tính và lưu
-- **Ghi chú:** Dùng `ffmpeg-python` cho extraction và normalization; cần validate file format trước khi process
+- **Input:** File `.mp3/.wav/.m4a/.ogg` hoặc `.mp4/.mkv/.webm` từ client upload (multipart)
+- **Output:** Audio được normalize về `.wav` 16kHz mono (Whisper optimal) tại VPS temp path `data/tmp/{meeting_id}.wav`; `meetings.audio_storage_path` được update với `file://` URI của file gốc trên máy client (do client gửi kèm); `meetings.audio_duration_seconds` được tính và lưu; file temp VPS bị xóa sau khi Whisper transcription xong
+- **Ghi chú:** Audio không lưu vĩnh viễn trên VPS hoặc Supabase Storage — canonical path là `file://` URI trên máy user. Dùng `ffmpeg-python` cho extraction và normalization; validate MIME type trước khi process
 
 **[1.1-B.3] Celery + Redis setup & worker boilerplate** 🟥 P0
 - **Input:** `docker-compose.yml` với Redis service, Celery config
@@ -91,30 +91,31 @@
 - **Ghi chú:** Design pattern: factory method, không hardcode key trong bất kỳ file nào
 
 **Trích dẫn:**
-- System architecture → `system_architecture.md`: "Frontend (Flet) → Auth → FastAPI API → Redis queue → Celery Workers"
-- File storage → `system_architecture.md`: "Save audio + create meeting status → File storage (audio path)"
+- System architecture → `system_architecture.md`: "Electron → FastAPI /api/v1 (HTTP: Upload, AI jobs) → Redis queue → Celery Workers"
+- File storage → `system_architecture.md`: "audio_storage_path ref → Audio (local — user machine)"
 - BYOK requirement → Brainstorm session: "B4 promote P1→P0: cần BYOK để beta test sớm"
 
 ---
 
-### Task 1.1-C — Auth UI & Settings UI (Flet)
+### Task 1.1-C — Auth UI & Settings UI Electron
 **Người phụ trách:** Khang
 **Use cases:** A1, A2, A3, A4, A5, A6, A8 (frontend); B1, B2, B4 (frontend)
+> **Lưu ý:** Electron là target frontend chính thức — UI Electron sẽ thay thế toàn bộ 1.1-C sau khi Electron build xong. Auth dùng Supabase SDK trực tiếp (không qua FastAPI proxy).
 
 #### Subtasks
 
 **[1.1-C.1] LoginPage & RegisterPage** 🟥 P0
-- **Input:** Auth API endpoints từ 1.1-A.3; Flet framework; screenflow diagram
+- **Input:** Supabase SDK (auth calls trực tiếp, không qua FastAPI); Flet framework; screenflow diagram
 - **Output:** `LoginPage`: email/pass form + "Sign in with Google" button + links tới Register/ForgotPassword; `RegisterPage`: form đăng ký + email verification notice screen ("Check your email"); form validation client-side (email format, password ≥8 chars); loading state khi đang call API
-- **Ghi chú:** Google OAuth button mở browser tab; sau OAuth success redirect về app với JWT
+- **Ghi chú:** Google OAuth button mở browser tab; sau OAuth success Supabase SDK trả về session/JWT; Flet lưu JWT local để gọi FastAPI protected endpoints
 
 **[1.1-C.2] ForgotPasswordPage & ResetLinkSent screen** 🟥 P0
-- **Input:** `/auth/forgot-password` endpoint; screenflow §2.1
+- **Input:** Supabase SDK `resetPasswordForEmail()`; screenflow §2.1
 - **Output:** `ForgotPasswordPage`: email input form; `ResetLinkSentPage`: confirmation message + "Back to Login" link; error handling (email không tồn tại → vẫn show success để tránh user enumeration)
 - **Ghi chú:** Theo screenflow: Login → Forgot Password → Reset Link Sent → Login
 
 **[1.1-C.3] SettingsPage: Jira Config tab + OpenAI Config tab** 🟥 P0
-- **Input:** `/settings/jira` và `/settings/openai` endpoints; screenflow §1 "Settings Page (Jira Config)"
+- **Input:** `PUT /api/v1/settings/providers/jira`, `POST /api/v1/settings/providers/jira/test`, `PUT /api/v1/settings/providers/openai`; screenflow §1 "Settings Page (Jira Config)"
 - **Output:** `SettingsPage` có 2 tabs: (1) Jira: input domain, email, API token + "Test Connection" button với feedback ✅/❌ + inline hướng dẫn lấy token; (2) OpenAI: input API key + model selector dropdown + validate button; masked display khi đã save (hiện `sk-...xxxx`)
 - **Ghi chú:** Screenflow chỉ ghi "Settings Page (Jira Config)" nhưng scope đã chốt phải có cả OpenAI tab
 
@@ -151,10 +152,10 @@
 - **Output:** `POST /meetings` (tạo, status='pending'), `GET /meetings` (list của user, sort created_at DESC), `GET /meetings/{id}` (detail), `DELETE /meetings/{id}` (xóa meeting + audio file trên Storage); tất cả endpoints enforce user ownership qua RLS
 - **Ghi chú:** DELETE phải cascade xóa: transcript_segments, analysis_results, action_items
 
-**[1.2-A.2] File upload endpoint & Storage integration** 🟥 P0
-- **Input:** Multipart form upload; Supabase Storage client; audio file đã normalize từ 1.1-B.2
-- **Output:** `POST /meetings/{id}/upload` nhận file, upload lên Supabase Storage, update `meetings.audio_storage_path`, enqueue `transcribe_task` lên Redis, update status='transcribing', trả về `celery_task_id`
-- **Ghi chú:** Validate file size (max configurable, default 500MB); trả lỗi rõ ràng nếu sai format
+**[1.2-A.2] File upload endpoint & audio ingestion** 🟥 P0
+- **Input:** Multipart form upload (`POST /api/v1/meetings/{meeting_id}/upload`); audio path gốc từ client (file:// URI)
+- **Output:** Endpoint nhận file + `client_path` (file:// URI), normalize audio về WAV temp, update `meetings.audio_storage_path` = client_path, enqueue `transcribe_task` lên Redis, update status='transcribing', trả về `{meeting_id, job_id, status: "queued"}`
+- **Ghi chú:** Validate MIME type + file size (max configurable, default 500MB); file temp VPS bị xóa sau transcription; audio không lưu permanent trên server
 
 **[1.2-A.3] Pipeline progress polling endpoint** 🟥 P0
 - **Input:** `celery_task_id`; Celery result backend (Redis)
@@ -190,9 +191,9 @@
 - **Ghi chú:** Dùng `pyannote.audio` hoặc Whisper large-v3 với `--diarize` nếu available; fallback: simple VAD-based speaker change detection; label format chuẩn: "Speaker A", "Speaker B" (không phải "SPEAKER_00")
 
 **[1.2-B.3] Real-time transcript streaming** 🟥 P0
-- **Input:** `transcript_segments` được insert dần; WebSocket hoặc SSE connection từ Flet client
-- **Output:** Mỗi khi chunk mới được transcribe xong → push segment mới qua WebSocket `ws://api/meetings/{id}/transcript/stream`; Flet nhận và append vào UI; kết nối close khi `meetings.status='transcribed'`
-- **Ghi chú:** Dùng FastAPI WebSocket; nếu phức tạp dùng SSE (`text/event-stream`) đơn giản hơn
+- **Input:** `transcript_segments` được INSERT dần vào Supabase khi từng chunk transcribe xong
+- **Output:** Celery worker insert mỗi segment mới vào Supabase `transcript_segments` table; Electron subscribe Supabase Realtime channel `transcript_segments:meeting_id=eq.{id}` → nhận INSERT events → append segment vào UI realtime; subscription kết thúc khi `meetings.status='transcribed'`
+- **Ghi chú:** Dùng Supabase Realtime (canonical theo contract v1 D1) — không dùng FastAPI WebSocket/SSE. Worker chỉ cần INSERT vào DB đúng format là client tự nhận được.
 
 **[1.2-B.4] Transcript CRUD APIs** 🟥 P0
 - **Input:** `TRANSCRIPT_SEGMENTS` table; `meeting_id`
@@ -302,11 +303,11 @@
 **[1.3-B.2] Jira push Celery task (async, ordered)** 🟥 P0
 - **Input:** List approved `ACTION_ITEMS` (status='approved', is_selected=True); `JiraClient`; Jira default project key
 - **Output:** `push_to_jira_task(meeting_id)` chạy: query approved items → reconstruct tree (epics first) → tạo Epic → lấy epic_key → tạo Tasks với parent=epic_key → tạo Subtasks với parent=task_key → update từng item với `jira_issue_key`, `jira_issue_url`, `sync_status='synced'`; update `meetings.status='pushed'`; progress update mỗi issue created
-- **Ghi chú:** Description Jira issue phải include: "Người được giao (theo meeting): {assignee_speaker_name}" (Phase 1 không set assignee Jira field do thiếu mapping)
+- **Ghi chú:** Phase 1 KHÔNG set Jira `assignee` field (thiếu speaker→accountId mapping, Phase 2 mới làm). Thay vào đó, description Jira issue phải include dòng: "Người được giao (theo meeting): {assignee_speaker_name}"
 
 **[1.3-B.3] Push status & retry endpoints** 🟥 P0
 - **Input:** Celery task state; `ACTION_ITEMS.sync_status`
-- **Output:** `POST /meetings/{id}/push-to-jira` (trigger task, trả về task_id); `GET /jobs/{task_id}` (progress với "Đang tạo Task 5/12..."); `GET /meetings/{id}/push-status` (list items với sync_status per item); `POST /meetings/{id}/push-to-jira/retry` (retry chỉ failed items — G3); `GET /meetings/{id}/jira-links` (list issue_key + URL — G4)
+- **Output:** `POST /api/v1/meetings/{id}/jira/push` (trigger task, trả về `{job_id, status, unreviewed_count}`); `GET /api/v1/jobs/{task_id}` (progress); `POST /api/v1/meetings/{id}/jira/retry` (retry failed items — G3); Jira links đọc qua Supabase SDK từ `action_items` (G4)
 - **Ghi chú:** Retry chỉ select items có `sync_status='failed'`, không push lại đã synced
 
 **[1.3-B.4] History APIs** 🟥 P0
@@ -343,10 +344,8 @@
 - **Output:** "Push to Jira" button (enabled khi ≥1 item approved + is_selected); `PushProgressScreen`: progress bar + live feed "Tạo Epic MEET-1...", "Tạo Task MEET-2..." + issue key list với clickable Jira links; nếu có failures → hiển thị failed items list + "Retry" button (G3)
 - **Ghi chú:** Screenflow có "Push Jira processing State" là intermediate screen
 
-**[1.3-C.4] Export Modal** 🟧 P1
-- **Input:** `GET /meetings/{id}/export?format=md|json|csv`; screenflow: "Export Modal (MD/JSON/CSV)"
-- **Output:** `ExportModal`: 3 format options + preview pane (markdown rendered) + Download button; file được save về local machine
-- **Ghi chú:** Backend endpoint cần Thức hoặc Duy build; Khang build modal UI trước với mock data
+**[1.3-C.4] Export Modal** 🟦 P2 → *Defer sang Phase 2 (H7)*
+- **Ghi chú:** Đã chốt trong RRI: export defer Phase 2. Screenflow có Export Modal nhưng không nằm trong scope contract v1. Xem Task 2.6 — H7 Export với template.
 
 **[1.3-C.5] HistoryPage** 🟥 P0
 - **Input:** `GET /meetings` API; screenflow §2.5 History Revisit Flow
@@ -495,7 +494,7 @@ Phase 1 complete ───────────────► Phase 2
 | `context_diagram.md` | Data flows User↔System↔Jira↔AI |
 | `ERD_diagram.md` | Schema chi tiết, column types, constraints |
 | `screenflow.md` | Screen names, navigation routes, UI states |
-| `system_architecture.md` | Component topology: Flet→FastAPI→Redis→Celery→Whisper/GPT-4o→DB |
+| `system_architecture.md` | Component topology: Electron→(Supabase SDK \| FastAPI /api/v1)→Redis→Celery→Whisper/GPT-4o→Supabase DB |
 | `usecase_diagram.md` | Use case IDs (A1–H5), relationships (include/extend) |
 | `MeetAstro_Phase2_Phase3_Backlog.md` | Chi tiết Phase 2 + 3 user stories, prompt templates |
 | `MeetAstro_Phase1_UseCase_Specs.md` | Preconditions, main flows, entities cho từng P0 use case |
