@@ -1,19 +1,9 @@
 from __future__ import annotations
 
-import threading
-
 import flet as ft
 
-from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
-from frontend.utils.helpers import fmt_dt
-
-
-def _ui(page: ft.Page, fn) -> None:
-    try:
-        page.call_from_thread(fn)
-    except Exception:
-        fn()
+from frontend.mock_data import get_mock_meetings
 
 
 def build_history_view(
@@ -24,77 +14,44 @@ def build_history_view(
     set_busy,
     on_open_results,
 ) -> ft.Control:
-    backend = get_backend()
+    meetings = get_mock_meetings()
+    q = (state.search_query or "").strip().lower()
+    if q:
+        meetings = [m for m in meetings if q in (m.get("title") or "").lower()]
 
-    loading_ring = ft.Container(
-        padding=ft.padding.all(48),
-        content=ft.Column(
-            [
-                ft.ProgressRing(width=32, height=32, stroke_width=3),
-                ft.Text("Đang tải lịch sử...", size=12, color=ft.Colors.GREY_600),
-            ],
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=12,
-        ),
-        alignment=ft.alignment.Alignment(0, 0),
-        visible=True,
+    items: list[ft.Control] = []
+    for meeting in meetings:
+        items.append(_meeting_tile(meeting, on_open_results))
+
+    content = (
+        ft.Column(items, spacing=0)
+        if items
+        else ft.Text("No mock meetings found.", color=ft.Colors.GREY_700)
     )
-    list_container = ft.Container(visible=False)
-
-    def _load() -> None:
-        try:
-            backend.init_db()
-            meetings = backend.list_meetings()
-        except Exception as exc:
-            _ui(page, lambda: toast(f"Không thể tải lịch sử: {exc}", error=True))
-            meetings = []
-
-        q = (state.search_query or "").strip().lower()
-        if q:
-            meetings = [m for m in meetings if q in (m.title or "").lower()]
-
-        def _update():
-            loading_ring.visible = False
-            if not meetings:
-                list_container.content = ft.Text(
-                    "Chưa có lịch sử cuộc họp.", color=ft.Colors.GREY_700
-                )
-            else:
-                items: list[ft.Control] = []
-                for rec in meetings:
-                    def _mk_open(r):
-                        return lambda _e: on_open_results(r)
-
-                    items.append(
-                        ft.ListTile(
-                            title=ft.Text(rec.title or "Note", weight=ft.FontWeight.W_600),
-                            subtitle=ft.Text(fmt_dt(rec.created_at), size=11, color=ft.Colors.GREY_700),
-                            leading=ft.Icon(ft.Icons.DESCRIPTION_OUTLINED),
-                            trailing=ft.Icon(ft.Icons.CHEVRON_RIGHT),
-                            on_click=_mk_open(rec),
-                        )
-                    )
-                list_container.content = ft.Container(
-                    border_radius=16,
-                    bgcolor=ft.Colors.WHITE,
-                    border=ft.border.all(1, ft.Colors.GREY_200),
-                    content=ft.Column(items, spacing=0),
-                )
-            list_container.visible = True
-            page.update()
-
-        _ui(page, _update)
-
-    threading.Thread(target=_load, daemon=True).start()
 
     return ft.Container(
         padding=ft.padding.all(18),
         expand=True,
+        bgcolor=ft.Colors.GREY_50,
         content=ft.Container(
-            alignment=ft.alignment.Alignment(0, -1),
-            content=ft.Container(
-                width=1100,
-                content=ft.Column([loading_ring, list_container], spacing=0),
-            ),
+            width=1100,
+            bgcolor=ft.Colors.WHITE,
+            border=ft.border.all(1, ft.Colors.GREY_200),
+            border_radius=8,
+            content=content,
         ),
+    )
+
+
+def _meeting_tile(meeting: dict, on_open_results) -> ft.Control:
+    return ft.ListTile(
+        title=ft.Text(meeting.get("title", "Untitled"), weight=ft.FontWeight.W_600),
+        subtitle=ft.Text(
+            f"{meeting.get('status', 'pending')} | {meeting.get('created_at', '')}",
+            size=11,
+            color=ft.Colors.GREY_700,
+        ),
+        leading=ft.Icon(ft.Icons.DESCRIPTION_OUTLINED),
+        trailing=ft.Icon(ft.Icons.CHEVRON_RIGHT),
+        on_click=lambda _e: on_open_results(meeting),
     )

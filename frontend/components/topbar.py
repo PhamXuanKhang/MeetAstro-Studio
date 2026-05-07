@@ -12,7 +12,7 @@ def build_topbar(
 ) -> ft.Control:
     search = ft.TextField(
         value=search_value,
-        hint_text="Search meetings or transcripts",
+        hint_text="Search meetings or transcript segments",
         height=40,
         dense=True,
         border_radius=14,
