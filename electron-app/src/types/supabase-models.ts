@@ -165,12 +165,6 @@ export interface ListMeetingsParams {
 
 // ─── Response DTOs ───────────────────────────────────────
 
-/** Generic API result wrapper for consistency. */
-export interface ApiResult<T> {
-  data: T;
-  error: string | null;
-}
-
 /** H1 – Meeting list response */
 export interface MeetingsListResult {
   items: Pick<Meeting, 'id' | 'title' | 'status' | 'audio_duration_seconds' | 'created_at' | 'updated_at'>[];
