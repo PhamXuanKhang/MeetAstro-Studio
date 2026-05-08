@@ -11,8 +11,9 @@ export type MeetingStatus =
   | 'approved'
   | 'pushed'
   | 'failed'
-export type JobState = 'PENDING' | 'STARTED' | 'SUCCESS' | 'FAILURE' | 'RETRY'
+export type JobState = 'PENDING' | 'STARTED' | 'PROGRESS' | 'SUCCESS' | 'FAILURE' | 'RETRY'
 export type ItemType = 'epic' | 'task' | 'subtask'
+export type ProcessingKind = 'transcribing' | 'finalizing_recording' | 'analyzing'
 
 // --- Domain models (mirrors src/schema.py) ---
 
@@ -108,6 +109,29 @@ export interface TranscriptResponse {
   created_at: string
 }
 
+export interface TranscriptSegment {
+  id: string
+  meeting_id: string
+  speaker: string
+  start_time: number
+  end_time: number
+  content: string
+}
+
+export interface TranscriptSegmentsResponse {
+  segments: TranscriptSegment[]
+}
+
+export interface UpdateTranscriptSegmentRequest {
+  content?: string
+  speaker?: string
+}
+
+export interface RenameSpeakerRequest {
+  from_speaker: string
+  to_speaker: string
+}
+
 export interface AnalysisResponse {
   id: string
   meeting_id: string
@@ -121,8 +145,17 @@ export interface AnalysisResponse {
 export interface AudioUploadResponse {
   meeting_id: string
   job_id: string
+  audio_storage_path?: string | null
+  audio_duration_seconds?: number | null
   status: string
-  message: string
+  message?: string
+}
+
+export interface StartAnalysisResponse {
+  meeting_id?: string
+  job_id: string
+  status?: string
+  state?: JobState
 }
 
 export interface ReviewItemResponse {
@@ -159,6 +192,7 @@ export interface JobStatusResponse {
   job_id: string
   state: JobState
   progress_pct?: number | null
+  message?: string | null
   result?: unknown
   error?: string | null
 }

@@ -16,6 +16,7 @@ export interface AuthAdapter {
   forgotPassword: (email: string) => Promise<void>
   getOAuthUrl: (provider: 'google', redirectTo: string) => Promise<{ url: string }>
   setSession: (accessToken: string, refreshToken: string) => Promise<UserSession>
+  exchangeCode: (code: string) => Promise<UserSession>
   updatePassword: (newPassword: string) => Promise<void>
   logout: () => Promise<void>
   getSession: () => Promise<UserSession | null>

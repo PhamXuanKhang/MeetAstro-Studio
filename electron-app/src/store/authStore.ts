@@ -81,7 +81,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       if (!window.electronAPI?.openExternalAuthUrl) {
         throw new Error('Electron auth IPC chưa sẵn sàng.')
       }
-      const { url } = await supabaseAuth.getOAuthUrl('google', 'meetastro://auth/callback')
+      const { url } = await supabaseAuth.getOAuthUrl('google', 'http://127.0.0.1:54321/auth/callback')
       await window.electronAPI.openExternalAuthUrl(url)
     } finally {
       set({ loading: false })
@@ -89,18 +89,51 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   },
 
   handleAuthCallback: async (url) => {
+    console.log('[auth] handleAuthCallback url:', url)
     const result = parseAuthDeepLink(url)
+    console.log('[auth] handleAuthCallback parsed:', result.type, '| error:', result.error ?? 'none')
     const message = result.errorDescription || result.error
-    if (message) return { error: message }
-    if (!result.accessToken || !result.refreshToken) return { error: 'Callback đăng nhập không hợp lệ.' }
+    if (message) {
+      console.error('[auth] handleAuthCallback — Supabase error in URL:', message)
+      return { error: message }
+    }
+    if (result.type === 'unknown') {
+      console.error('[auth] handleAuthCallback — unknown type, URL had no usable params')
+      return { error: 'Link callback không hợp lệ hoặc đã hết hạn.' }
+    }
 
     try {
+      // PKCE: code in query params (Google OAuth)
+      if (result.type === 'oauth_pkce' && result.code) {
+        console.log('[auth] exchanging PKCE code (OAuth)...')
+        const user = await supabaseAuth.exchangeCode(result.code)
+        console.log('[auth] OAuth login success:', user.email)
+        set({ user })
+        return {}
+      }
+      // PKCE recovery or email confirm with code
+      if (result.code && (result.type === 'password_recovery' || result.type === 'email_verification')) {
+        console.log('[auth] exchanging code for', result.type, '...')
+        const user = await supabaseAuth.exchangeCode(result.code)
+        console.log('[auth] exchange success:', user.email)
+        set({ user })
+        return result.type === 'password_recovery' ? { route: 'reset' } : {}
+      }
+      // Implicit fallback: tokens in fragment
+      if (!result.accessToken || !result.refreshToken) {
+        console.error('[auth] no code and no tokens — URL params:', JSON.stringify(Object.fromEntries(new URL(url).searchParams)))
+        return { error: 'Callback thiếu token hoặc code. Kiểm tra Supabase Redirect URLs.' }
+      }
+      console.log('[auth] setting session from tokens (implicit)...')
       const user = await supabaseAuth.setSession(result.accessToken, result.refreshToken)
+      console.log('[auth] setSession success:', user.email)
       set({ user })
       if (result.type === 'password_recovery') return { route: 'reset' }
       return {}
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Không xử lý được callback đăng nhập.' }
+      const msg = err instanceof Error ? err.message : 'Không xử lý được callback đăng nhập.'
+      console.error('[auth] handleAuthCallback exception:', msg)
+      return { error: msg }
     }
   },
 

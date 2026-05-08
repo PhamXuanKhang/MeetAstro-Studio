@@ -1,64 +1,62 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useAppStore } from '../store/appStore'
-import { createMeeting, uploadAndTranscribe, updateTranscript, analyzeTranscript } from '../api/meetings'
-import { exportMarkdown, exportJson, exportCsv } from '../api/exports'
-import { useRecording } from '../hooks/useRecording'
+import { createMeeting, uploadMeetingMedia } from '../api/meetings'
 import { useFileDialog } from '../hooks/useFileDialog'
-import StepBadge from '../components/StepBadge'
 import UploadTab from '../components/meeting/UploadTab'
-import RecordTab from '../components/meeting/RecordTab'
-import type { MeetingResponse } from '../types/schema'
 
 type AudioTab = 'upload' | 'record'
 
-interface Props {
-  onOpenResults: (meeting: MeetingResponse) => void
-  onOpenReview: () => void
-  setBusy: (busy: boolean, text?: string) => void
+const UI = {
+  primary: '#5645d4',
+  ink: '#1a1a1a',
+  charcoal: '#37352f',
+  slate: '#5d5b54',
+  steel: '#787671',
+  muted: '#bbb8b1',
+  canvas: '#ffffff',
+  surface: '#f6f5f4',
+  surfaceSoft: '#fafaf9',
+  hairline: '#e5e3df',
+  hairlineStrong: '#c8c4be',
+  error: '#e03131',
+  success: '#1aae39',
+  warning: '#dd5b00',
+  peach: '#ffe8d4',
+  font: "'Notion Sans', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif",
 }
 
-function fmtTime(s: number): string {
-  const m = Math.floor(s / 60)
-  const sec = s % 60
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-}
-
-export default function NewMeetingView({ onOpenResults, onOpenReview, setBusy }: Props) {
+export default function NewMeetingView() {
   const {
     audioPath, setAudioPath,
-    transcript, setTranscript,
-    analysis, setAnalysis,
     currentMeetingId, setCurrentMeetingId,
-    setSelectedMeeting,
+    setCurrentJobId, setProcessingKind,
+    setSelectedMeeting, resetMeetingState,
+    selectedLanguage, selectedDiarize,
+    setSelectedLanguage, setSelectedDiarize,
+    setRoute,
   } = useAppStore()
 
   const [title, setTitle] = useState('')
   const [audioTab, setAudioTab] = useState<AudioTab>('upload')
-  const [diarize, setDiarize] = useState(false)
-  const [editableTranscript, setEditableTranscript] = useState(transcript)
-  const [transcribing, setTranscribing] = useState(false)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [transcribeProgress, setTranscribeProgress] = useState('')
-  const [analyzeProgress, setAnalyzeProgress] = useState('')
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
 
-  const { isRecording, elapsedSeconds, error: recError, startRecording, stopRecording } = useRecording()
-  const { openFile, saveFile } = useFileDialog()
+  const { openFile } = useFileDialog()
 
-  const hasAudio = !!audioPath
-  const hasTranscript = editableTranscript.length > 0
-  const hasAnalysis = !!analysis
+  // Reset meeting-level state when entering this page fresh
+  useEffect(() => {
+    resetMeetingState()
+    setAudioPath(null)
+    setTitle('')
+    setError(null)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentStep: 1 | 2 | 3 = hasAnalysis ? 3 : hasTranscript ? 2 : 1
-
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
-  }
+  }, [])
 
-  // Đảm bảo meeting đã được tạo, trả về meeting_id
   const ensureMeetingId = useCallback(async (): Promise<string> => {
     if (currentMeetingId) return currentMeetingId
     const meetingTitle = title.trim() || `Meeting ${new Date().toLocaleString('vi-VN')}`
@@ -68,315 +66,223 @@ export default function NewMeetingView({ onOpenResults, onOpenReview, setBusy }:
     return meeting.id
   }, [currentMeetingId, title, setCurrentMeetingId, setSelectedMeeting])
 
-  // Ghi âm
-  const handleStartRecord = useCallback(async () => {
+  // Upload tab: pick file then queue transcription
+  const handleStartUpload = useCallback(async () => {
+    if (!audioPath) { setError('Chưa chọn file audio hoặc video.'); return }
+
     setError(null)
-    const path = await startRecording()
-    if (path) setAudioPath(path)
-    else if (recError) setError(recError)
-  }, [startRecording, setAudioPath, recError])
-
-  const handleStopRecord = useCallback(async () => {
-    const path = await stopRecording()
-    if (path) {
-      setAudioPath(path)
-      showToast('Đã dừng ghi âm. File: ' + path.split(/[\\/]/).pop())
-    }
-  }, [stopRecording, setAudioPath])
-
-  // Upload file audio
-  const handlePickFile = useCallback(async () => {
-    const path = await openFile([{ name: 'Audio Files', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac'] }])
-    if (path) {
-      setAudioPath(path)
-      showToast('Đã chọn file: ' + path.split(/[\\/]/).pop())
-    }
-  }, [openFile, setAudioPath])
-
-  // Bước 2: Transcribe
-  const handleTranscribe = useCallback(async () => {
-    if (!audioPath) { setError('Chưa có file audio.'); return }
-    setError(null)
-    setTranscribing(true)
-    setBusy(true, 'Đang chuyển đổi âm thanh...')
-
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
+    setBusy(true)
     try {
       const meetingId = await ensureMeetingId()
 
-      let fileBytes: ArrayBuffer
-      if (audioPath.startsWith('blob:')) {
-        const resp = await fetch(audioPath)
-        fileBytes = await resp.arrayBuffer()
-      } else {
-        const electronAPI = (window as unknown as { electronAPI?: { readFileBytes: (path: string) => Promise<ArrayBuffer> } }).electronAPI
-        if (!electronAPI?.readFileBytes) {
-          throw new Error('Không thể đọc file local: Electron file bridge chưa sẵn sàng.')
-        }
-        fileBytes = await electronAPI.readFileBytes(audioPath)
+      const electronAPI = (window as unknown as {
+        electronAPI?: { readFileBytes: (path: string) => Promise<ArrayBuffer> }
+      }).electronAPI
+      if (!electronAPI?.readFileBytes) {
+        throw new Error('Electron file bridge chưa sẵn sàng. Ứng dụng cần chạy trong Electron.')
       }
+      const fileBytes = await electronAPI.readFileBytes(audioPath)
 
-      setTranscribeProgress('Đang upload...')
-      const transcript = await uploadAndTranscribe(
+      const resp = await uploadMeetingMedia({
         meetingId,
-        audioPath,
+        filePath: audioPath,
         fileBytes,
-        diarize,
-        'vi',
-        controller.signal,
-        (job) => setTranscribeProgress(`Đang xử lý... (${job.state})`)
-      )
+        diarize: selectedDiarize,
+        language: selectedLanguage,
+      })
 
-      setTranscript(transcript.raw_text)
-      setEditableTranscript(transcript.raw_text)
-      showToast('Transcription hoàn thành!')
+      setCurrentJobId(resp.job_id)
+      setProcessingKind('transcribing')
+      setRoute('processing')
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setTranscribing(false)
-      setTranscribeProgress('')
       setBusy(false)
     }
-  }, [audioPath, diarize, ensureMeetingId, setTranscript, setBusy])
+  }, [audioPath, selectedDiarize, selectedLanguage, ensureMeetingId, setCurrentJobId, setProcessingKind, setRoute])
 
-  // Bước 3: Analyze
-  const handleAnalyze = useCallback(async () => {
-    if (!editableTranscript.trim()) { setError('Transcript trống.'); return }
+  // Record tab: create meeting then navigate to LiveRecordingScreen
+  const handleStartRecording = useCallback(async () => {
     setError(null)
-    setAnalyzing(true)
-    setBusy(true, 'Đang phân tích với GPT-4o...')
-
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
+    setBusy(true)
     try {
-      const meetingId = await ensureMeetingId()
-
-      // Lưu transcript hiện tại (có thể user đã edit)
-      await updateTranscript(meetingId, editableTranscript)
-      setTranscript(editableTranscript)
-
-      setAnalyzeProgress('Đang phân tích...')
-      const analysisResp = await analyzeTranscript(
-        meetingId,
-        controller.signal,
-        (job) => setAnalyzeProgress(`Đang phân tích... (${job.state})`)
-      )
-
-      setAnalysis(analysisResp.analysis_json)
-
-      // Fetch meeting để update selectedMeeting
-      const { getMeeting } = await import('../api/meetings')
-      const meeting = await getMeeting(meetingId)
+      const meetingTitle = title.trim() || `Meeting ${new Date().toLocaleString('vi-VN')}`
+      const meeting = await createMeeting(meetingTitle)
+      setCurrentMeetingId(meeting.id)
       setSelectedMeeting(meeting)
-
-      showToast('Phân tích hoàn thành! Chuyển đến Results...')
-      setTimeout(() => onOpenResults(meeting), 800)
+      setRoute('live_recording')
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setAnalyzing(false)
-      setAnalyzeProgress('')
       setBusy(false)
     }
-  }, [editableTranscript, ensureMeetingId, setTranscript, setAnalysis, setSelectedMeeting, onOpenResults, setBusy])
-
-  // Export
-  const handleExport = useCallback(async (type: 'markdown' | 'json' | 'csv') => {
-    if (!currentMeetingId) { showToast('Chưa có meeting.'); return }
-    try {
-      let content: string
-      let ext: string
-      if (type === 'markdown') { content = await exportMarkdown(currentMeetingId); ext = 'md' }
-      else if (type === 'json') { content = await exportJson(currentMeetingId); ext = 'json' }
-      else { content = await exportCsv(currentMeetingId); ext = 'csv' }
-
-      const filename = `meeting_${currentMeetingId.slice(0, 8)}.${ext}`
-      await saveFile(content, filename, [{ name: ext.toUpperCase(), extensions: [ext] }])
-      showToast(`Đã export ${filename}`)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [currentMeetingId, saveFile])
+  }, [title, setCurrentMeetingId, setSelectedMeeting, setRoute])
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '9px 12px', border: '1px solid #cbd5e1',
-    borderRadius: 8, fontSize: 13, outline: 'none', background: '#f8fafc',
+    width: '100%', height: 44, padding: '12px 16px', border: `1px solid ${UI.hairlineStrong}`,
+    borderRadius: 8, fontSize: 14, outline: 'none', background: UI.canvas, color: UI.ink,
+    boxSizing: 'border-box', fontFamily: UI.font,
   }
   const btnBase: React.CSSProperties = {
-    padding: '9px 18px', borderRadius: 8, border: 'none',
-    fontWeight: 600, fontSize: 13, cursor: 'pointer',
+    padding: '10px 18px', borderRadius: 8, border: 'none',
+    fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: UI.font,
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto' }}>
-      {/* Toast */}
+    <div style={{ maxWidth: 680, margin: '0 auto', fontFamily: UI.font, color: UI.ink }}>
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 999,
-          padding: '12px 20px', borderRadius: 10, background: '#dcfce7',
-          color: '#166534', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', fontSize: 13, fontWeight: 500,
+          padding: '12px 20px', borderRadius: 12, background: '#d9f3e1',
+          color: UI.success, boxShadow: 'rgba(15, 15, 15, 0.08) 0px 4px 12px 0px', fontSize: 13, fontWeight: 500,
         }}>
           {toast}
         </div>
       )}
 
-      <StepBadge
-        step={currentStep}
-        audioReady={hasAudio}
-        transcriptReady={hasTranscript}
-        analysisReady={hasAnalysis}
-      />
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, margin: '0 0 4px' }}>Cuộc họp mới</h2>
+        <p style={{ color: UI.slate, fontSize: 14, lineHeight: 1.5, margin: 0 }}>Upload file hoặc ghi âm trực tiếp để bắt đầu</p>
+      </div>
 
       {error && (
-        <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fee2e2', borderRadius: 8, color: '#991b1b', fontSize: 13 }}>
+        <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fde0ec', borderRadius: 8, color: UI.error, fontSize: 13 }}>
           {error}
         </div>
       )}
 
-      {/* STEP 1: Audio */}
-      <section style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 16, overflow: 'hidden' }}>
-        {/* Tab header */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
-          <div style={{ padding: '14px 20px', flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h3 style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', margin: 0 }}>🎙️ Bước 1: Audio</h3>
-          </div>
+      <div style={{ background: UI.canvas, borderRadius: 12, border: `1px solid ${UI.hairline}`, overflow: 'hidden', marginBottom: 16 }}>
+        {/* Title input */}
+        <div style={{ padding: '20px 20px 0' }}>
+          <input
+            placeholder="Tiêu đề cuộc họp (tùy chọn)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Tab selector */}
+        <div style={{ display: 'flex', borderBottom: `1px solid ${UI.hairline}`, marginTop: 16 }}>
           {(['upload', 'record'] as AudioTab[]).map((tab) => {
             const isActive = audioTab === tab
             return (
               <button
                 key={tab}
-                onClick={() => setAudioTab(tab)}
+                onClick={() => { setAudioTab(tab); setError(null) }}
                 style={{
-                  padding: '14px 20px',
-                  background: isActive ? '#fff' : '#f8fafc',
+                  padding: '12px 24px',
+                  background: 'transparent',
                   border: 'none',
-                  borderBottom: isActive ? '2px solid #0ea5e9' : '2px solid transparent',
+                  borderBottom: isActive ? `2px solid ${UI.ink}` : '2px solid transparent',
                   cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: isActive ? 700 : 400,
-                  color: isActive ? '#0ea5e9' : '#64748b',
-                  transition: 'all 0.15s',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: isActive ? UI.ink : UI.steel,
+                  fontFamily: UI.font,
                 }}
               >
-                {tab === 'upload' ? '📂 Upload' : '⏺ Ghi âm'}
+                {tab === 'upload' ? '📂 Upload File' : '⏺ Ghi âm'}
               </button>
             )
           })}
         </div>
 
+        {/* Tab content */}
         <div style={{ padding: 20 }}>
-          <input
-            placeholder="Tiêu đề cuộc họp (tùy chọn)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            style={{ ...inputStyle, marginBottom: 14 }}
-          />
-
           {audioTab === 'upload' ? (
-            <UploadTab
-              audioPath={audioPath}
-              onAudioPicked={setAudioPath}
-              openFile={openFile}
-              onToast={showToast}
-            />
+            <>
+              <UploadTab
+                audioPath={audioPath}
+                onAudioPicked={setAudioPath}
+                openFile={openFile}
+                onToast={showToast}
+              />
+
+              {/* Options */}
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: UI.slate, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedDiarize} onChange={(e) => setSelectedDiarize(e.target.checked)} />
+                    Phân biệt người nói (Diarization)
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: UI.slate }}>
+                    Ngôn ngữ:
+                    <select
+                      value={selectedLanguage}
+                      onChange={(e) => setSelectedLanguage(e.target.value)}
+                      style={{ padding: '4px 8px', borderRadius: 8, border: `1px solid ${UI.hairlineStrong}`, fontSize: 12, background: UI.canvas, color: UI.ink }}
+                    >
+                      <option value="vi">Tiếng Việt</option>
+                      <option value="en">English</option>
+                      <option value="">Auto-detect</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleStartUpload}
+                  disabled={!audioPath || busy}
+                  style={{
+                    ...btnBase,
+                    background: !audioPath || busy ? UI.hairline : UI.primary,
+                    color: '#fff',
+                    cursor: !audioPath || busy ? 'not-allowed' : 'pointer',
+                    minWidth: 160,
+                  }}
+                >
+                  {busy ? '⏳ Đang upload...' : '⚡ Bắt đầu xử lý'}
+                </button>
+              </div>
+            </>
           ) : (
-            <RecordTab
-              isRecording={isRecording}
-              elapsedSeconds={elapsedSeconds}
-              audioPath={audioPath}
-              onStart={handleStartRecord}
-              onStop={handleStopRecord}
-            />
+            /* Record tab */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{
+                padding: '28px 20px', border: `1px dashed ${UI.hairlineStrong}`, borderRadius: 12,
+                background: UI.peach, textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>🎙️</div>
+                <div style={{ fontWeight: 600, color: UI.charcoal, marginBottom: 4 }}>Ghi âm trực tiếp</div>
+                <div style={{ fontSize: 12, color: UI.warning }}>
+                  Ghi âm từ microphone + audio hệ thống. File WAV 16kHz mono.
+                </div>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: UI.slate, cursor: 'pointer' }}>
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: 8, border: `1px solid ${UI.hairlineStrong}`, fontSize: 12, background: UI.canvas, color: UI.ink }}
+                >
+                  <option value="vi">Tiếng Việt</option>
+                  <option value="en">English</option>
+                  <option value="">Auto-detect</option>
+                </select>
+                <span>Ngôn ngữ transcription</span>
+              </label>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleStartRecording}
+                  disabled={busy}
+                  style={{
+                    ...btnBase,
+                    background: busy ? UI.hairline : UI.ink,
+                    color: '#fff',
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}
+                >
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff', display: 'inline-block' }} />
+                  {busy ? 'Đang khởi tạo...' : 'Bắt đầu ghi âm'}
+                </button>
+              </div>
+            </div>
           )}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
-            <input type="checkbox" id="diarize" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} />
-            <label htmlFor="diarize" style={{ fontSize: 12, color: '#64748b' }}>
-              Phân biệt người nói (Diarization) — chậm hơn
-            </label>
-          </div>
         </div>
-      </section>
-
-      {/* STEP 2: Transcript */}
-      <section style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h3 style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>📝 Bước 2: Transcript</h3>
-          <button
-            onClick={handleTranscribe}
-            disabled={!hasAudio || transcribing}
-            style={{
-              ...btnBase, background: '#0ea5e9', color: '#fff',
-              opacity: !hasAudio || transcribing ? 0.5 : 1,
-              cursor: !hasAudio || transcribing ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {transcribing ? `⏳ ${transcribeProgress || 'Đang xử lý...'}` : '⚡ Chuyển văn bản'}
-          </button>
-        </div>
-        <textarea
-          value={editableTranscript}
-          onChange={(e) => setEditableTranscript(e.target.value)}
-          placeholder="Transcript sẽ xuất hiện ở đây sau khi transcribe. Bạn có thể chỉnh sửa trước khi phân tích..."
-          rows={8}
-          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
-        />
-      </section>
-
-      {/* STEP 3: Analysis */}
-      <section style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h3 style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>🤖 Bước 3: Phân tích</h3>
-          <button
-            onClick={handleAnalyze}
-            disabled={!hasTranscript || analyzing}
-            style={{
-              ...btnBase, background: '#7c3aed', color: '#fff',
-              opacity: !hasTranscript || analyzing ? 0.5 : 1,
-              cursor: !hasTranscript || analyzing ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {analyzing ? `⏳ ${analyzeProgress || 'Đang phân tích...'}` : '✨ Phân tích (GPT-4o)'}
-          </button>
-        </div>
-
-        {hasAnalysis && (
-          <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#15803d' }}>
-            ✓ Phân tích hoàn thành — {analysis!.epics.length} Epics, {analysis!.epics.reduce((s, e) => s + e.tasks.length, 0)} Tasks
-          </div>
-        )}
-      </section>
-
-      {/* Export + Review */}
-      {hasAnalysis && (
-        <section style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20 }}>
-          <h3 style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', marginBottom: 14 }}>📤 Export &amp; Actions</h3>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button onClick={() => handleExport('markdown')} style={{ ...btnBase, background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0' }}>
-              📄 Export Markdown
-            </button>
-            <button onClick={() => handleExport('json')} style={{ ...btnBase, background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0' }}>
-              🗂 Export JSON
-            </button>
-            <button onClick={() => handleExport('csv')} style={{ ...btnBase, background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0' }}>
-              📊 Export CSV
-            </button>
-            <button
-              onClick={onOpenReview}
-              style={{ ...btnBase, background: '#2563eb', color: '#fff', marginLeft: 'auto' }}
-            >
-              📋 Review &amp; Push to Jira →
-            </button>
-          </div>
-        </section>
-      )}
+      </div>
     </div>
   )
 }
