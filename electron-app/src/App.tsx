@@ -5,7 +5,11 @@ import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import BusyBanner from './components/BusyBanner'
 import DashboardView from './views/DashboardView'
+import MiniPopupView from './views/MiniPopupView'
 import NewMeetingView from './views/NewMeetingView'
+import ProcessingView from './views/ProcessingView'
+import LiveRecordingView from './views/LiveRecordingView'
+import ReviewTranscriptView from './views/ReviewTranscriptView'
 import ResultsView from './views/ResultsView'
 import ReviewView from './views/ReviewView'
 import HistoryView from './views/HistoryView'
@@ -22,29 +26,44 @@ type AuthRoute = 'login' | 'register' | 'forgot' | 'reset'
 const ROUTE_TITLES: Record<string, string> = {
   home: 'Dashboard',
   new_meeting: 'Cuộc họp mới',
+  live_recording: 'Đang ghi âm',
+  processing: 'Đang xử lý',
+  review_transcript: 'Review Transcript',
   results: 'Kết quả phân tích',
   review: 'Review & Push Jira',
   history: 'Lịch sử',
   settings: 'Cài đặt',
 }
 
+// PIP mode: main process passes --pip-mode via additionalArguments in webPreferences
+const IS_PIP_MODE = window.electronAPI?.isPipMode === true
+
 export default function App() {
+  // Render minimal PIP view when running in the secondary always-on-top window
+  if (IS_PIP_MODE) return <MiniPopupView />
+
   const { user, initialized, initializing, handleAuthCallback } = useAuthStore()
   const { route, setRoute, busy, progressText, searchQuery, setSearchQuery, setBusy } = useAppStore()
   const { setSelectedMeeting, setAnalysis, setTranscript, setCurrentMeetingId } = useAppStore()
   const [authRoute, setAuthRoute] = useState<AuthRoute>('login')
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null)
 
   const navigate = useCallback((r: string) => setRoute(r), [setRoute])
 
   useEffect(() => {
     if (!window.electronAPI?.onAuthDeepLink) return undefined
     return window.electronAPI.onAuthDeepLink(async (url) => {
+      console.log('[auth] renderer received deep-link:', url)
+      setDeepLinkError(null)
       const result = await handleAuthCallback(url)
+      console.log('[auth] handleAuthCallback result:', result)
       if (result.route === 'reset') {
         setAuthRoute('reset')
         return
       }
       if (result.error) {
+        console.error('[auth] deep-link error shown to user:', result.error)
+        setDeepLinkError(result.error)
         setAuthRoute('login')
       }
     })
@@ -74,13 +93,13 @@ export default function App() {
       case 'home':
         return <DashboardView onOpenResults={openResults} />
       case 'new_meeting':
-        return (
-          <NewMeetingView
-            onOpenResults={openResults}
-            onOpenReview={() => navigate('review')}
-            setBusy={setBusy}
-          />
-        )
+        return <NewMeetingView />
+      case 'live_recording':
+        return <LiveRecordingView />
+      case 'processing':
+        return <ProcessingView />
+      case 'review_transcript':
+        return <ReviewTranscriptView />
       case 'results':
         return <ResultsView onNavigate={navigate} />
       case 'review':
@@ -90,7 +109,7 @@ export default function App() {
       case 'settings':
         return <SettingsView />
       default:
-        return <NewMeetingView onOpenResults={openResults} onOpenReview={() => navigate('review')} setBusy={setBusy} />
+        return <NewMeetingView />
     }
   }
 
@@ -106,17 +125,22 @@ export default function App() {
   if (!user) {
     return (
       <AuthLayout>
+        {deepLinkError && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
+            <strong>Lỗi xác thực:</strong> {deepLinkError}
+          </div>
+        )}
         {authRoute === 'login' && (
           <LoginView
-            onGoRegister={() => setAuthRoute('register')}
-            onGoForgot={() => setAuthRoute('forgot')}
+            onGoRegister={() => { setDeepLinkError(null); setAuthRoute('register') }}
+            onGoForgot={() => { setDeepLinkError(null); setAuthRoute('forgot') }}
           />
         )}
         {authRoute === 'register' && (
-          <RegisterView onGoLogin={() => setAuthRoute('login')} />
+          <RegisterView onGoLogin={() => { setDeepLinkError(null); setAuthRoute('login') }} />
         )}
         {authRoute === 'forgot' && (
-          <ForgotPasswordView onGoLogin={() => setAuthRoute('login')} />
+          <ForgotPasswordView onGoLogin={() => { setDeepLinkError(null); setAuthRoute('login') }} />
         )}
         {authRoute === 'reset' && (
           <ResetPasswordView onDone={() => setAuthRoute('login')} />
