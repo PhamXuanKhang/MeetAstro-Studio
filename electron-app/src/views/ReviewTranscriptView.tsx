@@ -1,0 +1,324 @@
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useAppStore } from '../store/appStore'
+import { getTranscriptSegments, updateTranscriptSegment, renameSpeaker, startAnalysis } from '../api/meetings'
+import type { TranscriptSegment } from '../types/schema'
+
+const UI = {
+  primary: '#5645d4',
+  ink: '#1a1a1a',
+  charcoal: '#37352f',
+  slate: '#5d5b54',
+  steel: '#787671',
+  muted: '#bbb8b1',
+  canvas: '#ffffff',
+  surface: '#f6f5f4',
+  surfaceSoft: '#fafaf9',
+  hairline: '#e5e3df',
+  hairlineStrong: '#c8c4be',
+  lavender: '#e6e0f5',
+  peach: '#ffe8d4',
+  warning: '#dd5b00',
+  font: "'Notion Sans', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif",
+}
+
+// Deterministic color per speaker name
+const SPEAKER_COLORS = [
+  '#5645d4', '#7b3ff2', '#2a9d99', '#dd5b00', '#ff64c8',
+  '#1aae39', '#0075de', '#523410', '#a02e6d', '#391c57',
+]
+function speakerColor(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff
+  return SPEAKER_COLORS[Math.abs(hash) % SPEAKER_COLORS.length]
+}
+
+function fmtTime(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+interface EditState {
+  [segId: string]: string
+}
+
+export default function ReviewTranscriptView() {
+  const {
+    currentMeetingId, transcriptSegments, setTranscriptSegments,
+    setCurrentJobId, setProcessingKind, setRoute,
+  } = useAppStore()
+
+  const [segments, setSegments] = useState<TranscriptSegment[]>(transcriptSegments)
+  const [editState, setEditState] = useState<EditState>({})
+  const [renamingFrom, setRenamingFrom] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [saving, setSaving] = useState<string | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loadingSegs, setLoadingSegs] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  // Guard + refresh segments if store is empty
+  useEffect(() => {
+    if (!currentMeetingId) { setRoute('new_meeting'); return }
+    if (segments.length === 0) {
+      setLoadingSegs(true)
+      getTranscriptSegments(currentMeetingId)
+        .then((segs) => { setSegments(segs); setTranscriptSegments(segs) })
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+        .finally(() => setLoadingSegs(false))
+    }
+  }, [currentMeetingId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Unique speaker names
+  const speakers = Array.from(new Set(segments.map((s) => s.speaker)))
+
+  const handleContentEdit = useCallback((id: string, value: string) => {
+    setEditState((prev) => ({ ...prev, [id]: value }))
+  }, [])
+
+  const handleContentBlur = useCallback(async (seg: TranscriptSegment) => {
+    const newContent = editState[seg.id]
+    if (newContent === undefined || newContent === seg.content) return
+
+    // Optimistic local update
+    setSegments((prev) => prev.map((s) => s.id === seg.id ? { ...s, content: newContent } : s))
+
+    if (!seg.id.startsWith('synthetic-')) {
+      setSaving(seg.id)
+      try {
+        await updateTranscriptSegment(currentMeetingId!, seg.id, { content: newContent })
+      } catch {
+        // Revert on error
+        setSegments((prev) => prev.map((s) => s.id === seg.id ? { ...s, content: seg.content } : s))
+        setError('Lưu thất bại — backend transcript segments chưa sẵn sàng.')
+      } finally {
+        setSaving(null)
+      }
+    }
+    setEditState((prev) => { const n = { ...prev }; delete n[seg.id]; return n })
+  }, [editState, currentMeetingId])
+
+  const handleOpenRename = useCallback((speaker: string) => {
+    setRenamingFrom(speaker)
+    setRenameValue(speaker)
+    setError(null)
+  }, [])
+
+  const handleRenameConfirm = useCallback(async () => {
+    if (!renamingFrom || !renameValue.trim() || !currentMeetingId) return
+    const from = renamingFrom
+    const to = renameValue.trim()
+    setRenamingFrom(null)
+
+    // Optimistic local update
+    setSegments((prev) => prev.map((s) => s.speaker === from ? { ...s, speaker: to } : s))
+
+    try {
+      await renameSpeaker(currentMeetingId, { from_speaker: from, to_speaker: to })
+    } catch {
+      // Revert — backend API may not be ready; still accept local rename
+      setError('Lưu rename thất bại — backend speakers API chưa sẵn sàng. Đã cập nhật local.')
+    }
+  }, [renamingFrom, renameValue, currentMeetingId])
+
+  const handleAnalyze = useCallback(async () => {
+    if (!currentMeetingId || segments.length === 0) return
+    setAnalyzing(true)
+    setError(null)
+    try {
+      const resp = await startAnalysis(currentMeetingId)
+      const jobId = resp.job_id
+      setCurrentJobId(jobId)
+      setProcessingKind('analyzing')
+      setRoute('processing')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setAnalyzing(false)
+    }
+  }, [currentMeetingId, segments.length, setCurrentJobId, setProcessingKind, setRoute])
+
+  const btnBase: React.CSSProperties = {
+    padding: '10px 18px', borderRadius: 8, border: 'none',
+    fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: UI.font,
+  }
+
+  if (loadingSegs) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
+        <div style={{ width: 32, height: 32, border: `3px solid ${UI.primary}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: UI.font, color: UI.ink }}>
+      {/* Speaker rename modal */}
+      {renamingFrom && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setRenamingFrom(null) }}
+        >
+          <div ref={modalRef} style={{ background: UI.canvas, borderRadius: 12, padding: 28, width: 360, boxShadow: 'rgba(15, 15, 15, 0.16) 0px 16px 48px -8px', border: `1px solid ${UI.hairline}` }}>
+            <h3 style={{ margin: '0 0 16px', fontWeight: 600, fontSize: 18, color: UI.ink, lineHeight: 1.4 }}>
+              Đổi tên người nói
+            </h3>
+            <p style={{ margin: '0 0 12px', fontSize: 14, color: UI.slate, lineHeight: 1.5 }}>
+              Tất cả đoạn của <strong style={{ color: speakerColor(renamingFrom) }}>{renamingFrom}</strong> sẽ được đổi tên:
+            </p>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRenameConfirm() }}
+              style={{ width: '100%', height: 44, padding: '12px 16px', border: `1px solid ${UI.hairlineStrong}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', marginBottom: 16, color: UI.ink, fontFamily: UI.font }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setRenamingFrom(null)} style={{ ...btnBase, background: UI.canvas, color: UI.ink, border: `1px solid ${UI.hairlineStrong}` }}>
+                Hủy
+              </button>
+              <button onClick={handleRenameConfirm} disabled={!renameValue.trim()} style={{ ...btnBase, background: UI.primary, color: '#fff' }}>
+                Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, margin: '0 0 4px' }}>Review Transcript</h2>
+          <p style={{ color: UI.slate, fontSize: 14, lineHeight: 1.5, margin: 0 }}>
+            Kiểm tra và chỉnh sửa transcript trước khi phân tích.
+            {segments.some((s) => s.id.startsWith('synthetic-')) && (
+              <span style={{ color: UI.warning, marginLeft: 8 }}>
+                ⚠ Hiển thị dạng tổng hợp — backend segments chưa sẵn sàng.
+              </span>
+            )}
+          </p>
+        </div>
+
+        <button
+          onClick={handleAnalyze}
+          disabled={analyzing || segments.length === 0}
+          style={{
+            ...btnBase,
+            background: analyzing || segments.length === 0 ? UI.hairline : UI.primary,
+            color: '#fff', fontSize: 14, padding: '11px 26px',
+            cursor: analyzing || segments.length === 0 ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {analyzing ? '⏳ Đang khởi chạy...' : '✨ Phân tích'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ marginBottom: 16, padding: '10px 16px', background: UI.peach, borderRadius: 8, color: UI.warning, fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+
+      {/* Speaker legend */}
+      {speakers.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          {speakers.map((sp) => (
+            <button
+              key={sp}
+              onClick={() => handleOpenRename(sp)}
+              title="Nhấn để đổi tên"
+              style={{
+                padding: '4px 12px', borderRadius: 99, border: 'none',
+                background: speakerColor(sp) + '22',
+                color: speakerColor(sp), fontWeight: 600, fontSize: 12, cursor: 'pointer',
+              }}
+            >
+              {sp} ✎
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Segments */}
+      {segments.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 60, color: UI.steel, fontSize: 14 }}>
+          Không có transcript — thử lại từ đầu.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {segments.map((seg) => {
+            const color = speakerColor(seg.speaker)
+            const editVal = editState[seg.id] ?? seg.content
+            const isSaving = saving === seg.id
+            return (
+              <div
+                key={seg.id}
+                style={{
+                  background: UI.canvas, borderRadius: 12, border: `1px solid ${UI.hairline}`,
+                  padding: '12px 16px', display: 'flex', gap: 12,
+                }}
+              >
+                {/* Left: speaker + time */}
+                <div style={{ minWidth: 90, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <button
+                    onClick={() => handleOpenRename(seg.speaker)}
+                    title="Đổi tên người nói"
+                    style={{
+                      padding: '2px 8px', borderRadius: 99, border: 'none',
+                      background: color + '22', color, fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {seg.speaker}
+                  </button>
+                  {!seg.id.startsWith('synthetic-') && (
+                    <span style={{ fontSize: 11, color: UI.steel, fontVariantNumeric: 'tabular-nums' }}>
+                      {fmtTime(seg.start_time)} – {fmtTime(seg.end_time)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Right: editable content */}
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <textarea
+                    value={editVal}
+                    onChange={(e) => handleContentEdit(seg.id, e.target.value)}
+                    onBlur={() => handleContentBlur(seg)}
+                    rows={Math.max(2, Math.ceil(editVal.length / 80))}
+                    style={{
+                      width: '100%', border: 'none', background: 'transparent',
+                      resize: 'none', fontSize: 14, lineHeight: 1.55, color: UI.charcoal,
+                      fontFamily: UI.font, outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                  {isSaving && (
+                    <span style={{ position: 'absolute', top: 0, right: 0, fontSize: 11, color: UI.steel }}>
+                      lưu...
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Sticky bottom Analyze CTA */}
+      <div style={{ marginTop: 32, textAlign: 'right' }}>
+        <button
+          onClick={handleAnalyze}
+          disabled={analyzing || segments.length === 0}
+          style={{
+            ...btnBase,
+            background: analyzing || segments.length === 0 ? UI.hairline : UI.primary,
+            color: '#fff', fontSize: 15, padding: '13px 32px',
+            cursor: analyzing || segments.length === 0 ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {analyzing ? '⏳ Đang khởi chạy phân tích...' : '✨ Phân tích bằng GPT-4o →'}
+        </button>
+      </div>
+    </div>
+  )
+}
