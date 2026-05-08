@@ -1,19 +1,9 @@
 from __future__ import annotations
 
-import threading
-
 import flet as ft
 
-from frontend.core.backend_factory import get_backend
 from frontend.core.state import AppState
-from frontend.utils.helpers import fmt_dt
-
-
-def _ui(page: ft.Page, fn) -> None:
-    try:
-        page.call_from_thread(fn)
-    except Exception:
-        fn()
+from frontend.mock_data import get_mock_meetings
 
 
 def build_dashboard_view(
@@ -24,119 +14,56 @@ def build_dashboard_view(
     set_busy,
     on_open_results,
 ) -> ft.Control:
-    backend = get_backend()
+    meetings = get_mock_meetings()
+    state.cached_meetings = meetings
 
-    loading_ring = ft.Container(
-        padding=ft.padding.all(48),
-        content=ft.Column(
-            [
-                ft.ProgressRing(width=32, height=32, stroke_width=3),
-                ft.Text("Đang tải...", size=12, color=ft.Colors.GREY_600),
-            ],
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=12,
-        ),
-        alignment=ft.alignment.Alignment(0, 0),
-        visible=True,
-    )
-    cards_col = ft.Column(spacing=12, visible=False)
-
-    def _build_card(rec) -> ft.Control:
-        def _open(_e):
-            on_open_results(rec)
-
-        if rec.analysis and rec.analysis.summary:
-            ellipsis = "…" if len(rec.analysis.summary) > 90 else ""
-            subtitle = f"{fmt_dt(rec.created_at)}  •  {rec.analysis.summary[:90]}{ellipsis}"
-        else:
-            subtitle = fmt_dt(rec.created_at)
-
-        thumb = ft.Container(
-            width=44,
-            height=44,
-            border_radius=14,
-            bgcolor=ft.Colors.TEAL_50,
-            content=ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, color=ft.Colors.TEAL_400),
-            alignment=ft.alignment.Alignment(0, 0),
-        )
-
-        return ft.Container(
-            on_click=_open,
-            border_radius=16,
-            bgcolor=ft.Colors.WHITE,
-            border=ft.border.all(1, ft.Colors.GREY_200),
-            padding=ft.padding.all(14),
-            content=ft.Row(
-                [
-                    thumb,
-                    ft.Column(
-                        [
-                            ft.Text(rec.title or "Note", size=15, weight=ft.FontWeight.W_700),
-                            ft.Text(subtitle, size=11, color=ft.Colors.GREY_700),
-                        ],
-                        spacing=4,
-                        tight=True,
-                        expand=True,
-                    ),
-                    ft.Icon(ft.Icons.CHEVRON_RIGHT, color=ft.Colors.GREY_500),
-                ],
-                spacing=12,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-        )
-
-    def _load() -> None:
-        try:
-            backend.init_db()
-            meetings = backend.list_meetings()
-            state.cached_meetings = meetings
-        except Exception as exc:
-            _ui(page, lambda: toast(f"Không thể tải danh sách: {exc}", error=True))
-            meetings = state.cached_meetings
-
-        q = (state.search_query or "").strip().lower()
-        if q:
-            meetings = [m for m in meetings if q in (m.title or "").lower()]
-
-        def _update():
-            loading_ring.visible = False
-            if not meetings:
-                cards_col.controls = [
-                    ft.Container(
-                        padding=ft.padding.all(18),
-                        border_radius=16,
-                        bgcolor=ft.Colors.WHITE,
-                        border=ft.border.all(1, ft.Colors.GREY_200),
-                        content=ft.Column(
-                            [
-                                ft.Text("Chưa có cuộc họp nào.", size=14, weight=ft.FontWeight.W_700),
-                                ft.Text(
-                                    "Bắt đầu bằng cách ghi âm hoặc tải file audio.",
-                                    size=12,
-                                    color=ft.Colors.GREY_700,
-                                ),
-                            ],
-                            spacing=6,
-                        ),
-                    )
-                ]
-            else:
-                cards_col.controls = [_build_card(m) for m in meetings]
-            cards_col.visible = True
-            page.update()
-
-        _ui(page, _update)
-
-    threading.Thread(target=_load, daemon=True).start()
+    cards = [_meeting_card(m, on_open_results) for m in meetings]
 
     return ft.Container(
         padding=ft.padding.all(18),
         expand=True,
-        content=ft.Container(
-            alignment=ft.alignment.Alignment(0, -1),
-            content=ft.Container(
-                width=1100,
-                content=ft.Column([loading_ring, cards_col], spacing=0),
-            ),
+        bgcolor=ft.Colors.GREY_50,
+        content=ft.Column(
+            [
+                ft.Text("Overview", size=20, weight=ft.FontWeight.W_700),
+                ft.Text(
+                    "Mock dashboard using the Phase 1.1 hybrid contract shapes.",
+                    size=12,
+                    color=ft.Colors.GREY_700,
+                ),
+                ft.Column(cards, spacing=10),
+            ],
+            spacing=12,
+        ),
+    )
+
+
+def _meeting_card(meeting: dict, on_open_results) -> ft.Control:
+    return ft.Container(
+        on_click=lambda _e: on_open_results(meeting),
+        bgcolor=ft.Colors.WHITE,
+        border=ft.border.all(1, ft.Colors.GREY_200),
+        border_radius=8,
+        padding=ft.padding.all(14),
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.PLAY_CIRCLE_OUTLINE, color=ft.Colors.TEAL_600),
+                ft.Column(
+                    [
+                        ft.Text(meeting.get("title", "Untitled"), weight=ft.FontWeight.W_700),
+                        ft.Text(
+                            f"{meeting.get('status', 'pending')} | "
+                            f"{meeting.get('audio_duration_seconds', 0)}s",
+                            size=11,
+                            color=ft.Colors.GREY_700,
+                        ),
+                    ],
+                    spacing=3,
+                    expand=True,
+                ),
+                ft.Icon(ft.Icons.CHEVRON_RIGHT, color=ft.Colors.GREY_500),
+            ],
+            spacing=12,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )

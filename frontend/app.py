@@ -132,10 +132,11 @@ def build_app(page: ft.Page) -> None:
 
     def _open_record(rec) -> None:
         state.selected_meeting = rec
-        state.analysis = getattr(rec, "analysis", None)
-        state.transcript = getattr(rec, "transcript", "") or ""
-        state.audio_path = getattr(rec, "audio_path", None)
-        state.current_meeting_id = str(rec.id) if getattr(rec, "id", None) else None
+        state.current_meeting_id = str(rec.get("id")) if isinstance(rec, dict) else None
+        state.audio_storage_path = (
+            rec.get("audio_storage_path") if isinstance(rec, dict) else None
+        )
+        state.meeting_status = rec.get("status", "") if isinstance(rec, dict) else ""
         on_navigate("results")
 
     # Build layout once — never call page.clean() again
