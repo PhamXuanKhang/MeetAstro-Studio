@@ -4,13 +4,12 @@
  * Covers use cases: G4
  * (G1/G3 are FastAPI; G2 realtime subscription is in realtime.ts)
  * Contract: docs/backend-contract-v1.md
+ *
+ * Error strategy: throw on failure (consistent with existing axios API layer).
  */
 
 import { supabase } from '../../lib/supabase';
-import type {
-  JiraIssueLink,
-  ApiResult,
-} from '../../types/supabase-models';
+import type { JiraIssueLink } from '../../types/supabase-models';
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -29,7 +28,7 @@ function ensureClient() {
  */
 export async function getJiraIssueLinks(
   meetingId: string
-): Promise<ApiResult<{ items: JiraIssueLink[] }>> {
+): Promise<{ items: JiraIssueLink[] }> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -40,10 +39,7 @@ export async function getJiraIssueLinks(
 
     if (error) throw error;
 
-    return {
-      data: { items: (data ?? []) as JiraIssueLink[] },
-      error: null,
-    };
+    return { items: (data ?? []) as JiraIssueLink[] };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[G4] Lấy Jira issue links thất bại: ${message}`);

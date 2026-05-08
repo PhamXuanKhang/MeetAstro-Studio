@@ -3,6 +3,9 @@
  * ---
  * Covers use cases: C1, C9, H1, H4, H5
  * Contract: docs/backend-contract-v1.md
+ *
+ * Error strategy: throw on failure (consistent with existing axios API layer).
+ * UI consumers should use try/catch or React Query error handling.
  */
 
 import { supabase } from '../../lib/supabase';
@@ -15,7 +18,6 @@ import type {
   TranscriptSegment,
   AnalysisResult,
   ActionItem,
-  ApiResult,
 } from '../../types/supabase-models';
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -33,9 +35,7 @@ function ensureClient() {
  * Tạo một meeting mới với status mặc định "pending".
  * RLS đảm bảo user_id tự gán qua `auth.uid()`.
  */
-export async function createMeeting(
-  payload: CreateMeetingPayload
-): Promise<ApiResult<Meeting>> {
+export async function createMeeting(payload: CreateMeetingPayload): Promise<Meeting> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -51,7 +51,7 @@ export async function createMeeting(
       .single();
 
     if (error) throw error;
-    return { data: data as Meeting, error: null };
+    return data as Meeting;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[C1] Tạo meeting thất bại: ${message}`);
@@ -66,7 +66,7 @@ export async function createMeeting(
  */
 export async function getMeetingPipelineStatus(
   meetingId: string
-): Promise<ApiResult<Pick<Meeting, 'id' | 'status' | 'error_message' | 'updated_at'>>> {
+): Promise<Pick<Meeting, 'id' | 'status' | 'error_message' | 'updated_at'>> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -76,7 +76,7 @@ export async function getMeetingPipelineStatus(
       .single();
 
     if (error) throw error;
-    return { data: data as Pick<Meeting, 'id' | 'status' | 'error_message' | 'updated_at'>, error: null };
+    return data as Pick<Meeting, 'id' | 'status' | 'error_message' | 'updated_at'>;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[C9] Lấy pipeline status thất bại: ${message}`);
@@ -89,15 +89,12 @@ export async function getMeetingPipelineStatus(
  * Lấy danh sách meetings có phân trang (limit/offset).
  * Sắp xếp theo `created_at` mới nhất.
  */
-export async function listMeetings(
-  params: ListMeetingsParams = {}
-): Promise<ApiResult<MeetingsListResult>> {
+export async function listMeetings(params: ListMeetingsParams = {}): Promise<MeetingsListResult> {
   const { limit = 20, offset = 0 } = params;
 
   try {
     const client = ensureClient();
 
-    // Fetch paginated items
     const { data, error, count } = await client
       .from('meetings')
       .select('id, title, status, audio_duration_seconds, created_at, updated_at', { count: 'exact' })
@@ -107,11 +104,8 @@ export async function listMeetings(
     if (error) throw error;
 
     return {
-      data: {
-        items: (data ?? []) as MeetingsListResult['items'],
-        total: count ?? 0,
-      },
-      error: null,
+      items: (data ?? []) as MeetingsListResult['items'],
+      total: count ?? 0,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -125,9 +119,7 @@ export async function listMeetings(
  * Lấy toàn bộ chi tiết của một meeting cũ bao gồm:
  * transcript segments, analysis result, và action items.
  */
-export async function getMeetingDetail(
-  meetingId: string
-): Promise<ApiResult<MeetingDetailResult>> {
+export async function getMeetingDetail(meetingId: string): Promise<MeetingDetailResult> {
   try {
     const client = ensureClient();
 
@@ -160,13 +152,10 @@ export async function getMeetingDetail(
     if (meetingRes.error) throw meetingRes.error;
 
     return {
-      data: {
-        meeting: meetingRes.data as Meeting,
-        analysis_result: (analysisRes.data as AnalysisResult) ?? null,
-        transcript_segments: (segmentsRes.data ?? []) as TranscriptSegment[],
-        action_items: (itemsRes.data ?? []) as ActionItem[],
-      },
-      error: null,
+      meeting: meetingRes.data as Meeting,
+      analysis_result: (analysisRes.data as AnalysisResult) ?? null,
+      transcript_segments: (segmentsRes.data ?? []) as TranscriptSegment[],
+      action_items: (itemsRes.data ?? []) as ActionItem[],
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -180,9 +169,7 @@ export async function getMeetingDetail(
  * Xoá meeting theo ID. RLS đảm bảo chỉ owner mới xoá được.
  * Cascade delete sẽ do DB đảm nhận (transcript_segments, analysis_results, action_items).
  */
-export async function deleteMeeting(
-  meetingId: string
-): Promise<ApiResult<{ deleted: boolean }>> {
+export async function deleteMeeting(meetingId: string): Promise<{ deleted: boolean }> {
   try {
     const client = ensureClient();
     const { error } = await client
@@ -191,7 +178,7 @@ export async function deleteMeeting(
       .eq('id', meetingId);
 
     if (error) throw error;
-    return { data: { deleted: true }, error: null };
+    return { deleted: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[H5] Xoá meeting thất bại: ${message}`);
