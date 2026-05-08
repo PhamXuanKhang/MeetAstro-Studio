@@ -1,25 +1,31 @@
 export type DeepLinkResult = {
-  type: 'oauth' | 'email_verification' | 'password_recovery' | 'unknown'
+  type: 'oauth' | 'oauth_pkce' | 'email_verification' | 'password_recovery' | 'unknown'
   accessToken?: string
   refreshToken?: string
+  code?: string
   error?: string
   errorDescription?: string
 }
 
 function readParams(url: URL): URLSearchParams {
-  const params = new URLSearchParams(url.search)
+  // Load fragment first (tokens/code are usually only in fragment)
   const fragment = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash
-  const fragmentParams = new URLSearchParams(fragment)
-  fragmentParams.forEach((value, key) => params.set(key, value))
+  const params = new URLSearchParams(fragment)
+  // Search params override fragment — error_description is single-encoded in search
+  // but double-encoded in fragment, so search takes precedence
+  new URLSearchParams(url.search).forEach((value, key) => params.set(key, value))
   return params
 }
 
 export function parseAuthDeepLink(rawUrl: string): DeepLinkResult {
+  console.log('[auth] parseAuthDeepLink input:', rawUrl)
   try {
-    const url = new URL(rawUrl)
-    if (url.protocol !== 'meetastro:' || url.hostname !== 'auth') {
+    // Chromium does not parse authority for custom protocols — check by string prefix instead
+    if (!rawUrl.startsWith('meetastro://auth')) {
+      console.log('[auth] parseAuthDeepLink: not a meetastro://auth URL')
       return { type: 'unknown' }
     }
+    const url = new URL(rawUrl)
 
     const params = readParams(url)
     const error = params.get('error') ?? undefined
@@ -32,18 +38,33 @@ export function parseAuthDeepLink(rawUrl: string): DeepLinkResult {
     const accessToken = params.get('access_token') ?? undefined
     const refreshToken = params.get('refresh_token') ?? undefined
 
+    const code = params.get('code') ?? undefined
+
+    console.log('[auth] parseAuthDeepLink params — type:', supabaseType, 'code:', code ? 'present' : 'none', 'accessToken:', accessToken ? 'present' : 'none')
+
     if (supabaseType === 'recovery') {
-      return { type: 'password_recovery', accessToken, refreshToken }
+      const r = { type: 'password_recovery' as const, code, accessToken, refreshToken }
+      console.log('[auth] parseAuthDeepLink →', r.type)
+      return r
     }
     if (supabaseType === 'signup') {
-      return { type: 'email_verification', accessToken, refreshToken }
+      const r = { type: 'email_verification' as const, code, accessToken, refreshToken }
+      console.log('[auth] parseAuthDeepLink →', r.type)
+      return r
+    }
+    if (code) {
+      console.log('[auth] parseAuthDeepLink → oauth_pkce')
+      return { type: 'oauth_pkce', code }
     }
     if (accessToken && refreshToken) {
+      console.log('[auth] parseAuthDeepLink → oauth (implicit)')
       return { type: 'oauth', accessToken, refreshToken }
     }
 
+    console.log('[auth] parseAuthDeepLink: unknown — params were', { supabaseType: params.get('type'), hasCode: !!params.get('code'), hasToken: !!params.get('access_token') })
     return { type: 'unknown' }
-  } catch {
+  } catch (e) {
+    console.error('[auth] parseAuthDeepLink error:', e)
     return { type: 'unknown' }
   }
 }

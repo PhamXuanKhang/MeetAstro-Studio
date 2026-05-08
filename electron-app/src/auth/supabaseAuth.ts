@@ -32,9 +32,13 @@ export const supabaseAuth: AuthAdapter = {
     const { data, error } = await client.auth.signUp({
       email,
       password,
-      options: { data: name ? { name } : undefined, emailRedirectTo: 'meetastro://auth/callback' },
+      options: { data: name ? { name } : undefined, emailRedirectTo: 'http://127.0.0.1:54321/auth/callback' },
     })
     if (error) throw new Error(error.message)
+    // Supabase trả success nhưng identities rỗng = email đã tồn tại (chưa confirm)
+    if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
+      throw new Error('Email này đã được đăng ký. Vui lòng kiểm tra hộp thư hoặc đăng nhập.')
+    }
     return {
       session: toUserSession(data.session),
       message: data.session ? undefined : 'Vui lòng kiểm tra email để xác nhận tài khoản.',
@@ -44,7 +48,7 @@ export const supabaseAuth: AuthAdapter = {
   async forgotPassword(email: string): Promise<void> {
     const client = requireSupabase()
     const { error } = await client.auth.resetPasswordForEmail(email, {
-      redirectTo: 'meetastro://auth/callback',
+      redirectTo: 'http://127.0.0.1:54321/auth/callback',
     })
     if (error) throw new Error(error.message)
   },
@@ -58,6 +62,15 @@ export const supabaseAuth: AuthAdapter = {
     if (error) throw new Error(error.message)
     if (!data.url) throw new Error('Không tạo được Google OAuth URL.')
     return { url: data.url }
+  },
+
+  async exchangeCode(code: string): Promise<UserSession> {
+    const client = requireSupabase()
+    const { data, error } = await client.auth.exchangeCodeForSession(code)
+    if (error) throw new Error(error.message)
+    const session = toUserSession(data.session)
+    if (!session) throw new Error('Không tạo được phiên đăng nhập sau khi xác thực.')
+    return session
   },
 
   async setSession(accessToken: string, refreshToken: string): Promise<UserSession> {
