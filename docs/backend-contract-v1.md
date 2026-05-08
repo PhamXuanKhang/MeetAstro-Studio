@@ -435,6 +435,134 @@ Response:
 }
 ```
 
+## C10 - Stream Transcription (WhisperLiveKit SSE)
+
+Routing: FastAPI (VPS). `GET /api/v1/meetings/{meeting_id}/transcribe/stream`
+
+Real-time transcription streaming qua Server-Sent Events (SSE). Backend kết nối tới WhisperLiveKit WebSocket server (LightningAI), nhận partial transcripts và forward tới frontend qua SSE.
+
+### Flow
+
+```
+Local Audio → ffmpeg decode → PCM chunks → WebSocket → WhisperLiveKit Server
+                                                              ↓
+Frontend (SSE) ← Backend (SSE endpoint) ← on_partial callback ← partial transcript
+```
+
+### Endpoint
+
+```
+GET /api/v1/meetings/{meeting_id}/transcribe/stream
+```
+
+Query parameters:
+- `ws_url` (optional): Custom WhisperLiveKit WebSocket URL. Default: `WHLK_WEBSOCKET_URL` env var.
+
+### SSE Response Format
+
+```text
+event: partial
+data: {
+  "segments": [
+    {
+      "speaker": "Speaker 1",
+      "start": 0.0,
+      "end": 8.4,
+      "text": "Hello everyone..."
+    }
+  ],
+  "done": false
+}
+```
+
+```text
+event: done
+data: {
+  "segments": [
+    {
+      "speaker": "Speaker 1",
+      "start": 0.0,
+      "end": 8.4,
+      "text": "Hello everyone, thank you for joining..."
+    }
+  ],
+  "done": true,
+  "full_transcript": "..."
+}
+```
+
+```text
+event: error
+data: {
+  "error": "WebSocket connection failed",
+  "code": "WLK_CONNECTION_ERROR"
+}
+```
+
+### SSE Events
+
+| Event | Description |
+|-------|-------------|
+| `partial` | Partial transcript segments as they arrive |
+| `done` | Transcription complete, full transcript included |
+| `error` | Error occurred during streaming |
+
+### Request Headers
+
+```
+Accept: text/event-stream
+```
+
+### Response Headers
+
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+X-Accel-Buffering: no
+```
+
+### Frontend Integration
+
+```javascript
+const eventSource = new EventSource(`/api/v1/meetings/${meetingId}/transcribe/stream`);
+
+eventSource.addEventListener('partial', (e) => {
+  const data = JSON.parse(e.data);
+  // Append segments to UI
+  data.segments.forEach(seg => appendTranscript(seg));
+});
+
+eventSource.addEventListener('done', (e) => {
+  const data = JSON.parse(e.data);
+  // Transcription complete
+  console.log('Full transcript:', data.full_transcript);
+});
+
+eventSource.addEventListener('error', (e) => {
+  const data = JSON.parse(e.data);
+  // Handle error
+  showError(data.error);
+});
+
+// Cleanup when done
+eventSource.addEventListener('done', () => eventSource.close());
+```
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| `WLK_CONNECTION_ERROR` | Cannot connect to WhisperLiveKit WebSocket server |
+| `WLK_TRANSCRIPTION_ERROR` | Error during transcription |
+| `MEETING_NOT_FOUND` | Meeting ID not found |
+| `AUDIO_FILE_MISSING` | Audio file not found for meeting |
+
+### Rate / Limits
+
+- SSE connection: max 1 concurrent per meeting
+- Frontend should close connection after `done` event
+
 ## D1 - View Realtime Transcript
 
 Routing: Supabase Realtime on `transcript_segments`.

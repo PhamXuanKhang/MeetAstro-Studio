@@ -26,3 +26,6 @@ MeetAstro_API_Spec_Phase1.1.md
 docs/thuc_tasks.md
 electron-app/.ai-log/
 debug/
+test_e2e.sh
+test_wlk_diarize.py
+docs/host_whisper.md

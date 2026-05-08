@@ -34,6 +34,17 @@ class Settings(BaseSettings):
         default="vi", alias="DEFAULT_TRANSCRIPTION_LANGUAGE"
     )
 
+    # ── WhisperLiveKit (self-hosted) ──
+    whisper_livekit_url: str = Field(
+        default="",
+        alias="WHISPER_LIVEKIT_URL",
+        description=(
+            "WebSocket URL of a self-hosted WhisperLiveKit server with diarization. "
+            "Example: wss://host.cloudspaces.litng.ai/asr "
+            "When set, the application uses WhisperLiveKit instead of OpenAI Whisper API."
+        ),
+    )
+
     # ── Database ──
     postgres_url: str = Field(default="", alias="POSTGRES_URL")
 

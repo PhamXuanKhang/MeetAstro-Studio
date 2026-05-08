@@ -90,15 +90,29 @@ class Container:
         """
         Get the diarization transcriber service (lazy initialization).
 
-        Returns OpenAIDiarizeTranscriber for speaker-labeled transcription.
+        Returns WhisperLiveKitDiarizeTranscriber when WHISPER_LIVEKIT_URL is set,
+        otherwise falls back to OpenAIDiarizeTranscriber (requires OPENAI_API_KEY).
         """
         if self._diarize_transcriber is None:
-            if not self._settings.openai_api_key:
-                raise ValueError("OPENAI_API_KEY is required for diarization")
-            from src.providers.openai_diarize_transcriber import OpenAIDiarizeTranscriber
-            self._diarize_transcriber = OpenAIDiarizeTranscriber(
-                api_key=self._settings.openai_api_key,
-            )
+            if self._settings.whisper_livekit_url:
+                from src.providers.whisper_livekit_transcriber import (
+                    WhisperLiveKitDiarizeTranscriber,
+                )
+                self._diarize_transcriber = WhisperLiveKitDiarizeTranscriber(
+                    url=self._settings.whisper_livekit_url,
+                )
+            elif self._settings.openai_api_key:
+                from src.providers.openai_diarize_transcriber import (
+                    OpenAIDiarizeTranscriber,
+                )
+                self._diarize_transcriber = OpenAIDiarizeTranscriber(
+                    api_key=self._settings.openai_api_key,
+                )
+            else:
+                raise ValueError(
+                    "No diarization provider configured. "
+                    "Set WHISPER_LIVEKIT_URL or OPENAI_API_KEY."
+                )
         return self._diarize_transcriber
 
     def get_jira_client(self) -> JiraClient:
