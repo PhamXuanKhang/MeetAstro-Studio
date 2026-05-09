@@ -90,10 +90,7 @@ export async function getAnalysisResult(
 
     return {
       data: {
-        analysis_result: (analysisRes.data as Pick<
-          AnalysisResult,
-          'summary_text' | 'key_decisions' | 'parking_lot' | 'raw_response'
-        >) ?? null,
+        analysis_result: (analysisRes.data as AnalysisResult | null) ?? null,
         action_items: (itemsRes.data ?? []) as ActionItem[],
       },
       error: null,
