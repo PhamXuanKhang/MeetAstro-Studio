@@ -3,6 +3,8 @@
  * ---
  * Covers use cases: F1, F5, F6, F8
  * Contract: docs/backend-contract-v1.md
+ *
+ * Error strategy: throw on failure (consistent with existing axios API layer).
  */
 
 import { supabase } from '../../lib/supabase';
@@ -12,7 +14,6 @@ import type {
   ApproveActionItemPayload,
   RejectActionItemPayload,
   AddManualActionItemPayload,
-  ApiResult,
 } from '../../types/supabase-models';
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -32,7 +33,7 @@ function ensureClient() {
  */
 export async function editActionItem(
   payload: EditActionItemPayload
-): Promise<ApiResult<{ action_item: Pick<ActionItem, 'id' | 'review_status'> }>> {
+): Promise<{ action_item: Pick<ActionItem, 'id' | 'review_status'> }> {
   const { action_item_id, ...updates } = payload;
 
   try {
@@ -46,10 +47,7 @@ export async function editActionItem(
 
     if (error) throw error;
 
-    return {
-      data: { action_item: data as Pick<ActionItem, 'id' | 'review_status'> },
-      error: null,
-    };
+    return { action_item: data as Pick<ActionItem, 'id' | 'review_status'> };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[F1] Chỉnh sửa action item thất bại: ${message}`);
@@ -63,7 +61,7 @@ export async function editActionItem(
  */
 export async function approveActionItem(
   payload: ApproveActionItemPayload
-): Promise<ApiResult<{ action_item: Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> }>> {
+): Promise<{ action_item: Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> }> {
   const { action_item_id } = payload;
 
   try {
@@ -80,10 +78,7 @@ export async function approveActionItem(
 
     if (error) throw error;
 
-    return {
-      data: { action_item: data as Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> },
-      error: null,
-    };
+    return { action_item: data as Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[F5] Duyệt action item thất bại: ${message}`);
@@ -97,7 +92,7 @@ export async function approveActionItem(
  */
 export async function rejectActionItem(
   payload: RejectActionItemPayload
-): Promise<ApiResult<{ action_item: Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> }>> {
+): Promise<{ action_item: Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> }> {
   const { action_item_id } = payload;
 
   try {
@@ -114,10 +109,7 @@ export async function rejectActionItem(
 
     if (error) throw error;
 
-    return {
-      data: { action_item: data as Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> },
-      error: null,
-    };
+    return { action_item: data as Pick<ActionItem, 'id' | 'review_status' | 'is_selected'> };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[F6] Từ chối action item thất bại: ${message}`);
@@ -132,7 +124,7 @@ export async function rejectActionItem(
  */
 export async function addManualActionItem(
   payload: AddManualActionItemPayload
-): Promise<ApiResult<{ action_item: Pick<ActionItem, 'id' | 'title'> }>> {
+): Promise<{ action_item: Pick<ActionItem, 'id' | 'title'> }> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -157,10 +149,7 @@ export async function addManualActionItem(
 
     if (error) throw error;
 
-    return {
-      data: { action_item: data as Pick<ActionItem, 'id' | 'title'> },
-      error: null,
-    };
+    return { action_item: data as Pick<ActionItem, 'id' | 'title'> };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[F8] Thêm action item thủ công thất bại: ${message}`);

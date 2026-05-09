@@ -4,6 +4,8 @@
  * Covers use cases: E2, E3, E6
  * (E1 – Trigger Analysis is FastAPI, handled elsewhere)
  * Contract: docs/backend-contract-v1.md
+ *
+ * Error strategy: throw on failure (consistent with existing axios API layer).
  */
 
 import { supabase } from '../../lib/supabase';
@@ -12,7 +14,6 @@ import type {
   ActionItem,
   AnalysisWithItemsResult,
   ConfidenceScoreItem,
-  ApiResult,
 } from '../../types/supabase-models';
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -32,7 +33,7 @@ function ensureClient() {
  */
 export async function getMeetingSummary(
   meetingId: string
-): Promise<ApiResult<{ analysis_result: Pick<AnalysisResult, 'summary_text'> | null }>> {
+): Promise<{ analysis_result: Pick<AnalysisResult, 'summary_text'> | null }> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -46,12 +47,9 @@ export async function getMeetingSummary(
     if (error) throw error;
 
     return {
-      data: {
-        analysis_result: data
-          ? { summary_text: (data as { summary_text: string }).summary_text }
-          : null,
-      },
-      error: null,
+      analysis_result: data
+        ? { summary_text: (data as { summary_text: string }).summary_text }
+        : null,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -66,7 +64,7 @@ export async function getMeetingSummary(
  */
 export async function getAnalysisResult(
   meetingId: string
-): Promise<ApiResult<AnalysisWithItemsResult>> {
+): Promise<AnalysisWithItemsResult> {
   try {
     const client = ensureClient();
 
@@ -109,7 +107,7 @@ export async function getAnalysisResult(
  */
 export async function getConfidenceScores(
   meetingId: string
-): Promise<ApiResult<{ action_items: ConfidenceScoreItem[] }>> {
+): Promise<{ action_items: ConfidenceScoreItem[] }> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -120,10 +118,7 @@ export async function getConfidenceScores(
 
     if (error) throw error;
 
-    return {
-      data: { action_items: (data ?? []) as ConfidenceScoreItem[] },
-      error: null,
-    };
+    return { action_items: (data ?? []) as ConfidenceScoreItem[] };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[E6] Lấy confidence scores thất bại: ${message}`);

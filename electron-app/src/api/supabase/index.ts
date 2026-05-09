@@ -24,7 +24,6 @@ export type {
   RejectActionItemPayload,
   AddManualActionItemPayload,
   ListMeetingsParams,
-  ApiResult,
   MeetingsListResult,
   MeetingDetailResult,
   AnalysisWithItemsResult,

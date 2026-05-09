@@ -4,6 +4,8 @@
  * Covers use cases: D2, D3, D4, D5
  * (D1 – Realtime transcript subscription is in realtime.ts)
  * Contract: docs/backend-contract-v1.md
+ *
+ * Error strategy: throw on failure (consistent with existing axios API layer).
  */
 
 import { supabase } from '../../lib/supabase';
@@ -11,7 +13,6 @@ import type {
   TranscriptSegment,
   RenameSpeakerPayload,
   EditTranscriptPayload,
-  ApiResult,
 } from '../../types/supabase-models';
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -31,7 +32,7 @@ function ensureClient() {
  */
 export async function getTranscriptSegments(
   meetingId: string
-): Promise<ApiResult<{ segments: TranscriptSegment[] }>> {
+): Promise<{ segments: TranscriptSegment[] }> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -42,10 +43,7 @@ export async function getTranscriptSegments(
 
     if (error) throw error;
 
-    return {
-      data: { segments: (data ?? []) as TranscriptSegment[] },
-      error: null,
-    };
+    return { segments: (data ?? []) as TranscriptSegment[] };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[D2] Lấy transcript thất bại: ${message}`);
@@ -60,7 +58,7 @@ export async function getTranscriptSegments(
  */
 export async function getDiarization(
   meetingId: string
-): Promise<ApiResult<{ segments: Omit<TranscriptSegment, 'id' | 'meeting_id'>[] }>> {
+): Promise<{ segments: Omit<TranscriptSegment, 'id' | 'meeting_id'>[] }> {
   try {
     const client = ensureClient();
     const { data, error } = await client
@@ -72,10 +70,7 @@ export async function getDiarization(
     if (error) throw error;
 
     return {
-      data: {
-        segments: (data ?? []) as Omit<TranscriptSegment, 'id' | 'meeting_id'>[],
-      },
-      error: null,
+      segments: (data ?? []) as Omit<TranscriptSegment, 'id' | 'meeting_id'>[],
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -91,7 +86,7 @@ export async function getDiarization(
  */
 export async function renameSpeaker(
   payload: RenameSpeakerPayload
-): Promise<ApiResult<{ updated_count: number }>> {
+): Promise<{ updated_count: number }> {
   const { meeting_id, from_speaker, to_speaker } = payload;
 
   try {
@@ -123,7 +118,7 @@ export async function renameSpeaker(
  */
 export async function editTranscriptSegment(
   payload: EditTranscriptPayload
-): Promise<ApiResult<{ segment: Pick<TranscriptSegment, 'id' | 'content'> }>> {
+): Promise<{ segment: Pick<TranscriptSegment, 'id' | 'content'> }> {
   const { segment_id, content } = payload;
 
   try {
@@ -137,10 +132,7 @@ export async function editTranscriptSegment(
 
     if (error) throw error;
 
-    return {
-      data: { segment: data as Pick<TranscriptSegment, 'id' | 'content'> },
-      error: null,
-    };
+    return { segment: data as Pick<TranscriptSegment, 'id' | 'content'> };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[D5] Chỉnh sửa transcript thất bại: ${message}`);
