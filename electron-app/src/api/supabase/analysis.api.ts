@@ -87,11 +87,11 @@ export async function getAnalysisResult(
     if (itemsRes.error) throw itemsRes.error;
 
     return {
-      analysis_result: (analysisRes.data as Pick<
-        AnalysisResult,
-        'summary_text' | 'key_decisions' | 'parking_lot' | 'raw_response'
-      >) ?? null,
-      action_items: (itemsRes.data ?? []) as ActionItem[],
+      data: {
+        analysis_result: (analysisRes.data as AnalysisResult | null) ?? null,
+        action_items: (itemsRes.data ?? []) as ActionItem[],
+      },
+      error: null,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

@@ -323,7 +323,7 @@
 
 ---
 
-### Task 1.3-C — Analysis/Review/Push/History UI (Flet)
+### Task 1.3-C — Analysis/Review/Push/History UI (Electron)
 **Người phụ trách:** Khang
 **Use cases:** E2, E3, E4, E6 (frontend); F1, F5, F6, F8 (frontend); G1, G2, G3, G4 (frontend); H1, H4, H5 (frontend)
 
