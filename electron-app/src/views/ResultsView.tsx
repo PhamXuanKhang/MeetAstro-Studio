@@ -397,16 +397,16 @@ export default function ResultsView({ onNavigate }: Props) {
     setError(null)
     try {
       const result = await getMeetingDetail(currentMeetingId)
-      setMeeting(result.data.meeting)
-      setAnalysis(result.data.analysis_result)
-      setSegments(result.data.transcript_segments)
-      setItems(result.data.action_items)
-      setMeetingDetail(result.data.meeting)
-      setMeetingAnalysisResult(result.data.analysis_result)
-      setMeetingTranscriptSegments(result.data.transcript_segments)
-      setMeetingActionItems(result.data.action_items)
-      const links = await getJiraIssueLinks(currentMeetingId).catch(() => ({ data: { items: [] } }))
-      setJiraLinks(links.data.items)
+      setMeeting(result.meeting)
+      setAnalysis(result.analysis_result)
+      setSegments(result.transcript_segments)
+      setItems(result.action_items)
+      setMeetingDetail(result.meeting)
+      setMeetingAnalysisResult(result.analysis_result)
+      setMeetingTranscriptSegments(result.transcript_segments)
+      setMeetingActionItems(result.action_items)
+      const links = await getJiraIssueLinks(currentMeetingId).catch(() => ({ items: [] }))
+      setJiraLinks(links.items)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -540,7 +540,7 @@ export default function ResultsView({ onNavigate }: Props) {
       })
       const now = new Date().toISOString()
       const nextItem: ActionItem = {
-        id: result.data.action_item.id,
+        id: result.action_item.id,
         meeting_id: currentMeetingId,
         parent_id: addDraft.parent_id,
         item_type: addDraft.item_type,
@@ -581,10 +581,10 @@ export default function ResultsView({ onNavigate }: Props) {
       setPushProgress(75)
       setPushFeed((prev) => ['Push job completed. Refreshing Jira links...', ...prev])
       await loadDetail()
-      const links = await getJiraIssueLinks(currentMeetingId).catch(() => ({ data: { items: [] } }))
-      setJiraLinks(links.data.items)
+      const links = await getJiraIssueLinks(currentMeetingId).catch(() => ({ items: [] }))
+      setJiraLinks(links.items)
       setPushProgress(100)
-      setPushFeed((prev) => [`Loaded ${links.data.items.length} Jira link(s).`, ...prev])
+      setPushFeed((prev) => [`Loaded ${links.items.length} Jira link(s).`, ...prev])
     } catch (e) {
       setPushError(e instanceof Error ? e.message : String(e))
       setPushFeed((prev) => ['Push failed. Use Retry after checking failed items.', ...prev])
