@@ -92,14 +92,12 @@ export async function renameSpeaker(
   try {
     const client = ensureClient();
 
-    // Supabase .update() không trả count trực tiếp
-    // nên ta dùng { count: 'exact' } option
-    const { error, count } = await client
+    const { data, error } = await client
       .from('transcript_segments')
       .update({ speaker: to_speaker })
       .eq('meeting_id', meeting_id)
       .eq('speaker', from_speaker)
-      .select('id', { count: 'exact', head: true });
+      .select('id');
 
     if (error) throw error;
 
