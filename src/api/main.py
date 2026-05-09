@@ -15,6 +15,7 @@ from src.api.routers import (
     meetings,
     reviews,
     settings,
+    stream,
     transcriptions,
 )
 from src.config import get_logger, get_settings
@@ -36,6 +37,13 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.error(f"Failed to connect to PostgreSQL: {exc}")
     yield
+    # Close all active streaming sessions on shutdown
+    try:
+        from src.services.stream_session_manager import get_stream_manager
+        manager = get_stream_manager()
+        await manager.close_all()
+    except Exception as exc:
+        logger.warning("Error closing streaming sessions on shutdown: %s", exc)
     try:
         engine = get_engine()
         await engine.dispose()
@@ -117,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(jira.router, prefix=prefix)
     app.include_router(exports.router, prefix=prefix)
     app.include_router(settings.router, prefix=prefix)
+    app.include_router(stream.router, prefix=prefix)
 
     @app.get("/api/v1/health", tags=["health"])
     async def health_check() -> dict:

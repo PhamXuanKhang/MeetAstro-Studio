@@ -38,10 +38,16 @@ Audio File (.wav/.mp3/.m4a)
 │         │                              │
 │    if diarize:                         │
 │    ┌────▼──────────────────────┐       │
+│    │ WhisperLiveKit (C10)       │       │
+│    │  • WebSocket streaming     │       │
+│    │  • ffmpeg → PCM → WS      │       │
+│    │  • SSE → Frontend         │       │
+│    └────┬──────────────────────┘       │
+│         │ ❌ fail / no URL → fallback   │
+│    ┌────▼──────────────────────┐       │
 │    │ OpenAIDiarizeTranscriber  │       │
-│    │  • gpt-4o-transcribe-     │       │
-│    │    diarize model          │       │
-│    │  • output: [Speaker 0]:   │       │
+│    │  • gpt-4o-transcribe-    │       │
+│    │    diarize model           │       │
 │    └────┬──────────────────────┘       │
 │         │ ❌ fail → fallback           │
 │    else / fallback:                    │
@@ -129,7 +135,8 @@ Audio File (.wav/.mp3/.m4a)
 |-------|-------|-----------|--------|
 | Record | User action | `recording_service.start/stop()` → `AudioRecorder` | `audio_path: str` (WAV, local) |
 | Upload | File path (Flet) | File dialog | `audio_path: str` |
-| Transcribe | `audio_path` (multipart) | Whisper API / diarize transcriber | `Transcript` (PostgreSQL) |
+| Transcribe (batch) | `audio_path` (multipart) | Whisper API / OpenAIDiarizeTranscriber | `Transcript` (PostgreSQL) |
+| Transcribe (stream) | `audio_path` | WhisperLiveKit WS → `stream_to_callback()` | `segments[]` via SSE |
 | User edit | `transcript.raw_text` | PATCH /transcript | `transcript.raw_text` (updated) |
 | Analyze | `transcript.raw_text` | GPT-4o JSON mode → `from_dict()` | `AnalysisResult` (PostgreSQL) |
 | Rule extract | `transcript.raw_text` | `extraction_service.rule_based_extraction()` | `list[dict]` (rule_items) |

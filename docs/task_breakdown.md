@@ -193,7 +193,9 @@
 **[1.2-B.3] Real-time transcript streaming** 🟥 P0
 - **Input:** `transcript_segments` được INSERT dần vào Supabase khi từng chunk transcribe xong
 - **Output:** Celery worker insert mỗi segment mới vào Supabase `transcript_segments` table; Electron subscribe Supabase Realtime channel `transcript_segments:meeting_id=eq.{id}` → nhận INSERT events → append segment vào UI realtime; subscription kết thúc khi `meetings.status='transcribed'`
-- **Ghi chú:** Dùng Supabase Realtime (canonical theo contract v1 D1) — không dùng FastAPI WebSocket/SSE. Worker chỉ cần INSERT vào DB đúng format là client tự nhận được.
+- **Ghi chú:** Có 2 streaming mode:
+  1. **Supabase Realtime** (canonical theo contract v1 D1): Worker INSERT vào DB, client subscribe channel
+  2. **WhisperLiveKit SSE (C10)**: Backend WebSocket → WhisperLiveKit Server → SSE → Frontend. Xem `backend-contract-v1.md` §C10
 
 **[1.2-B.4] Transcript CRUD APIs** 🟥 P0
 - **Input:** `TRANSCRIPT_SEGMENTS` table; `meeting_id`
@@ -206,9 +208,10 @@
 - **Ghi chú:** Cải tiến chunking để không bị duplicate sentence ở chunk boundary
 
 **Trích dẫn:**
-- Architecture → `system_architecture.md`: "Audio transcription (Whisper API) → Action item analysis (GPT-4o)"
+- Architecture → `system_architecture.md`: "Audio transcription (Whisper API / WhisperLiveKit) → Action item analysis (GPT-4o)"
 - Streaming → `screenflow.md` §3 Upload Workflow: "Transcribing State → Review Transcript"
 - D3 diarization → `usecase_diagram.md` Diagram 2: "D2 Xem transcript hoàn chỉnh <<include>> D3 Xem diarization"
+- WhisperLiveKit SSE → `backend-contract-v1.md` §C10
 
 ---
 
