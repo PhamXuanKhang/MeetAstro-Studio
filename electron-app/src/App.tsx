@@ -20,6 +20,7 @@ import RegisterView from './views/auth/RegisterView'
 import ForgotPasswordView from './views/auth/ForgotPasswordView'
 import ResetPasswordView from './views/auth/ResetPasswordView'
 import type { MeetingResponse } from './types/schema'
+import type { MeetingListItem } from './types/supabase-models'
 
 // Minimal shape accepted by openResults — compatible with both
 // MeetingResponse (schema.ts) and MeetingItem (supabase-models.ts)
@@ -33,7 +34,7 @@ const ROUTE_TITLES: Record<string, string> = {
   live_recording: 'Đang ghi âm',
   processing: 'Đang xử lý',
   review_transcript: 'Review Transcript',
-  results: 'Kết quả phân tích',
+  results: 'Meeting Detail',
   review: 'Review & Push Jira',
   history: 'Lịch sử',
   settings: 'Cài đặt',
@@ -47,7 +48,7 @@ export default function App() {
   if (IS_PIP_MODE) return <MiniPopupView />
 
   const { user, initialized, initializing, handleAuthCallback } = useAuthStore()
-  const { route, setRoute, busy, progressText, searchQuery, setSearchQuery, setBusy } = useAppStore()
+  const { route, setRoute, busy, progressText, searchQuery, setSearchQuery } = useAppStore()
   const { setSelectedMeeting, setAnalysis, setTranscript, setCurrentMeetingId } = useAppStore()
   const [authRoute, setAuthRoute] = useState<AuthRoute>('login')
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null)
@@ -57,10 +58,9 @@ export default function App() {
   useEffect(() => {
     if (!window.electronAPI?.onAuthDeepLink) return undefined
     return window.electronAPI.onAuthDeepLink(async (url) => {
-      console.log('[auth] renderer received deep-link:', url)
       setDeepLinkError(null)
       const result = await handleAuthCallback(url)
-      console.log('[auth] handleAuthCallback result:', result)
+      console.log('[auth] handleAuthCallback route:', result.route, 'hasError:', Boolean(result.error))
       if (result.route === 'reset') {
         setAuthRoute('reset')
         return
@@ -108,7 +108,7 @@ export default function App() {
       case 'results':
         return <ResultsView onNavigate={navigate} />
       case 'review':
-        return <ReviewView onNavigate={navigate} setBusy={setBusy} />
+        return <ReviewView onNavigate={navigate} />
       case 'history':
         return <HistoryView onOpenResults={openResults} />
       case 'settings':

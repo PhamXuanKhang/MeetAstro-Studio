@@ -20,6 +20,14 @@ function fmtDt(iso: string): string {
   }
 }
 
+function statusColors(status: string): { bg: string; fg: string } {
+  if (status === 'pushed') return { bg: '#d9f3e1', fg: UI.success }
+  if (status === 'failed') return { bg: '#ffe2e2', fg: UI.error }
+  if (status === 'draft' || status === 'approved') return { bg: UI.lavender, fg: UI.primary }
+  if (status === 'transcribing' || status === 'analyzing') return { bg: '#dcecfa', fg: '#1168a7' }
+  return { bg: UI.surfaceSoft, fg: UI.steel }
+}
+
 export default function HistoryView({ onOpenResults }: Props) {
   const searchQuery = useAppStore((s) => s.searchQuery)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -48,8 +56,8 @@ export default function HistoryView({ onOpenResults }: Props) {
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 24, color: '#64748b' }}>
-        <div style={{ width: 20, height: 20, border: '2px solid #0ea5e9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 24, color: UI.steel }}>
+        <div style={{ width: 20, height: 20, border: `2px solid ${UI.primary}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         Đang tải lịch sử...
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -63,36 +71,67 @@ export default function HistoryView({ onOpenResults }: Props) {
           {error.message}
         </div>
       )}
-      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+      <div style={{ background: UI.canvas, borderRadius: 16, border: `1px solid ${UI.hairline}`, overflow: 'hidden' }}>
         {filtered.length === 0 ? (
-          <p style={{ padding: 24, color: '#94a3b8', fontSize: 13 }}>
+          <p style={{ padding: 24, color: UI.muted, fontSize: 13 }}>
             {q ? 'Không tìm thấy kết quả.' : 'Chưa có lịch sử cuộc họp.'}
           </p>
         ) : (
-          filtered.map((m, i) => (
-            <div
-              key={m.id}
-              onClick={() => onOpenResults(m)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 14,
-                padding: '14px 20px',
-                cursor: 'pointer',
-                borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = '')}
-            >
-              <span style={{ fontSize: 18 }}>📄</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>
-                  {m.title || 'Untitled'}
+          filtered.map((m, i) => {
+            const colors = statusColors(m.status)
+            return (
+              <div
+                key={m.id}
+                onClick={() => onOpenResults(m)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  padding: '14px 20px',
+                  cursor: 'pointer',
+                  borderBottom: i < filtered.length - 1 ? `1px solid ${UI.hairline}` : 'none',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = UI.surfaceSoft)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '')}
+              >
+                <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: UI.surfaceSoft, color: UI.steel, border: `1px solid ${UI.hairline}` }}>
+                  M
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 650, fontSize: 14, color: UI.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.title || 'Untitled'}
+                  </div>
+                  <div style={{ fontSize: 11, color: UI.steel, marginTop: 4 }}>
+                    {fmtDt(m.created_at)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                  {fmtDt(m.created_at)}
-                </div>
+                <span style={{ padding: '4px 10px', borderRadius: 999, background: colors.bg, color: colors.fg, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                  {m.status}
+                </span>
+                <span style={{ minWidth: 86, textAlign: 'right', fontSize: 12, color: UI.slate }}>
+                  {m.jira_links_count ?? 0} Jira links
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete(m)
+                  }}
+                  disabled={deletingId === m.id}
+                  style={{
+                    border: `1px solid ${UI.hairlineStrong}`,
+                    background: UI.canvas,
+                    color: UI.error,
+                    borderRadius: 8,
+                    padding: '6px 10px',
+                    cursor: deletingId === m.id ? 'default' : 'pointer',
+                    opacity: deletingId === m.id ? 0.6 : 1,
+                    fontSize: 12,
+                  }}
+                >
+                  {deletingId === m.id ? 'Đang xoá...' : 'Xoá'}
+                </button>
+                <span style={{ color: UI.muted, fontSize: 18 }}>›</span>
               </div>
               <button
                 onClick={(e) => handleDelete(e, m.id)}

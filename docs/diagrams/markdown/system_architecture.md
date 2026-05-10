@@ -5,6 +5,7 @@ flowchart LR
   API[FastAPI API<br/>/api/v1]
   FS[Audio<br/>(local — user machine)]
   RQ[Redis queue]
+  WLK[WhisperLiveKit<br/>Cloud Server]
 
   U -->|Interact| E
   E -->|Supabase SDK<br/>Auth, CRUD, Realtime| SB
@@ -12,6 +13,7 @@ flowchart LR
 
   API -->|audio_storage_path ref| FS
   API -->|Enqueue job| RQ
+  API -->|WebSocket<br/>C10 Streaming| WLK
 
   subgraph CW[Celery Workers]
     W1[Worker instance #1]
@@ -22,7 +24,7 @@ flowchart LR
   RQ -->|2 jobs /x sec concurrently| WN
 
   subgraph WI[Worker pipeline]
-    AT[Audio transcription<br/>(Whisper API)]
+    AT[Audio transcription<br/>(Whisper API / WhisperLiveKit)]
     AI[Action item analysis<br/>(GPT-4o)]
     AT --> AI
   end

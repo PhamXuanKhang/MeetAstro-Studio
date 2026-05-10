@@ -187,6 +187,86 @@ PATCH /api/v1/meetings/{meeting_id}/transcript
 }
 ```
 
+---
+
+### C10 - Stream Transcription (WhisperLiveKit SSE)
+
+Real-time transcription streaming via Server-Sent Events (SSE). Backend connects to WhisperLiveKit WebSocket server and forwards partial transcripts to frontend.
+
+**Endpoint:**
+```
+GET /api/v1/meetings/{meeting_id}/transcribe/stream
+```
+
+**Query parameters:**
+- `ws_url` (optional): Custom WhisperLiveKit WebSocket URL. Default: `WHISPER_LIVEKIT_URL` env var.
+
+**Request Headers:**
+```
+Accept: text/event-stream
+```
+
+**SSE Response Format:**
+
+```text
+event: partial
+data: {
+  "segments": [
+    {
+      "speaker": "Speaker 1",
+      "start": 0.0,
+      "end": 8.4,
+      "text": "Hello everyone..."
+    }
+  ],
+  "done": false
+}
+```
+
+```text
+event: done
+data: {
+  "segments": [
+    {
+      "speaker": "Speaker 1",
+      "start": 0.0,
+      "end": 8.4,
+      "text": "Hello everyone, thank you for joining..."
+    }
+  ],
+  "done": true,
+  "full_transcript": "..."
+}
+```
+
+```text
+event: error
+data: {
+  "error": "WebSocket connection failed",
+  "code": "WLK_CONNECTION_ERROR"
+}
+```
+
+**SSE Events:**
+
+| Event | Description |
+|-------|-------------|
+| `partial` | Partial transcript segments as they arrive |
+| `done` | Transcription complete, full transcript included |
+| `error` | Error occurred during streaming |
+
+**Flow:**
+```
+Local Audio → ffmpeg decode → PCM chunks → WebSocket → WhisperLiveKit Server
+                                                              ↓
+Frontend (SSE) ← Backend (SSE endpoint) ← on_partial callback ← partial transcript
+```
+
+**Implementation:**
+- Backend: `transcribe_diarized_stream()` in `src/services/transcription_service.py`
+- WhisperLiveKit client: `src/providers/whisper_livekit_transcriber.py`
+- FFmpeg: `subprocess.Popen` → PCM 16kHz mono → WebSocket
+
 **Response:**
 ```json
 {
