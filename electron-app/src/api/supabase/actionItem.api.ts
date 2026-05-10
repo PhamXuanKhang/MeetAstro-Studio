@@ -25,6 +25,57 @@ function ensureClient() {
   return supabase;
 }
 
+// ─── List Action Items (for ReviewView) ─────────────────
+
+/**
+ * Lấy tất cả action items của một meeting.
+ * Sắp xếp theo created_at tăng dần.
+ */
+export async function listActionItems(
+  meetingId: string
+): Promise<ActionItem[]> {
+  try {
+    const client = ensureClient();
+    const { data, error } = await client
+      .from('action_items')
+      .select('*')
+      .eq('meeting_id', meetingId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as ActionItem[];
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Lấy action items thất bại: ${message}`);
+  }
+}
+
+// ─── Bulk Approve (ReviewView "Approve All") ────────────
+
+/**
+ * Approve tất cả action items đang ở trạng thái 'draft' hoặc 'edited'.
+ * Trả về số lượng items đã được approve.
+ */
+export async function bulkApproveActionItems(
+  meetingId: string
+): Promise<{ approved_count: number }> {
+  try {
+    const client = ensureClient();
+    const { data, error } = await client
+      .from('action_items')
+      .update({ review_status: 'approved', is_selected: true })
+      .eq('meeting_id', meetingId)
+      .in('review_status', ['draft', 'edited'])
+      .select('id');
+
+    if (error) throw error;
+    return { approved_count: data?.length ?? 0 };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Bulk approve thất bại: ${message}`);
+  }
+}
+
 // ─── F1 – Edit Epic/Task/Subtask ────────────────────────
 
 /**

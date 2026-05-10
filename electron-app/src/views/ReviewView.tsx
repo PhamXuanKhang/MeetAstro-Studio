@@ -1,81 +1,112 @@
-import { useEffect, useState, useCallback, memo } from 'react'
+import { useEffect, useState, useCallback, useMemo, memo } from 'react'
 import { useAppStore } from '../store/appStore'
-import { listReviewItems, getReviewSummary, patchReviewItem, approveItem, rejectItem, approveAll } from '../api/review'
+import {
+  useActionItemsList,
+  useEditActionItem,
+  useApproveActionItem,
+  useRejectActionItem,
+  useBulkApproveActionItems,
+} from '../hooks/supabase/useActionItems'
 import { pushToJira } from '../api/jira'
+import { subscribeActionItemSyncStatus, unsubscribeChannel } from '../api/supabase/realtime'
 import ConfidenceBadge from '../components/ConfidenceBadge'
-import StatusBadge from '../components/StatusBadge'
-import type { ReviewItemResponse, ReviewSummaryResponse, Priority } from '../types/schema'
+import type { ActionItem, ActionItemPriority } from '../types/supabase-models'
 
 interface Props {
   onNavigate: (route: string) => void
   setBusy: (busy: boolean, text?: string) => void
 }
 
-// --- ReviewItemCard ---
-interface CardProps {
-  item: ReviewItemResponse
-  meetingId: string
-  onReload: () => void
-  onToast: (msg: string, err?: boolean) => void
+// ─── Status Badge (inline, uses Supabase review_status values) ──
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string; label: string }> = {
+    draft:    { bg: '#f1f5f9', color: '#64748b', label: 'Draft' },
+    edited:   { bg: '#fef3c7', color: '#92400e', label: 'Edited' },
+    approved: { bg: '#dcfce7', color: '#166534', label: 'Approved' },
+    rejected: { bg: '#fee2e2', color: '#991b1b', label: 'Rejected' },
+  }
+  const s = map[status] ?? map.draft
+  return (
+    <span style={{ padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.color, fontSize: 10, fontWeight: 700 }}>
+      {s.label}
+    </span>
+  )
 }
 
-const ReviewItemCard = memo(function ReviewItemCard({ item, meetingId, onReload, onToast }: CardProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editSummary, setEditSummary] = useState(item.edited_summary || item.summary)
-  const [editAssignee, setEditAssignee] = useState(item.edited_assignee || item.assignee || '')
-  const [editDeadline, setEditDeadline] = useState(item.edited_deadline || item.deadline || '')
-  const [editPriority, setEditPriority] = useState<Priority>((item.edited_priority as Priority) || item.priority || 'Medium')
-  const [saving, setSaving] = useState(false)
-  const [actioning, setActioning] = useState(false)
+// ─── Sync Status Badge (Realtime-powered) ───────────────
 
-  const isHighlighted = item.is_flagged && item.review_status === 'draft'
-  const effectiveSummary = item.edited_summary || item.summary
-  const effectiveAssignee = item.edited_assignee || item.assignee
-  const effectiveDeadline = item.edited_deadline || item.deadline
+function SyncBadge({ status, error: syncError }: { status: string; error?: string | null }) {
+  const map: Record<string, { bg: string; color: string; label: string }> = {
+    pending:  { bg: '#f1f5f9', color: '#64748b', label: '⏳ Pending' },
+    syncing:  { bg: '#dbeafe', color: '#1e40af', label: '🔄 Syncing' },
+    synced:   { bg: '#dcfce7', color: '#166534', label: '✅ Synced' },
+    failed:   { bg: '#fee2e2', color: '#991b1b', label: '❌ Failed' },
+  }
+  const s = map[status] ?? map.pending
+  return (
+    <span title={syncError || undefined} style={{ padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.color, fontSize: 10, fontWeight: 600 }}>
+      {s.label}
+    </span>
+  )
+}
+
+// ─── ReviewItemCard ─────────────────────────────────────
+
+interface CardProps {
+  item: ActionItem
+  onToast: (msg: string, err?: boolean) => void
+  syncOverride?: { sync_status: string; sync_error: string | null }
+}
+
+const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverride }: CardProps) {
+  const meetingId = item.meeting_id
+
+  const { mutate: editItem, isPending: isSaving } = useEditActionItem(meetingId)
+  const { mutate: approve, isPending: isApproving } = useApproveActionItem(meetingId)
+  const { mutate: reject, isPending: isRejecting } = useRejectActionItem(meetingId)
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(item.title)
+  const [editAssignee, setEditAssignee] = useState(item.assignee || '')
+  const [editDeadline, setEditDeadline] = useState(item.deadline || '')
+  const [editPriority, setEditPriority] = useState<ActionItemPriority>(item.priority)
+
+  const isLowConfidence = item.confidence_score < 0.6 && item.review_status === 'draft'
   const typeLabel = { epic: 'EPIC', task: 'TASK', subtask: 'SUBTASK' }[item.item_type] ?? item.item_type.toUpperCase()
 
-  const handleSave = useCallback(async () => {
-    setSaving(true)
-    try {
-      await patchReviewItem(meetingId, item.id!, {
-        edited_summary: editSummary || null,
-        edited_assignee: editAssignee || null,
-        edited_deadline: editDeadline || null,
-        edited_priority: editPriority || null,
-      })
-      onToast('Đã lưu chỉnh sửa.')
-      setIsEditing(false)
-      onReload()
-    } catch (e) {
-      onToast(`Lỗi lưu: ${e instanceof Error ? e.message : e}`, true)
-    } finally {
-      setSaving(false)
-    }
-  }, [meetingId, item.id, editSummary, editAssignee, editDeadline, editPriority, onToast, onReload])
+  const syncStatus = syncOverride?.sync_status ?? item.sync_status
+  const syncError = syncOverride?.sync_error ?? item.sync_error
 
-  const handleApprove = useCallback(async () => {
-    setActioning(true)
-    try {
-      await approveItem(meetingId, item.id!)
-      onReload()
-    } catch (e) {
-      onToast(`Lỗi approve: ${e instanceof Error ? e.message : e}`, true)
-    } finally {
-      setActioning(false)
-    }
-  }, [meetingId, item.id, onToast, onReload])
+  const handleSave = useCallback(() => {
+    editItem(
+      {
+        action_item_id: item.id,
+        title: editTitle,
+        assignee: editAssignee || null,
+        deadline: editDeadline || null,
+        priority: editPriority,
+      },
+      {
+        onSuccess: () => { onToast('Đã lưu chỉnh sửa.'); setIsEditing(false) },
+        onError: (e) => onToast(`Lỗi lưu: ${e.message}`, true),
+      }
+    )
+  }, [item.id, editTitle, editAssignee, editDeadline, editPriority, editItem, onToast])
 
-  const handleReject = useCallback(async () => {
-    setActioning(true)
-    try {
-      await rejectItem(meetingId, item.id!)
-      onReload()
-    } catch (e) {
-      onToast(`Lỗi reject: ${e instanceof Error ? e.message : e}`, true)
-    } finally {
-      setActioning(false)
-    }
-  }, [meetingId, item.id, onToast, onReload])
+  const handleApprove = useCallback(() => {
+    approve(item.id, {
+      onError: (e) => onToast(`Lỗi approve: ${e.message}`, true),
+    })
+  }, [item.id, approve, onToast])
+
+  const handleReject = useCallback(() => {
+    reject(item.id, {
+      onError: (e) => onToast(`Lỗi reject: ${e.message}`, true),
+    })
+  }, [item.id, reject, onToast])
+
+  const actioning = isApproving || isRejecting
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '7px 10px', border: '1px solid #cbd5e1',
@@ -87,19 +118,19 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, meetingId, onReload,
       style={{
         padding: 14,
         borderRadius: 12,
-        border: `1px solid ${isHighlighted ? '#fdba74' : '#e2e8f0'}`,
-        background: isHighlighted ? '#fff7ed' : '#fff',
+        border: `1px solid ${isLowConfidence ? '#fdba74' : '#e2e8f0'}`,
+        background: isLowConfidence ? '#fff7ed' : '#fff',
         marginBottom: 10,
       }}
     >
-      {/* Top row: type badge, index, confidence, status, edit button */}
+      {/* Top row: type badge, confidence, status, sync, edit button */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
         <span style={{ padding: '2px 7px', borderRadius: 4, background: '#dbeafe', color: '#1e40af', fontSize: 10, fontWeight: 700 }}>
           {typeLabel}
         </span>
-        <span style={{ fontSize: 10, color: '#94a3b8' }}>[{item.item_index}]</span>
-        <ConfidenceBadge confidence={item.confidence} />
+        <ConfidenceBadge confidence={item.confidence_score} />
         <StatusBadge status={item.review_status} />
+        <SyncBadge status={syncStatus} error={syncError} />
         <div style={{ flex: 1 }} />
         {!isEditing && (
           <button
@@ -111,49 +142,55 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, meetingId, onReload,
         )}
       </div>
 
-      {/* Summary */}
+      {/* Title */}
       <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>
-        {effectiveSummary}
+        {item.title}
       </div>
+
+      {/* Description */}
+      {item.description && (
+        <div style={{ fontSize: 12, color: '#475569', marginBottom: 6, lineHeight: 1.5 }}>
+          {item.description}
+        </div>
+      )}
 
       {/* Meta */}
       <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
-        👤 {effectiveAssignee || 'TBD'} &nbsp;|&nbsp;
-        📅 {effectiveDeadline || 'N/A'} &nbsp;|&nbsp;
-        🔥 {item.edited_priority || item.priority}
+        👤 {item.assignee || 'TBD'} &nbsp;|&nbsp;
+        📅 {item.deadline || 'N/A'} &nbsp;|&nbsp;
+        🔥 {item.priority}
       </div>
 
-      {/* Validation notes */}
-      {item.validation_notes.length > 0 && (
-        <div style={{ fontSize: 10, color: '#c2410c', marginBottom: 6 }}>
-          ⚠ {(item.validation_notes as string[]).join(' | ')}
+      {/* Context */}
+      {item.context && (
+        <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginBottom: 6 }}>
+          💬 {item.context}
         </div>
       )}
 
       {/* Inline edit form */}
       {isEditing && (
         <div style={{ marginTop: 10, padding: 12, background: '#f8fafc', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <textarea
-            value={editSummary}
-            onChange={(e) => setEditSummary(e.target.value)}
-            rows={2}
-            style={{ ...inputStyle, resize: 'vertical' }}
-            placeholder="Summary"
+          <input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            style={inputStyle}
+            placeholder="Title"
           />
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} placeholder="Assignee" style={{ ...inputStyle, flex: 1 }} />
             <input value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} placeholder="YYYY-MM-DD" style={{ ...inputStyle, flex: 1 }} />
-            <select value={editPriority} onChange={(e) => setEditPriority(e.target.value as Priority)} style={{ ...inputStyle, flex: 1 }}>
-              {['Critical', 'High', 'Medium', 'Low'].map((p) => <option key={p} value={p}>{p}</option>)}
+            <select value={editPriority} onChange={(e) => setEditPriority(e.target.value as ActionItemPriority)} style={{ ...inputStyle, flex: 1 }}>
+              {['critical', 'high', 'medium', 'low'].map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={handleSave}
-              disabled={saving}
-              style={{ padding: '6px 16px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: saving ? 0.7 : 1 }}
+              disabled={isSaving}
+              style={{ padding: '6px 16px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: isSaving ? 0.7 : 1 }}
             >
-              {saving ? 'Đang lưu...' : '💾 Lưu'}
+              {isSaving ? 'Đang lưu...' : '💾 Lưu'}
             </button>
             <button
               onClick={() => setIsEditing(false)}
@@ -196,7 +233,8 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, meetingId, onReload,
   )
 })
 
-// --- Toast ---
+// ─── Toast ──────────────────────────────────────────────
+
 function Toast({ msg, isError, onClose }: { msg: string; isError: boolean; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
   return (
@@ -212,53 +250,56 @@ function Toast({ msg, isError, onClose }: { msg: string; isError: boolean; onClo
   )
 }
 
-// --- ReviewView main ---
+// ─── ReviewView Main ────────────────────────────────────
+
 export default function ReviewView({ onNavigate, setBusy }: Props) {
   const { currentMeetingId, setMeetingStatus } = useAppStore()
-  const [items, setItems] = useState<ReviewItemResponse[]>([])
-  const [summary, setSummary] = useState<ReviewSummaryResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+
+  // React Query: action items from Supabase
+  const { data: items = [], isLoading } = useActionItemsList(currentMeetingId)
+  const { mutate: bulkApprove, isPending: approvingAll } = useBulkApproveActionItems(currentMeetingId)
+
   const [toast, setToast] = useState<{ msg: string; isError: boolean } | null>(null)
   const [pushing, setPushing] = useState(false)
-  const [approvingAll, setApprovingAll] = useState(false)
+
+  // ─── Realtime: sync status overrides ──────────────────
+  const [syncOverrides, setSyncOverrides] = useState<Record<string, { sync_status: string; sync_error: string | null }>>({})
+
+  useEffect(() => {
+    if (!currentMeetingId) return
+
+    const channel = subscribeActionItemSyncStatus(currentMeetingId, (update) => {
+      setSyncOverrides((prev) => ({
+        ...prev,
+        [update.id]: { sync_status: update.sync_status, sync_error: update.sync_error },
+      }))
+    })
+
+    return () => { unsubscribeChannel(channel) }
+  }, [currentMeetingId])
 
   const showToast = useCallback((msg: string, isError = false) => {
     setToast({ msg, isError })
   }, [])
 
-  const reloadItems = useCallback(async () => {
-    if (!currentMeetingId) return
-    try {
-      const [itemsData, summaryData] = await Promise.all([
-        listReviewItems(currentMeetingId),
-        getReviewSummary(currentMeetingId),
-      ])
-      // Map API response to ReviewItem format
-      setItems(itemsData)
-      setSummary(summaryData)
-    } catch (e) {
-      showToast(`Lỗi tải review items: ${e instanceof Error ? e.message : e}`, true)
-    }
-  }, [currentMeetingId, showToast])
+  // Compute summary from items
+  const summary = useMemo(() => {
+    const total = items.length
+    const approved = items.filter((i) => i.review_status === 'approved').length
+    const rejected = items.filter((i) => i.review_status === 'rejected').length
+    const flagged = items.filter((i) => i.confidence_score < 0.6 && i.review_status === 'draft').length
+    const pending = items.filter((i) => i.review_status === 'draft' || i.review_status === 'edited').length
+    return { total, approved, rejected, flagged, pending }
+  }, [items])
 
-  useEffect(() => {
-    setLoading(true)
-    reloadItems().finally(() => setLoading(false))
-  }, [reloadItems])
+  const handleApproveAll = useCallback(() => {
+    bulkApprove(undefined, {
+      onSuccess: (result) => showToast(`Đã approve ${result.approved_count} items.`),
+      onError: (e) => showToast(`Lỗi: ${e.message}`, true),
+    })
+  }, [bulkApprove, showToast])
 
-  const handleApproveAll = useCallback(async () => {
-    setApprovingAll(true)
-    try {
-      const result = await approveAll(currentMeetingId!)
-      showToast(`Đã approve ${result.approved_count} items.`)
-      await reloadItems()
-    } catch (e) {
-      showToast(`Lỗi: ${e instanceof Error ? e.message : e}`, true)
-    } finally {
-      setApprovingAll(false)
-    }
-  }, [currentMeetingId, showToast, reloadItems])
-
+  // pushToJira giữ nguyên FastAPI
   const handlePushJira = useCallback(async () => {
     setPushing(true)
     setBusy(true, 'Đang push lên Jira...')
@@ -266,14 +307,13 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
       await pushToJira(currentMeetingId!)
       setMeetingStatus('pushed')
       showToast('Push lên Jira thành công! 🎉')
-      await reloadItems()
     } catch (e) {
       showToast(`Lỗi push Jira: ${e instanceof Error ? e.message : e}`, true)
     } finally {
       setPushing(false)
       setBusy(false)
     }
-  }, [currentMeetingId, setBusy, setMeetingStatus, showToast, reloadItems])
+  }, [currentMeetingId, setBusy, setMeetingStatus, showToast])
 
   if (!currentMeetingId) {
     return (
@@ -283,9 +323,9 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     )
   }
 
-  const pushDisabled = !summary || summary.pending > 0 || summary.approved === 0
-  const flagged = items.filter((i) => i.is_flagged && i.review_status === 'draft')
-  const normal = items.filter((i) => !(i.is_flagged && i.review_status === 'draft'))
+  const pushDisabled = summary.pending > 0 || summary.approved === 0
+  const flagged = items.filter((i) => i.confidence_score < 0.6 && i.review_status === 'draft')
+  const normal = items.filter((i) => !(i.confidence_score < 0.6 && i.review_status === 'draft'))
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -310,14 +350,12 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
       </div>
 
       {/* Summary bar */}
-      {summary && (
-        <div style={{ background: '#eff6ff', borderRadius: 8, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#1e40af' }}>
-          Tổng: {summary.total} &nbsp;|&nbsp;
-          ✓ Approved: {summary.approved} &nbsp;|&nbsp;
-          ⚠ Cần xem: {summary.flagged} &nbsp;|&nbsp;
-          ⏳ Chờ: {summary.pending}
-        </div>
-      )}
+      <div style={{ background: '#eff6ff', borderRadius: 8, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#1e40af' }}>
+        Tổng: {summary.total} &nbsp;|&nbsp;
+        ✓ Approved: {summary.approved} &nbsp;|&nbsp;
+        ⚠ Cần xem: {summary.flagged} &nbsp;|&nbsp;
+        ⏳ Chờ: {summary.pending}
+      </div>
 
       {/* Bulk actions */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
@@ -348,7 +386,7 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
       </div>
 
       {/* Items list */}
-      {loading ? (
+      {isLoading ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#64748b', fontSize: 13 }}>
           <div style={{ width: 18, height: 18, border: '2px solid #0ea5e9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
           Đang tải...
@@ -365,9 +403,8 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
                 <ReviewItemCard
                   key={item.id}
                   item={item}
-                  meetingId={currentMeetingId}
-                  onReload={reloadItems}
                   onToast={showToast}
+                  syncOverride={syncOverrides[item.id]}
                 />
               ))}
             </div>
@@ -381,9 +418,8 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
                 <ReviewItemCard
                   key={item.id}
                   item={item}
-                  meetingId={currentMeetingId}
-                  onReload={reloadItems}
                   onToast={showToast}
+                  syncOverride={syncOverrides[item.id]}
                 />
               ))}
             </div>
