@@ -190,7 +190,7 @@ export interface MeetingDetailResult {
 
 /** E3 – Analysis + action items */
 export interface AnalysisWithItemsResult {
-  analysis_result: AnalysisResult | null;
+  analysis_result: Pick<AnalysisResult, 'summary_text' | 'key_decisions' | 'parking_lot' | 'raw_response'> | null;
   action_items: ActionItem[];
 }
 

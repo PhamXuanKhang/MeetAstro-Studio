@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
-import { listMeetings } from '../api/meetings'
+import { useMemo } from 'react'
+import { useMeetingsList } from '../hooks/supabase/useMeetings'
 import { useAppStore } from '../store/appStore'
-import type { MeetingResponse } from '../types/schema'
+import type { MeetingsListResult } from '../types/supabase-models'
+
+type MeetingItem = MeetingsListResult['items'][number]
 
 interface Props {
-  onOpenResults: (meeting: MeetingResponse) => void
+  onOpenResults: (meeting: MeetingItem) => void
 }
 
 function fmtDt(iso: string): string {
@@ -18,7 +20,7 @@ function fmtDt(iso: string): string {
   }
 }
 
-function MeetingCard({ meeting, onOpen }: { meeting: MeetingResponse; onOpen: () => void }) {
+function MeetingCard({ meeting, onOpen }: { meeting: MeetingItem; onOpen: () => void }) {
   const subtitle = fmtDt(meeting.created_at)
 
   return (
@@ -61,33 +63,21 @@ function MeetingCard({ meeting, onOpen }: { meeting: MeetingResponse; onOpen: ()
 }
 
 export default function DashboardView({ onOpenResults }: Props) {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const { searchQuery, cachedMeetings, setCachedMeetings } = useAppStore()
+  const searchQuery = useAppStore((s) => s.searchQuery)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const resp = await listMeetings()
-      setCachedMeetings(resp.items)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [setCachedMeetings])
+  // React Query: auto fetch + cache
+  const { data, isLoading, error, refetch } = useMeetingsList({ limit: 50 })
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const items = data?.items ?? []
 
+  // Client-side search filter
   const q = searchQuery.trim().toLowerCase()
-  const meetings = q
-    ? cachedMeetings.filter((m) => m.title.toLowerCase().includes(q))
-    : cachedMeetings
+  const meetings = useMemo(
+    () => q ? items.filter((m) => (m.title ?? '').toLowerCase().includes(q)) : items,
+    [items, q]
+  )
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 48, gap: 12 }}>
         <div style={{ width: 32, height: 32, border: '3px solid #0ea5e9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -100,8 +90,8 @@ export default function DashboardView({ onOpenResults }: Props) {
   if (error) {
     return (
       <div style={{ padding: 24, background: '#fee2e2', borderRadius: 12, color: '#991b1b' }}>
-        Không thể tải danh sách: {error}
-        <button onClick={load} style={{ marginLeft: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #991b1b', background: 'transparent', color: '#991b1b', cursor: 'pointer' }}>
+        Không thể tải danh sách: {error.message}
+        <button onClick={() => refetch()} style={{ marginLeft: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #991b1b', background: 'transparent', color: '#991b1b', cursor: 'pointer' }}>
           Thử lại
         </button>
       </div>
@@ -115,7 +105,7 @@ export default function DashboardView({ onOpenResults }: Props) {
           {meetings.length} cuộc họp{q ? ` (tìm kiếm: "${searchQuery}")` : ''}
         </h2>
         <button
-          onClick={load}
+          onClick={() => refetch()}
           style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 12, color: '#64748b' }}
         >
           🔄 Làm mới
