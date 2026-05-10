@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
-import { listMeetings } from '../api/meetings'
+import { useMemo, useState, useCallback } from 'react'
+import { useMeetingsList, useDeleteMeeting } from '../hooks/supabase/useMeetings'
 import { useAppStore } from '../store/appStore'
-import type { MeetingResponse } from '../types/schema'
+import type { MeetingsListResult } from '../types/supabase-models'
+
+type MeetingItem = MeetingsListResult['items'][number]
 
 interface Props {
-  onOpenResults: (meeting: MeetingResponse) => void
+  onOpenResults: (meeting: MeetingItem) => void
 }
 
 function fmtDt(iso: string): string {
@@ -19,32 +21,32 @@ function fmtDt(iso: string): string {
 }
 
 export default function HistoryView({ onOpenResults }: Props) {
-  const [loading, setLoading] = useState(true)
-  const [meetings, setMeetings] = useState<MeetingResponse[]>([])
-  const [error, setError] = useState<string | null>(null)
   const searchQuery = useAppStore((s) => s.searchQuery)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const resp = await listMeetings()
-      setMeetings(resp.items)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // React Query: auto fetch + cache
+  const { data, isLoading, error } = useMeetingsList({ limit: 100 })
+  const { mutate: remove } = useDeleteMeeting()
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const items = data?.items ?? []
 
+  // Client-side search filter
   const q = searchQuery.trim().toLowerCase()
-  const filtered = q ? meetings.filter((m) => m.title.toLowerCase().includes(q)) : meetings
+  const filtered = useMemo(
+    () => q ? items.filter((m) => (m.title ?? '').toLowerCase().includes(q)) : items,
+    [items, q]
+  )
 
-  if (loading) {
+  const handleDelete = useCallback((e: React.MouseEvent, meetingId: string) => {
+    e.stopPropagation() // Ngăn click mở meeting
+    if (!confirm('Bạn có chắc muốn xoá cuộc họp này?')) return
+    setDeletingId(meetingId)
+    remove(meetingId, {
+      onSettled: () => setDeletingId(null),
+    })
+  }, [remove])
+
+  if (isLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 24, color: '#64748b' }}>
         <div style={{ width: 20, height: 20, border: '2px solid #0ea5e9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -58,7 +60,7 @@ export default function HistoryView({ onOpenResults }: Props) {
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       {error && (
         <div style={{ marginBottom: 16, padding: 12, background: '#fee2e2', borderRadius: 8, color: '#991b1b', fontSize: 13 }}>
-          {error}
+          {error.message}
         </div>
       )}
       <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
@@ -92,6 +94,22 @@ export default function HistoryView({ onOpenResults }: Props) {
                   {fmtDt(m.created_at)}
                 </div>
               </div>
+              <button
+                onClick={(e) => handleDelete(e, m.id)}
+                disabled={deletingId === m.id}
+                title="Xoá cuộc họp"
+                style={{
+                  padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0',
+                  background: deletingId === m.id ? '#fee2e2' : 'transparent',
+                  color: '#991b1b', cursor: 'pointer', fontSize: 12,
+                  opacity: deletingId === m.id ? 0.5 : 0.6,
+                  transition: 'opacity 0.15s',
+                }}
+                onMouseEnter={(e) => { if (deletingId !== m.id) e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { if (deletingId !== m.id) e.currentTarget.style.opacity = '0.6' }}
+              >
+                {deletingId === m.id ? '⏳' : '🗑'}
+              </button>
               <span style={{ color: '#cbd5e1', fontSize: 18 }}>›</span>
             </div>
           ))

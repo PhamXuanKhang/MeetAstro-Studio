@@ -21,6 +21,10 @@ import ForgotPasswordView from './views/auth/ForgotPasswordView'
 import ResetPasswordView from './views/auth/ResetPasswordView'
 import type { MeetingResponse } from './types/schema'
 
+// Minimal shape accepted by openResults — compatible with both
+// MeetingResponse (schema.ts) and MeetingItem (supabase-models.ts)
+type OpenableMeeting = { id: string; title?: string | null; [key: string]: unknown }
+
 type AuthRoute = 'login' | 'register' | 'forgot' | 'reset'
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -70,8 +74,9 @@ export default function App() {
   }, [handleAuthCallback])
 
   const openResults = useCallback(
-    (meeting: MeetingResponse) => {
-      setSelectedMeeting(meeting)
+    (meeting: OpenableMeeting) => {
+      // Cast to MeetingResponse for appStore compatibility (Phase 3 will unify types)
+      setSelectedMeeting(meeting as unknown as MeetingResponse)
       setAnalysis(null)
       setTranscript('')
       setCurrentMeetingId(meeting.id)
