@@ -7,12 +7,29 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _uuid_from_str(v: Any) -> UUID:
+    """Convert string or UUID to UUID."""
+    if isinstance(v, UUID):
+        return v
+    if isinstance(v, str):
+        return UUID(v)
+    raise ValueError(f"Cannot convert {v!r} to UUID")
+
+
+def _datetime_from_str(v: Any) -> datetime:
+    """Convert ISO string or datetime to datetime."""
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, str):
+        return datetime.fromisoformat(v.replace("Z", "+00:00"))
+    raise ValueError(f"Cannot convert {v!r} to datetime")
 
 
 class MeetingCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
-    # NOTE: DB (migration 0003) stores user_id as UUID. If omitted, backend will use a zero UUID.
     user_id: Optional[UUID] = None
 
 
@@ -29,7 +46,15 @@ class MeetingResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    @field_validator("id", "user_id", mode="before")
+    @classmethod
+    def _uuid(cls, v: Any) -> UUID:
+        return _uuid_from_str(v)
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _dt(cls, v: Any) -> datetime:
+        return _datetime_from_str(v)
 
 
 class MeetingListResponse(BaseModel):
@@ -48,7 +73,15 @@ class TranscriptResponse(BaseModel):
     char_count: Optional[int] = None
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    @field_validator("id", "meeting_id", mode="before")
+    @classmethod
+    def _uuid(cls, v: Any) -> UUID:
+        return _uuid_from_str(v)
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _dt(cls, v: Any) -> datetime:
+        return _datetime_from_str(v)
 
 
 class TranscriptPatch(BaseModel):
@@ -64,7 +97,15 @@ class AnalysisResponse(BaseModel):
     validation_metrics: Optional[dict[str, Any]] = None
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    @field_validator("id", "meeting_id", mode="before")
+    @classmethod
+    def _uuid(cls, v: Any) -> UUID:
+        return _uuid_from_str(v)
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _dt(cls, v: Any) -> datetime:
+        return _datetime_from_str(v)
 
 
 class AudioUploadResponse(BaseModel):

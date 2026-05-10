@@ -4,10 +4,12 @@ Celery task: transcribe audio file and save transcript to database.
 Input:  meeting_id (str), audio_path (str), diarize (bool), language (str)
 Output: {"transcript_id": str, "char_count": int}
 """
-import asyncio
-import uuid
-
 from src.config import get_logger
+from src.db.crud.meeting_crud import (
+    create_transcript,
+    delete_transcript_for_meeting,
+    update_meeting_status,
+)
 from src.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -42,74 +44,43 @@ def transcribe_audio(
     Returns:
         Dict with transcript_id and char_count.
     """
-    return asyncio.run(
-        _transcribe_async(self, meeting_id, audio_path, diarize, language, cleanup_audio)
-    )
-
-
-async def _transcribe_async(
-    task,
-    meeting_id: str,
-    audio_path: str,
-    diarize: bool,
-    language: str,
-    cleanup_audio: bool,
-) -> dict:
-    from src.db.crud.meeting_crud import (
-        create_transcript,
-        get_transcript,
-        update_meeting_status,
-    )
-    from src.db.session import get_session_factory
-    from src.services.cleanup_service import delete_audio_file
-    from src.services.transcription_service import transcribe, transcribe_diarized
-
-    session_factory = get_session_factory()
-
-    meeting_uuid = uuid.UUID(meeting_id)
-    async with session_factory() as db:
-        try:
-            await update_meeting_status(db, meeting_uuid, status="transcribing")
-            await db.commit()
-        except Exception as exc:
-            logger.error("[transcribe_task] Failed to update status: %s", exc)
-            raise
+    logger.info("[transcribe_task] Starting transcription: %s diarize=%s", audio_path, diarize)
 
     try:
-        logger.info("[transcribe_task] Starting transcription: %s diarize=%s", audio_path, diarize)
+        update_meeting_status(meeting_id, status="transcribing")
+    except Exception as exc:
+        logger.error("[transcribe_task] Failed to update status: %s", exc)
+        raise
+
+    try:
         if diarize:
+            from src.services.transcription_service import transcribe_diarized
             raw_text = transcribe_diarized(audio_path, language=language)
             diarized_text = raw_text
         else:
+            from src.services.transcription_service import transcribe
             raw_text = transcribe(audio_path, language=language)
             diarized_text = None
     except Exception as exc:
-        async with session_factory() as db:
-            await update_meeting_status(
-                db, meeting_uuid, status="failed", error_message=str(exc)
-            )
-            await db.commit()
-        raise task.retry(exc=exc)
+        update_meeting_status(meeting_id, status="failed", error_message=str(exc))
+        raise self.retry(exc=exc)
 
-    async with session_factory() as db:
-        old = await get_transcript(db, meeting_uuid)
-        if old:
-            await db.delete(old)
-            await db.flush()
+    # Delete old transcript if exists
+    delete_transcript_for_meeting(meeting_id)
 
-        transcript = await create_transcript(
-            db,
-            meeting_id=meeting_uuid,
-            raw_text=raw_text,
-            diarized_text=diarized_text,
-            language=language,
-        )
-        await update_meeting_status(db, meeting_uuid, status="transcribed")
-        await db.commit()
+    # Save new transcript
+    transcript = create_transcript(
+        meeting_id=meeting_id,
+        raw_text=raw_text,
+        diarized_text=diarized_text,
+        language=language,
+    )
+    update_meeting_status(meeting_id, status="transcribed")
 
     if cleanup_audio:
+        from src.services.cleanup_service import delete_audio_file
         delete_audio_file(audio_path)
         logger.info("[transcribe_task] Cleaned up audio file: %s", audio_path)
 
-    logger.info("[transcribe_task] Complete: transcript_id=%s", transcript.id)
-    return {"transcript_id": str(transcript.id), "char_count": transcript.char_count}
+    logger.info("[transcribe_task] Complete: transcript_id=%s", transcript.get("id"))
+    return {"transcript_id": str(transcript.get("id")), "char_count": transcript.get("char_count")}

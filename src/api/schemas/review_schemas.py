@@ -5,7 +5,23 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+def _uuid_from_str(v: Any) -> UUID:
+    if isinstance(v, UUID):
+        return v
+    if isinstance(v, str):
+        return UUID(v)
+    raise ValueError(f"Cannot convert {v!r} to UUID")
+
+
+def _datetime_from_str(v: Any) -> datetime:
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, str):
+        return datetime.fromisoformat(v.replace("Z", "+00:00"))
+    raise ValueError(f"Cannot convert {v!r} to datetime")
 
 
 class ReviewItemResponse(BaseModel):
@@ -29,7 +45,15 @@ class ReviewItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    @field_validator("id", "meeting_id", mode="before")
+    @classmethod
+    def _uuid(cls, v: Any) -> UUID:
+        return _uuid_from_str(v)
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _dt(cls, v: Any) -> datetime:
+        return _datetime_from_str(v)
 
 
 class ReviewItemPatch(BaseModel):

@@ -4,12 +4,10 @@ Celery task: push approved review items to Jira.
 Input:  meeting_id (str)
 Output: {"epic_keys": list, "task_count": int, "subtask_count": int, "is_stub": bool}
 """
-from __future__ import annotations
-
-import asyncio
-import uuid
-
 from src.config import get_logger
+from src.db.crud.meeting_crud import get_analysis_result, update_meeting_status
+from src.db.crud.review_crud import list_review_items
+from src.services.jira_service import push_analysis_to_jira
 from src.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -24,42 +22,22 @@ logger = get_logger(__name__)
 )
 def push_to_jira(self, meeting_id: str) -> dict:
     """Push approved items to Jira and update meeting status."""
-    return asyncio.run(_push_async(self, meeting_id))
+    logger.info("[jira_push_task] Starting Jira push for meeting %s", meeting_id)
 
+    items = list_review_items(meeting_id, status="approved")
+    if not items:
+        raise ValueError("No approved items to push.")
 
-async def _push_async(task, meeting_id: str) -> dict:
-    from src.db.crud.meeting_crud import get_analysis_result, update_meeting_status
-    from src.db.crud.review_crud import list_review_items
-    from src.db.session import get_session_factory
-    from src.services.jira_service import push_analysis_to_jira
-
-    session_factory = get_session_factory()
-
-    meeting_uuid = uuid.UUID(meeting_id)
-
-    async with session_factory() as db:
-        items = await list_review_items(db, meeting_uuid, status="approved")
-        analysis_result = await get_analysis_result(db, meeting_uuid)
-
-        if not items:
-            raise ValueError("No approved items to push.")
-
-        meeting_analysis = _reconstruct_analysis(items, analysis_result)
+    analysis_result = get_analysis_result(meeting_id)
+    meeting_analysis = _reconstruct_analysis(items, analysis_result)
 
     try:
-        logger.info("[jira_push_task] Starting Jira push for meeting %s", meeting_id)
         push_result = push_analysis_to_jira(meeting_analysis)
     except Exception as exc:
-        async with session_factory() as db:
-            await update_meeting_status(
-                db, meeting_uuid, status="failed", error_message=str(exc)
-            )
-            await db.commit()
-        raise task.retry(exc=exc)
+        update_meeting_status(meeting_id, status="failed", error_message=str(exc))
+        raise self.retry(exc=exc)
 
-    async with session_factory() as db:
-        await update_meeting_status(db, meeting_uuid, status="pushed")
-        await db.commit()
+    update_meeting_status(meeting_id, status="pushed")
 
     logger.info(
         "[jira_push_task] Complete: epic_keys=%s tasks=%d subtasks=%d",
@@ -86,24 +64,24 @@ def _reconstruct_analysis(approved_items, analysis_result):
     epics_map: dict[str, dict] = {}
 
     for item in approved_items:
-        parts = item.item_index.split(".")
-        summary = item.edited_summary or item.summary
-        assignee = item.edited_assignee or item.assignee
-        deadline = item.edited_deadline or item.deadline
-        priority_str = item.edited_priority or item.priority or "Medium"
+        parts = item.get("item_index", "").split(".")
+        summary = item.get("edited_summary") or item.get("summary")
+        assignee = item.get("edited_assignee") or item.get("assignee")
+        deadline = item.get("edited_deadline") or item.get("deadline")
+        priority_str = item.get("edited_priority") or item.get("priority") or "Medium"
         valid_priorities = [p.value for p in Priority]
         priority = Priority(priority_str) if priority_str in valid_priorities else Priority.MEDIUM
 
-        if item.item_type == "epic":
+        if item.get("item_type") == "epic":
             epic_idx = parts[0]
             if epic_idx not in epics_map:
                 epics_map[epic_idx] = {
                     "summary": summary,
-                    "description": item.context or "",
+                    "description": item.get("context") or "",
                     "tasks": {},
                 }
 
-        elif item.item_type == "task":
+        elif item.get("item_type") == "task":
             epic_idx, task_idx = parts[0], parts[1]
             if epic_idx not in epics_map:
                 epics_map[epic_idx] = {
@@ -114,11 +92,11 @@ def _reconstruct_analysis(approved_items, analysis_result):
                 "assignee": assignee,
                 "deadline": deadline,
                 "priority": priority,
-                "context": item.context or "",
+                "context": item.get("context") or "",
                 "subtasks": {},
             }
 
-        elif item.item_type == "subtask":
+        elif item.get("item_type") == "subtask":
             epic_idx, task_idx, sub_idx = parts[0], parts[1], parts[2]
             if epic_idx not in epics_map:
                 epics_map[epic_idx] = {
@@ -132,7 +110,7 @@ def _reconstruct_analysis(approved_items, analysis_result):
                 }
             epics_map[epic_idx]["tasks"][task_idx]["subtasks"][sub_idx] = Subtask(
                 summary=summary, assignee=assignee, deadline=deadline,
-                priority=priority, context=item.context or "",
+                priority=priority, context=item.get("context") or "",
             )
 
     epics = []
@@ -159,8 +137,5 @@ def _reconstruct_analysis(approved_items, analysis_result):
             tasks=tasks,
         ))
 
-    summary_text = ""
-    if analysis_result and analysis_result.summary:
-        summary_text = analysis_result.summary
-
+    summary_text = analysis_result.get("summary", "") if analysis_result else ""
     return MeetingAnalysis(epics=epics, summary=summary_text)

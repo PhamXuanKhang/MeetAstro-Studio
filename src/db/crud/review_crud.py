@@ -1,124 +1,113 @@
 """
-Async CRUD cho ReviewItem — Human-in-the-Loop workflow.
+CRUD cho ReviewItem — Human-in-the-Loop workflow via Supabase.
 
-Mỗi hàm nhận AsyncSession từ FastAPI dependency injection.
+Dùng supabase-py client (SERVICE_ROLE_KEY). Tất cả hàm đồng bộ (sync).
 """
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.db.models import ReviewItem
+from src.db import supabase_client as sc
 
 
-async def bulk_create_review_items(
-    db: AsyncSession, items: list[dict]
-) -> list[ReviewItem]:
+def bulk_create_review_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Tạo nhiều review items cùng lúc sau khi analysis hoàn thành."""
-    orm_items = [ReviewItem(**item) for item in items]
-    db.add_all(orm_items)
-    await db.flush()
-    return orm_items
+    if not items:
+        return []
+    client = sc.get_supabase_client()
+    result = client.table(sc.TABLE_REVIEW_ITEMS).insert(items).execute()
+    return result.data or []
 
 
-async def delete_review_items_for_meeting(
-    db: AsyncSession, meeting_id: uuid.UUID
-) -> int:
-    """Delete all review items for a meeting. Returns deleted row count."""
-    result = await db.execute(
-        delete(ReviewItem).where(ReviewItem.meeting_id == meeting_id)
-    )
-    return result.rowcount or 0  # type: ignore[attr-defined]
+def delete_review_items_for_meeting(meeting_id: str | uuid.UUID) -> int:
+    """Xóa tất cả review items cho một meeting. Trả về số rows đã xóa."""
+    client = sc.get_supabase_client()
+    # Fetch count before delete
+    count_result = client.table(sc.TABLE_REVIEW_ITEMS).select(
+        "id", count="exact"
+    ).eq("meeting_id", str(meeting_id)).execute()
+    count = count_result.count or 0
+    if count > 0:
+        client.table(sc.TABLE_REVIEW_ITEMS).delete().eq("meeting_id", str(meeting_id)).execute()
+    return count
 
 
-async def list_review_items(
-    db: AsyncSession,
-    meeting_id: uuid.UUID,
+def list_review_items(
+    meeting_id: str | uuid.UUID,
     *,
     status: Optional[str] = None,
     flagged_only: bool = False,
-) -> list[ReviewItem]:
+) -> list[dict[str, Any]]:
     """Lấy review items của meeting, sắp xếp flagged first."""
-    stmt = select(ReviewItem).where(ReviewItem.meeting_id == meeting_id)
+    client = sc.get_supabase_client()
+    meeting_uuid = str(meeting_id)
+    query = client.table(sc.TABLE_REVIEW_ITEMS).select("*").eq("meeting_id", meeting_uuid)
     if status:
-        stmt = stmt.where(ReviewItem.review_status == status)
+        query = query.eq("review_status", status)
     if flagged_only:
-        stmt = stmt.where(ReviewItem.is_flagged.is_(True))
-    # Flagged items lên trước
-    stmt = stmt.order_by(ReviewItem.is_flagged.desc(), ReviewItem.item_index)
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
+        query = query.eq("is_flagged", True)
+    # Flagged items lên trước, sau đó theo item_index
+    query = query.order("is_flagged", ascending=False).order("item_index", ascending=True)
+    result = query.execute()
+    return result.data or []
 
 
-async def get_review_item(
-    db: AsyncSession, item_id: uuid.UUID
-) -> Optional[ReviewItem]:
+def get_review_item(item_id: str | uuid.UUID) -> Optional[dict[str, Any]]:
     """Lấy một review item theo ID."""
-    result = await db.execute(select(ReviewItem).where(ReviewItem.id == item_id))
-    return result.scalar_one_or_none()
+    return sc.fetch_one(sc.TABLE_REVIEW_ITEMS, {"id": str(item_id)})
 
 
-async def update_review_item(
-    db: AsyncSession,
-    item_id: uuid.UUID,
+def update_review_item(
+    item_id: str | uuid.UUID,
     *,
     edited_summary: Optional[str] = None,
     edited_assignee: Optional[str] = None,
     edited_deadline: Optional[str] = None,
     edited_priority: Optional[str] = None,
-) -> Optional[ReviewItem]:
+) -> dict[str, Any]:
     """Cập nhật edited_* fields và set review_status='edited'."""
-    values: dict = {"review_status": "edited"}
+    data: dict[str, Any] = {"review_status": "edited"}
     if edited_summary is not None:
-        values["edited_summary"] = edited_summary
+        data["edited_summary"] = edited_summary
     if edited_assignee is not None:
-        values["edited_assignee"] = edited_assignee
+        data["edited_assignee"] = edited_assignee
     if edited_deadline is not None:
-        values["edited_deadline"] = edited_deadline
+        data["edited_deadline"] = edited_deadline
     if edited_priority is not None:
-        values["edited_priority"] = edited_priority
-    await db.execute(update(ReviewItem).where(ReviewItem.id == item_id).values(**values))
-    return await get_review_item(db, item_id)
+        data["edited_priority"] = edited_priority
+    return sc.update_by_id(sc.TABLE_REVIEW_ITEMS, str(item_id), data)
 
 
-async def set_review_status(
-    db: AsyncSession, item_id: uuid.UUID, *, status: str
-) -> Optional[ReviewItem]:
+def set_review_status(item_id: str | uuid.UUID, *, status: str) -> dict[str, Any]:
     """Set review_status = approved | rejected."""
-    await db.execute(
-        update(ReviewItem)
-        .where(ReviewItem.id == item_id)
-        .values(review_status=status)
-    )
-    return await get_review_item(db, item_id)
+    return sc.update_by_id(sc.TABLE_REVIEW_ITEMS, str(item_id), {"review_status": status})
 
 
-async def approve_all_items(
-    db: AsyncSession, meeting_id: uuid.UUID
-) -> int:
+def approve_all_items(meeting_id: str | uuid.UUID) -> int:
     """Approve tất cả items chưa bị rejected. Trả về số items đã approve."""
-    result = await db.execute(
-        update(ReviewItem)
-        .where(
-            ReviewItem.meeting_id == meeting_id,
-            ReviewItem.review_status.in_(["draft", "edited"]),
-        )
-        .values(review_status="approved")
-    )
-    return result.rowcount or 0  # type: ignore[attr-defined]
+    client = sc.get_supabase_client()
+    # Count before
+    count_result = client.table(sc.TABLE_REVIEW_ITEMS).select(
+        "id", count="exact"
+    ).eq("meeting_id", str(meeting_id)).in_("review_status", ["draft", "edited"]).execute()
+    count = count_result.count or 0
+    if count > 0:
+        client.table(sc.TABLE_REVIEW_ITEMS).update(
+            {"review_status": "approved"}
+        ).eq("meeting_id", str(meeting_id)).in_("review_status", ["draft", "edited"]).execute()
+    return count
 
 
-async def get_review_summary(
-    db: AsyncSession, meeting_id: uuid.UUID
-) -> dict:
+def get_review_summary(meeting_id: str | uuid.UUID) -> dict[str, int]:
     """Thống kê review status cho một meeting."""
-    items = await list_review_items(db, meeting_id)
+    items = list_review_items(meeting_id)
     total = len(items)
-    approved = sum(1 for i in items if i.review_status == "approved")
-    rejected = sum(1 for i in items if i.review_status == "rejected")
-    flagged = sum(1 for i in items if i.is_flagged and i.review_status == "draft")
-    pending = sum(1 for i in items if i.review_status in ("draft", "edited"))
+    approved = sum(1 for i in items if i.get("review_status") == "approved")
+    rejected = sum(1 for i in items if i.get("review_status") == "rejected")
+    flagged = sum(
+        1 for i in items
+        if i.get("is_flagged") and i.get("review_status") == "draft"
+    )
+    pending = sum(1 for i in items if i.get("review_status") in ("draft", "edited"))
     return {
         "total": total,
         "approved": approved,

@@ -1,101 +1,80 @@
 """
-Async CRUD cho ProviderConfig — Fernet-encrypted credentials.
+CRUD cho ProviderConfig — Fernet-encrypted credentials via Supabase.
 
-Tương đương src/modules/database.py set/list/delete_provider_config nhưng async + PostgreSQL.
+Dùng supabase-py client (SERVICE_ROLE_KEY). Tất cả hàm đồng bộ (sync).
 """
-from typing import Optional
+import json
+from typing import Any, Optional
 
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.db.models import ProviderConfig
+from src.db import supabase_client as sc
 from src.modules.credential_vault import decrypt, encrypt
 
 
-async def set_provider_config(
-    db: AsyncSession,
+def set_provider_config(
     provider_name: str,
-    config_dict: dict,
+    config_dict: dict[str, Any],
     *,
     user_id: str = "default_user",
-) -> ProviderConfig:
-    """Upsert provider config (encrypted). Tạo mới hoặc cập nhật."""
-    import json
-
+) -> dict[str, Any]:
+    """Upsert provider config (encrypted)."""
     encrypted = encrypt(json.dumps(config_dict))
 
     # Kiểm tra tồn tại
-    stmt = select(ProviderConfig).where(
-        ProviderConfig.user_id == user_id,
-        ProviderConfig.provider_name == provider_name,
-    )
-    result = await db.execute(stmt)
-    existing = result.scalar_one_or_none()
+    existing = sc.fetch_one(sc.TABLE_PROVIDER_CONFIGS, {
+        "user_id": user_id,
+        "provider_name": provider_name,
+    })
 
     if existing:
-        existing.config_json = encrypted
-        existing.active = True
-        await db.flush()
-        await db.refresh(existing)
-        return existing
+        return sc.update_by_id(sc.TABLE_PROVIDER_CONFIGS, existing["id"], {
+            "config_json": encrypted,
+            "active": True,
+        })
     else:
-        config = ProviderConfig(
-            user_id=user_id,
-            provider_name=provider_name,
-            config_json=encrypted,
-        )
-        db.add(config)
-        await db.flush()
-        await db.refresh(config)
-        return config
+        return sc.insert(sc.TABLE_PROVIDER_CONFIGS, {
+            "user_id": user_id,
+            "provider_name": provider_name,
+            "config_json": encrypted,
+            "active": True,
+        })
 
 
-async def list_provider_configs(
-    db: AsyncSession, *, user_id: str = "default_user"
+def list_provider_configs(
+    *,
+    user_id: str = "default_user",
 ) -> list[str]:
     """Lấy danh sách provider names đang active."""
-    result = await db.execute(
-        select(ProviderConfig.provider_name).where(
-            ProviderConfig.user_id == user_id,
-            ProviderConfig.active.is_(True),
-        )
-    )
-    return [row[0] for row in result.all()]
+    client = sc.get_supabase_client()
+    result = client.table(sc.TABLE_PROVIDER_CONFIGS).select(
+        "provider_name"
+    ).eq("user_id", user_id).eq("active", True).execute()
+    return [row["provider_name"] for row in (result.data or [])]
 
 
-async def get_provider_config(
-    db: AsyncSession,
+def get_provider_config(
     provider_name: str,
     *,
     user_id: str = "default_user",
-) -> Optional[dict]:
+) -> Optional[dict[str, Any]]:
     """Lấy và decrypt config của một provider."""
-    import json
-
-    result = await db.execute(
-        select(ProviderConfig).where(
-            ProviderConfig.user_id == user_id,
-            ProviderConfig.provider_name == provider_name,
-            ProviderConfig.active.is_(True),
-        )
-    )
-    config = result.scalar_one_or_none()
+    config = sc.fetch_one(sc.TABLE_PROVIDER_CONFIGS, {
+        "user_id": user_id,
+        "provider_name": provider_name,
+        "active": True,
+    })
     if not config:
         return None
-    return json.loads(decrypt(config.config_json))
+    return json.loads(decrypt(config["config_json"]))
 
 
-async def delete_provider_config(
-    db: AsyncSession,
+def delete_provider_config(
     provider_name: str,
     *,
     user_id: str = "default_user",
 ) -> bool:
     """Xóa provider config."""
-    result = await db.execute(
-        delete(ProviderConfig).where(
-            ProviderConfig.user_id == user_id,
-            ProviderConfig.provider_name == provider_name,
-        )
-    )
-    return (result.rowcount or 0) > 0  # type: ignore[attr-defined]
+    client = sc.get_supabase_client()
+    result = client.table(sc.TABLE_PROVIDER_CONFIGS).delete().eq(
+        "user_id", user_id
+    ).eq("provider_name", provider_name).execute()
+    return bool(result.data)

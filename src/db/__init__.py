@@ -1,1 +1,1 @@
-"""Database layer: SQLAlchemy async ORM cho PostgreSQL."""
+"""Database layer: Supabase (supabase-py) for PostgreSQL via Supabase REST API."""

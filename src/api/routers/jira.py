@@ -8,12 +8,12 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db
+from src.api.deps import get_supabase
 from src.api.schemas.task_schemas import JiraPushResponse, JobStatusResponse
 from src.db.crud.meeting_crud import get_meeting
 from src.db.crud.review_crud import get_review_summary
+from supabase import Client
 
 router = APIRouter(prefix="/meetings", tags=["jira"])
 
@@ -21,18 +21,18 @@ router = APIRouter(prefix="/meetings", tags=["jira"])
 @router.post("/{meeting_id}/jira/push", response_model=JiraPushResponse)
 async def push_to_jira(
     meeting_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
 ) -> JiraPushResponse:
     """
     Push approved review items to Jira.
 
     Requires all items to be in approved or rejected state (no pending items).
     """
-    meeting = await get_meeting(db, meeting_id)
+    meeting = get_meeting(str(meeting_id))
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
 
-    summary = await get_review_summary(db, meeting_id)
+    summary = get_review_summary(str(meeting_id))
     if summary["pending"] > 0:
         raise HTTPException(
             status_code=409,
@@ -47,6 +47,7 @@ async def push_to_jira(
         )
 
     from src.workers.tasks.jira_push_task import push_to_jira as push_task
+
     task = push_task.delay(str(meeting_id))
     return JiraPushResponse(
         job_id=task.id,
@@ -57,22 +58,24 @@ async def push_to_jira(
 @router.get("/{meeting_id}/jira/status", response_model=JobStatusResponse)
 async def jira_push_status(
     meeting_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
 ) -> JobStatusResponse:
     """Get status of latest Jira push for meeting."""
-    meeting = await get_meeting(db, meeting_id)
+    meeting = get_meeting(str(meeting_id))
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
 
-    if meeting.status == "pushed":
-        return JobStatusResponse(job_id=meeting.celery_task_id or "", state="SUCCESS")
-    if meeting.status == "failed" and meeting.error_message:
+    if meeting.get("status") == "pushed":
         return JobStatusResponse(
-            job_id=meeting.celery_task_id or "",
+            job_id=meeting.get("celery_task_id") or "", state="SUCCESS"
+        )
+    if meeting.get("status") == "failed" and meeting.get("error_message"):
+        return JobStatusResponse(
+            job_id=meeting.get("celery_task_id") or "",
             state="FAILURE",
-            error=meeting.error_message,
+            error=meeting.get("error_message"),
         )
     return JobStatusResponse(
-        job_id=meeting.celery_task_id or "",
-        state="PENDING" if meeting.status != "approved" else "STARTED",
+        job_id=meeting.get("celery_task_id") or "",
+        state="PENDING" if meeting.get("status") != "approved" else "STARTED",
     )
