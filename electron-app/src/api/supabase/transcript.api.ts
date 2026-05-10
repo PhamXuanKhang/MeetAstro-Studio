@@ -101,10 +101,7 @@ export async function renameSpeaker(
 
     if (error) throw error;
 
-    return {
-      data: { updated_count: data?.length ?? 0 },
-      error: null,
-    };
+    return { updated_count: data?.length ?? 0 };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[D4] Rename speaker thất bại: ${message}`);

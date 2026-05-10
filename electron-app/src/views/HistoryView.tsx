@@ -58,11 +58,11 @@ export default function HistoryView({ onOpenResults }: Props) {
     setError(null)
     try {
       const resp = await listMeetings()
-      const missingCounts = resp.data.items.filter((item) => item.jira_links_count == null)
+      const missingCounts = resp.items.filter((item) => item.jira_links_count == null)
       if (missingCounts.length > 0) {
         console.warn('[history] missing jira_links_count for meetings:', missingCounts.map((item) => item.id))
       }
-      setMeetings(resp.data.items)
+      setMeetings(resp.items)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
