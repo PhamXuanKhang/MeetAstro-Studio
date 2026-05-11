@@ -29,5 +29,5 @@ debug/
 test_e2e.sh
 test_wlk_diarize.py
 docs/host_whisper.md
-.claude/agents/
-.claude/specs/
+Supabase Snippet List Public Table Columns.csv
+electron-app/scripts/mock-data.sql
