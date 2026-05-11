@@ -120,12 +120,10 @@ export interface EditActionItemPayload {
   action_item_id: string;
   title?: string;
   description?: string;
-  context?: string;
   assignee?: string | null;
   deadline?: string | null;
   priority?: ActionItemPriority;
   review_status?: ActionItemReviewStatus;
-  is_selected?: boolean;
 }
 
 /** F5 – Approve Action Item */
@@ -168,15 +166,8 @@ export interface ListMeetingsParams {
 // ─── Response DTOs ───────────────────────────────────────
 
 /** H1 – Meeting list response */
-export type MeetingListItem = Pick<
-  Meeting,
-  'id' | 'title' | 'status' | 'audio_duration_seconds' | 'created_at' | 'updated_at'
-> & {
-  jira_links_count?: number;
-};
-
 export interface MeetingsListResult {
-  items: MeetingListItem[];
+  items: Pick<Meeting, 'id' | 'title' | 'status' | 'audio_duration_seconds' | 'created_at' | 'updated_at'>[];
   total: number;
 }
 
@@ -190,7 +181,7 @@ export interface MeetingDetailResult {
 
 /** E3 – Analysis + action items */
 export interface AnalysisWithItemsResult {
-  analysis_result: AnalysisResult | null;
+  analysis_result: Pick<AnalysisResult, 'summary_text' | 'key_decisions' | 'parking_lot' | 'raw_response'> | null;
   action_items: ActionItem[];
 }
 

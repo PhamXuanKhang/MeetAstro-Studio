@@ -92,7 +92,8 @@ export async function renameSpeaker(
   try {
     const client = ensureClient();
 
-    const { data, error } = await client
+    // Supabase .update() trả count qua select() với option count
+    const { data: updated, error } = await client
       .from('transcript_segments')
       .update({ speaker: to_speaker })
       .eq('meeting_id', meeting_id)
@@ -101,7 +102,7 @@ export async function renameSpeaker(
 
     if (error) throw error;
 
-    return { updated_count: count ?? 0 };
+    return { updated_count: updated?.length ?? 0 };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[D4] Rename speaker thất bại: ${message}`);

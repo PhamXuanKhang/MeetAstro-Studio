@@ -55,8 +55,10 @@ export {
   getConfidenceScores,
 } from './analysis.api';
 
-// Action Items (F1, F5, F6, F8)
+// Action Items (F1, F5, F6, F8 + list + bulk)
 export {
+  listActionItems,
+  bulkApproveActionItems,
   editActionItem,
   approveActionItem,
   rejectActionItem,
