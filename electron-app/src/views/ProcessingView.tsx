@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
-import { getAnalysis, getMeeting, getTranscriptSegments } from '../api/meetings'
 import { pollJob } from '../api/jobs'
-import type { JobStatusResponse } from '../types/schema'
+import type { JobStatusResponse } from '../types/supabase-models'
 
 const UI = {
   primary: '#5645d4',
@@ -34,7 +33,6 @@ export default function ProcessingView() {
   const {
     currentJobId, currentMeetingId, processingKind,
     setProcessingProgress, setProcessingMessage,
-    setTranscriptSegments, setAnalysis, setSelectedMeeting,
     setRoute,
   } = useAppStore()
 
@@ -97,20 +95,10 @@ export default function ProcessingView() {
       try {
         await pollJob(currentJobId, 600000, 2000, controller.signal, onProgress)
 
-        // Post-success data fetch
-        if (processingKind === 'transcribing' || processingKind === 'finalizing_recording') {
-          const segments = await getTranscriptSegments(currentMeetingId)
-          setTranscriptSegments(segments)
-          setRoute('review_transcript')
-        } else {
-          const [analysis, meeting] = await Promise.all([
-            getAnalysis(currentMeetingId),
-            getMeeting(currentMeetingId),
-          ])
-          setAnalysis(analysis.analysis_json)
-          setSelectedMeeting(meeting)
-          setRoute('results')
-        }
+        // Job complete — route to the appropriate view.
+        // The target view will fetch its own data from Supabase via React Query.
+        const successRoute = meta?.successRoute ?? 'results'
+        setRoute(successRoute)
       } catch (e) {
         if (controller.signal.aborted) return
         setError(e instanceof Error ? e.message : String(e))

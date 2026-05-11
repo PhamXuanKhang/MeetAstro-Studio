@@ -11,7 +11,7 @@ import { pushToJira } from '../api/jira'
 import { subscribeActionItemSyncStatus, unsubscribeChannel } from '../api/supabase/realtime'
 import ConfidenceBadge from '../components/ConfidenceBadge'
 import type { ActionItem, ActionItemPriority } from '../types/supabase-models'
-import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionitemtree'
+import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
 
 interface Props {
   onNavigate: (route: string) => void

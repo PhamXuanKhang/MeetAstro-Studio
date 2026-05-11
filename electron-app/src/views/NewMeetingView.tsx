@@ -30,7 +30,7 @@ export default function NewMeetingView() {
     audioPath, setAudioPath,
     currentMeetingId, setCurrentMeetingId,
     setCurrentJobId, setProcessingKind,
-    setSelectedMeeting, resetMeetingState,
+    setCurrentMeetingTitle, resetMeetingState,
     selectedLanguage, selectedDiarize,
     setSelectedLanguage, setSelectedDiarize,
     setRoute,
@@ -62,9 +62,9 @@ export default function NewMeetingView() {
     const meetingTitle = title.trim() || `Meeting ${new Date().toLocaleString('vi-VN')}`
     const meeting = await createMeeting(meetingTitle)
     setCurrentMeetingId(meeting.id)
-    setSelectedMeeting(meeting)
+    setCurrentMeetingTitle(meeting.title)
     return meeting.id
-  }, [currentMeetingId, title, setCurrentMeetingId, setSelectedMeeting])
+  }, [currentMeetingId, title, setCurrentMeetingId, setCurrentMeetingTitle])
 
   // Upload tab: pick file then queue transcription
   const handleStartUpload = useCallback(async () => {
@@ -108,13 +108,13 @@ export default function NewMeetingView() {
       const meetingTitle = title.trim() || `Meeting ${new Date().toLocaleString('vi-VN')}`
       const meeting = await createMeeting(meetingTitle)
       setCurrentMeetingId(meeting.id)
-      setSelectedMeeting(meeting)
+      setCurrentMeetingTitle(meeting.title)
       setRoute('live_recording')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setBusy(false)
     }
-  }, [title, setCurrentMeetingId, setSelectedMeeting, setRoute])
+  }, [title, setCurrentMeetingId, setCurrentMeetingTitle, setRoute])
 
   const inputStyle: React.CSSProperties = {
     width: '100%', height: 44, padding: '12px 16px', border: `1px solid ${UI.hairlineStrong}`,

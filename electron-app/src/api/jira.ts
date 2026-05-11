@@ -1,6 +1,6 @@
 import { getClient } from './client'
 import { pollJob } from './jobs'
-import type { JiraPushResponse } from '../types/schema'
+import type { JiraPushResponse } from '../types/supabase-models'
 
 export async function pushToJira(
   meetingId: string,

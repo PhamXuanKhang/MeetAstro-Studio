@@ -1,5 +1,5 @@
 import { getClient } from './client'
-import type { JobStatusResponse, JobState } from '../types/schema'
+import type { JobStatusResponse, JobState } from '../types/supabase-models'
 
 const TERMINAL_STATES: JobState[] = ['SUCCESS', 'FAILURE']
 

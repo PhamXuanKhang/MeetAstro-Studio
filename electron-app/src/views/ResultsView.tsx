@@ -1,7 +1,7 @@
 import { useAppStore } from '../store/appStore'
 import { useQuery } from '@tanstack/react-query'
 import { getAnalysisResult } from '../api/supabase/analysis.api'
-import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionitemtree'
+import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
 import ConfidenceBadge from '../components/ConfidenceBadge'
 
 interface Props {
@@ -19,10 +19,10 @@ function TaskNodeCard({ node, epicIdx, taskIdx }: { node: ActionItemTreeNode; ep
         {(task.confidence_score ?? 0) > 0 && <ConfidenceBadge confidence={task.confidence_score!} />}
       </div>
       <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-        👤 {task.assignee || 'TBD'} &nbsp;|&nbsp; 📅 {task.deadline || 'N/A'} &nbsp;|&nbsp; 🔥 {task.priority_level}
+        👤 {task.assignee || 'TBD'} &nbsp;|&nbsp; 📅 {task.deadline || 'N/A'} &nbsp;|&nbsp; 🔥 {task.priority}
       </div>
-      {task.context_snippet && (
-        <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>{task.context_snippet}</div>
+      {task.context && (
+        <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>{task.context}</div>
       )}
     </div>
   )
@@ -49,7 +49,7 @@ function EpicNodeCard({ node, idx }: { node: ActionItemTreeNode; idx: number }) 
 
 export default function ResultsView({ onNavigate }: Props) {
   // Bỏ analysis cũ, chỉ lấy id meeting hiện tại
-  const { selectedMeeting, currentMeetingId } = useAppStore()
+  const { currentMeetingTitle, currentMeetingId } = useAppStore()
   const canReview = !!onNavigate && !!currentMeetingId
 
   // Dùng React Query fetch data từ Supabase SDK
@@ -82,7 +82,7 @@ export default function ResultsView({ onNavigate }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
-            {selectedMeeting?.title || 'Results'}
+            {currentMeetingTitle || 'Results'}
           </h2>
           <p style={{ fontSize: 12, color: '#64748b' }}>
             Review extracted epics, tasks, and subtasks before pushing to Jira.

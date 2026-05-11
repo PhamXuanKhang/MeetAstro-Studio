@@ -1,10 +1,10 @@
-import type { ReviewStatus } from '../types/schema'
+import type { ActionItemReviewStatus } from '../types/supabase-models'
 
 interface Props {
-  status: ReviewStatus
+  status: ActionItemReviewStatus
 }
 
-const STATUS_MAP: Record<ReviewStatus, { label: string; bg: string; color: string }> = {
+const STATUS_MAP: Record<ActionItemReviewStatus, { label: string; bg: string; color: string }> = {
   approved: { label: '✓ Approved', bg: '#dcfce7', color: '#166534' },
   rejected: { label: '✗ Rejected', bg: '#fee2e2', color: '#991b1b' },
   edited:   { label: '✎ Edited',   bg: '#dbeafe', color: '#1e40af' },

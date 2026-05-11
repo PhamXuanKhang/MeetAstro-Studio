@@ -198,3 +198,104 @@ export interface JiraIssueLink {
   jira_issue_key: string;
   jira_issue_url: string;
 }
+
+// ══════════════════════════════════════════════════════════
+// FastAPI / Celery Pipeline Types
+// (Kept here after schema.ts deletion — used by jobs.ts,
+//  meetings.ts, jira.ts, settings.ts, ProcessingView)
+// ══════════════════════════════════════════════════════════
+
+export type JobState = 'PENDING' | 'STARTED' | 'PROGRESS' | 'SUCCESS' | 'FAILURE' | 'RETRY';
+export type ProcessingKind = 'transcribing' | 'finalizing_recording' | 'analyzing';
+export type Priority = 'Critical' | 'High' | 'Medium' | 'Low';
+
+export interface JobStatusResponse {
+  job_id: string;
+  state: JobState;
+  progress_pct?: number | null;
+  message?: string | null;
+  result?: unknown;
+  error?: string | null;
+}
+
+export interface AudioUploadResponse {
+  meeting_id: string;
+  job_id: string;
+  audio_storage_path?: string | null;
+  audio_duration_seconds?: number | null;
+  status: string;
+  message?: string;
+}
+
+export interface StartAnalysisResponse {
+  meeting_id?: string;
+  job_id: string;
+  status?: string;
+  state?: JobState;
+}
+
+export interface JiraPushResponse {
+  job_id?: string;
+  is_stub: boolean;
+  epic_keys: string[];
+  task_count: number;
+  subtask_count: number;
+  message: string;
+}
+
+export interface ProviderListResponse {
+  providers: string[];
+}
+
+export interface TranscriptResponse {
+  id: string;
+  meeting_id: string;
+  raw_text: string;
+  diarized_text?: string | null;
+  language: string;
+  char_count?: number | null;
+  created_at: string;
+}
+
+export interface TranscriptSegmentsResponse {
+  segments: TranscriptSegment[];
+}
+
+export interface Subtask {
+  summary: string;
+  assignee?: string | null;
+  deadline?: string | null;
+  priority: Priority;
+  context: string;
+  confidence: number;
+  validation_notes: string[];
+}
+
+export interface Task extends Omit<Subtask, never> {
+  subtasks: Subtask[];
+}
+
+export interface Epic {
+  summary: string;
+  description: string;
+  tasks: Task[];
+}
+
+export interface MeetingAnalysis {
+  epics: Epic[];
+  summary: string;
+  key_decisions: string[];
+  discussion_points: string[];
+  parking_lot: string[];
+  created_at: string;
+}
+
+export interface AnalysisResponseLegacy {
+  id: string;
+  meeting_id: string;
+  analysis_json: MeetingAnalysis;
+  summary?: string | null;
+  overall_confidence?: number | null;
+  validation_metrics?: Record<string, unknown> | null;
+  created_at: string;
+}
