@@ -31,3 +31,7 @@ test_wlk_diarize.py
 docs/host_whisper.md
 Supabase Snippet List Public Table Columns.csv
 electron-app/scripts/mock-data.sql
+.claude/agents/
+.claude/specs/
+electron-app/scripts/mock-data.sql
+Supabase Snippet List Public Table Columns.csv
