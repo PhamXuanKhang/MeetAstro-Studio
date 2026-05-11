@@ -19,14 +19,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: a20-app-089-api
     expose:
       - "8000"
     restart: unless-stopped
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      API_BASE_URL: ${API_BASE_URL:-https://a20-app-089.smartnovi.tech}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
+      COOLIFY_DEPLOYMENT: "true"
     env_file:
       - path: .env
         required: false
@@ -72,7 +74,10 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      API_BASE_URL: ${API_BASE_URL:-https://a20-app-089.smartnovi.tech}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
+      COOLIFY_DEPLOYMENT: "true"
     env_file:
       - path: .env
         required: false
