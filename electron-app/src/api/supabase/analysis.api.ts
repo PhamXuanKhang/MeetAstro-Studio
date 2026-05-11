@@ -87,7 +87,10 @@ export async function getAnalysisResult(
     if (itemsRes.error) throw itemsRes.error;
 
     return {
-      analysis_result: (analysisRes.data as AnalysisResult | null) ?? null,
+      analysis_result: (analysisRes.data as Pick<
+        AnalysisResult,
+        'summary_text' | 'key_decisions' | 'parking_lot' | 'raw_response'
+      >) ?? null,
       action_items: (itemsRes.data ?? []) as ActionItem[],
     };
   } catch (err: unknown) {

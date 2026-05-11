@@ -6,13 +6,6 @@ import type {
   ReviewItem,
   TranscriptSegment,
 } from '../types/schema'
-import type {
-  ActionItem,
-  AnalysisResult,
-  Meeting,
-  MeetingListItem,
-  TranscriptSegment as SupabaseTranscriptSegment,
-} from '../types/supabase-models'
 
 // Mirrors frontend/core/state.py AppState dataclass
 export interface AppState {
@@ -21,12 +14,7 @@ export interface AppState {
   audioPath: string | null
   transcript: string
   analysis: MeetingAnalysis | null
-  selectedMeeting: MeetingResponse | Meeting | MeetingListItem | null
-  meetingDetail: Meeting | null
-  meetingAnalysisResult: AnalysisResult | null
-  meetingActionItems: ActionItem[]
-  meetingTranscriptSegments: SupabaseTranscriptSegment[]
-  meetingDetailTab: 'summary' | 'transcript' | 'action_items'
+  selectedMeeting: MeetingResponse | null
   progressText: string
   busy: boolean
   searchQuery: string
@@ -51,12 +39,7 @@ interface AppActions {
   setAudioPath: (path: string | null) => void
   setTranscript: (text: string) => void
   setAnalysis: (analysis: MeetingAnalysis | null) => void
-  setSelectedMeeting: (meeting: MeetingResponse | Meeting | MeetingListItem | null) => void
-  setMeetingDetail: (meeting: Meeting | null) => void
-  setMeetingAnalysisResult: (analysis: AnalysisResult | null) => void
-  setMeetingActionItems: (items: ActionItem[]) => void
-  setMeetingTranscriptSegments: (segments: SupabaseTranscriptSegment[]) => void
-  setMeetingDetailTab: (tab: 'summary' | 'transcript' | 'action_items') => void
+  setSelectedMeeting: (meeting: MeetingResponse | null) => void
   setBusy: (busy: boolean, text?: string) => void
   setSearchQuery: (q: string) => void
   setCachedMeetings: (meetings: MeetingResponse[]) => void
@@ -82,11 +65,6 @@ const initialState: AppState = {
   transcript: '',
   analysis: null,
   selectedMeeting: null,
-  meetingDetail: null,
-  meetingAnalysisResult: null,
-  meetingActionItems: [],
-  meetingTranscriptSegments: [],
-  meetingDetailTab: 'summary',
   progressText: '',
   busy: false,
   searchQuery: '',
@@ -114,11 +92,6 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
   setTranscript: (transcript) => set({ transcript }),
   setAnalysis: (analysis) => set({ analysis }),
   setSelectedMeeting: (selectedMeeting) => set({ selectedMeeting }),
-  setMeetingDetail: (meetingDetail) => set({ meetingDetail }),
-  setMeetingAnalysisResult: (meetingAnalysisResult) => set({ meetingAnalysisResult }),
-  setMeetingActionItems: (meetingActionItems) => set({ meetingActionItems }),
-  setMeetingTranscriptSegments: (meetingTranscriptSegments) => set({ meetingTranscriptSegments }),
-  setMeetingDetailTab: (meetingDetailTab) => set({ meetingDetailTab }),
   setBusy: (busy, text) => set({ busy, progressText: text ?? '' }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setCachedMeetings: (cachedMeetings) => set({ cachedMeetings }),
@@ -141,11 +114,6 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
       audioPath: null,
       transcript: '',
       analysis: null,
-      meetingDetail: null,
-      meetingAnalysisResult: null,
-      meetingActionItems: [],
-      meetingTranscriptSegments: [],
-      meetingDetailTab: 'summary',
       reviewItems: [],
       meetingStatus: '',
       currentMeetingId: null,

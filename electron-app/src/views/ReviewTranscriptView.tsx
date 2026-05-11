@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../store/appStore'
-import { getTranscriptSegments, updateTranscriptSegment, renameSpeaker, startAnalysis } from '../api/meetings'
-import type { TranscriptSegment } from '../types/schema'
+import { useTranscriptSegments, useEditTranscriptSegment, useRenameSpeaker } from '../hooks/supabase/useTranscript'
+import { startAnalysis } from '../api/meetings'
+import type { TranscriptSegment } from '../types/supabase-models'
 
 const UI = {
   primary: '#5645d4',
@@ -44,60 +45,60 @@ interface EditState {
 
 export default function ReviewTranscriptView() {
   const {
-    currentMeetingId, transcriptSegments, setTranscriptSegments,
+    currentMeetingId,
     setCurrentJobId, setProcessingKind, setRoute,
   } = useAppStore()
 
-  const [segments, setSegments] = useState<TranscriptSegment[]>(transcriptSegments)
+  // ─── React Query: fetch segments from Supabase ────────
+  const {
+    data: segmentsData,
+    isLoading: loadingSegs,
+    error: fetchError,
+  } = useTranscriptSegments(currentMeetingId)
+
+  const segments = segmentsData?.segments ?? []
+
+  // ─── Mutations ────────────────────────────────────────
+  const { mutate: editSegment, isPending: isSavingSegment } = useEditTranscriptSegment(currentMeetingId)
+  const { mutate: renameSpk } = useRenameSpeaker(currentMeetingId)
+
+  // ─── Local UI State ───────────────────────────────────
   const [editState, setEditState] = useState<EditState>({})
   const [renamingFrom, setRenamingFrom] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
-  const [saving, setSaving] = useState<string | null>(null)
+  const [savingSegId, setSavingSegId] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loadingSegs, setLoadingSegs] = useState(false)
-  const modalRef = useRef<HTMLDivElement>(null)
 
-  // Guard + refresh segments if store is empty
-  useEffect(() => {
-    if (!currentMeetingId) { setRoute('new_meeting'); return }
-    if (segments.length === 0) {
-      setLoadingSegs(true)
-      getTranscriptSegments(currentMeetingId)
-        .then((segs) => { setSegments(segs); setTranscriptSegments(segs) })
-        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-        .finally(() => setLoadingSegs(false))
-    }
-  }, [currentMeetingId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Guard: redirect if missing state
+  if (!currentMeetingId && !loadingSegs) {
+    setRoute('new_meeting')
+  }
 
   // Unique speaker names
-  const speakers = Array.from(new Set(segments.map((s) => s.speaker)))
+  const speakers = useMemo(
+    () => Array.from(new Set(segments.map((s) => s.speaker))),
+    [segments]
+  )
 
   const handleContentEdit = useCallback((id: string, value: string) => {
     setEditState((prev) => ({ ...prev, [id]: value }))
   }, [])
 
-  const handleContentBlur = useCallback(async (seg: TranscriptSegment) => {
+  const handleContentBlur = useCallback((seg: TranscriptSegment) => {
     const newContent = editState[seg.id]
     if (newContent === undefined || newContent === seg.content) return
 
-    // Optimistic local update
-    setSegments((prev) => prev.map((s) => s.id === seg.id ? { ...s, content: newContent } : s))
-
-    if (!seg.id.startsWith('synthetic-')) {
-      setSaving(seg.id)
-      try {
-        await updateTranscriptSegment(currentMeetingId!, seg.id, { content: newContent })
-      } catch {
-        // Revert on error
-        setSegments((prev) => prev.map((s) => s.id === seg.id ? { ...s, content: seg.content } : s))
-        setError('Lưu thất bại — backend transcript segments chưa sẵn sàng.')
-      } finally {
-        setSaving(null)
+    setSavingSegId(seg.id)
+    editSegment(
+      { segment_id: seg.id, content: newContent },
+      {
+        onError: () => setError('Lưu thất bại — vui lòng thử lại.'),
+        onSettled: () => setSavingSegId(null),
       }
-    }
+    )
     setEditState((prev) => { const n = { ...prev }; delete n[seg.id]; return n })
-  }, [editState, currentMeetingId])
+  }, [editState, editSegment])
 
   const handleOpenRename = useCallback((speaker: string) => {
     setRenamingFrom(speaker)
@@ -105,23 +106,21 @@ export default function ReviewTranscriptView() {
     setError(null)
   }, [])
 
-  const handleRenameConfirm = useCallback(async () => {
+  const handleRenameConfirm = useCallback(() => {
     if (!renamingFrom || !renameValue.trim() || !currentMeetingId) return
     const from = renamingFrom
     const to = renameValue.trim()
     setRenamingFrom(null)
 
-    // Optimistic local update
-    setSegments((prev) => prev.map((s) => s.speaker === from ? { ...s, speaker: to } : s))
+    renameSpk(
+      { meeting_id: currentMeetingId, from_speaker: from, to_speaker: to },
+      {
+        onError: () => setError('Rename speaker thất bại — vui lòng thử lại.'),
+      }
+    )
+  }, [renamingFrom, renameValue, currentMeetingId, renameSpk])
 
-    try {
-      await renameSpeaker(currentMeetingId, { from_speaker: from, to_speaker: to })
-    } catch {
-      // Revert — backend API may not be ready; still accept local rename
-      setError('Lưu rename thất bại — backend speakers API chưa sẵn sàng. Đã cập nhật local.')
-    }
-  }, [renamingFrom, renameValue, currentMeetingId])
-
+  // startAnalysis giữ nguyên FastAPI (trigger Celery job)
   const handleAnalyze = useCallback(async () => {
     if (!currentMeetingId || segments.length === 0) return
     setAnalyzing(true)
@@ -160,7 +159,7 @@ export default function ReviewTranscriptView() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={(e) => { if (e.target === e.currentTarget) setRenamingFrom(null) }}
         >
-          <div ref={modalRef} style={{ background: UI.canvas, borderRadius: 12, padding: 28, width: 360, boxShadow: 'rgba(15, 15, 15, 0.16) 0px 16px 48px -8px', border: `1px solid ${UI.hairline}` }}>
+          <div style={{ background: UI.canvas, borderRadius: 12, padding: 28, width: 360, boxShadow: 'rgba(15, 15, 15, 0.16) 0px 16px 48px -8px', border: `1px solid ${UI.hairline}` }}>
             <h3 style={{ margin: '0 0 16px', fontWeight: 600, fontSize: 18, color: UI.ink, lineHeight: 1.4 }}>
               Đổi tên người nói
             </h3>
@@ -192,11 +191,6 @@ export default function ReviewTranscriptView() {
           <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, margin: '0 0 4px' }}>Review Transcript</h2>
           <p style={{ color: UI.slate, fontSize: 14, lineHeight: 1.5, margin: 0 }}>
             Kiểm tra và chỉnh sửa transcript trước khi phân tích.
-            {segments.some((s) => s.id.startsWith('synthetic-')) && (
-              <span style={{ color: UI.warning, marginLeft: 8 }}>
-                ⚠ Hiển thị dạng tổng hợp — backend segments chưa sẵn sàng.
-              </span>
-            )}
           </p>
         </div>
 
@@ -214,9 +208,9 @@ export default function ReviewTranscriptView() {
         </button>
       </div>
 
-      {error && (
+      {(error || fetchError) && (
         <div style={{ marginBottom: 16, padding: '10px 16px', background: UI.peach, borderRadius: 8, color: UI.warning, fontSize: 13 }}>
-          {error}
+          {error || fetchError?.message}
         </div>
       )}
 
@@ -250,7 +244,7 @@ export default function ReviewTranscriptView() {
           {segments.map((seg) => {
             const color = speakerColor(seg.speaker)
             const editVal = editState[seg.id] ?? seg.content
-            const isSaving = saving === seg.id
+            const isSaving = savingSegId === seg.id && isSavingSegment
             return (
               <div
                 key={seg.id}
@@ -272,11 +266,9 @@ export default function ReviewTranscriptView() {
                   >
                     {seg.speaker}
                   </button>
-                  {!seg.id.startsWith('synthetic-') && (
-                    <span style={{ fontSize: 11, color: UI.steel, fontVariantNumeric: 'tabular-nums' }}>
-                      {fmtTime(seg.start_time)} – {fmtTime(seg.end_time)}
-                    </span>
-                  )}
+                  <span style={{ fontSize: 11, color: UI.steel, fontVariantNumeric: 'tabular-nums' }}>
+                    {fmtTime(seg.start_time)} – {fmtTime(seg.end_time)}
+                  </span>
                 </div>
 
                 {/* Right: editable content */}

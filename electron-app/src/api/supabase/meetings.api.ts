@@ -97,7 +97,7 @@ export async function listMeetings(params: ListMeetingsParams = {}): Promise<Mee
 
     const { data, error, count } = await client
       .from('meetings')
-      .select('id, title, status, audio_duration_seconds, created_at, updated_at, jira_links_count', { count: 'exact' })
+      .select('id, title, status, audio_duration_seconds, created_at, updated_at', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
