@@ -29,6 +29,5 @@ debug/
 test_e2e.sh
 test_wlk_diarize.py
 docs/host_whisper.md
-Supabase Snippet List Public Table Columns.csv
 .claude/agents/
 .claude/specs/

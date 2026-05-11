@@ -1,12 +1,26 @@
-import { useMemo, useState, useCallback } from 'react'
-import { useMeetingsList, useDeleteMeeting } from '../hooks/supabase/useMeetings'
+import { useCallback, useEffect, useState } from 'react'
+import { deleteMeeting, listMeetings } from '../api/supabase/meetings.api'
 import { useAppStore } from '../store/appStore'
-import type { MeetingsListResult } from '../types/supabase-models'
-
-type MeetingItem = MeetingsListResult['items'][number]
+import type { MeetingListItem } from '../types/supabase-models'
 
 interface Props {
-  onOpenResults: (meeting: MeetingItem) => void
+  onOpenResults: (meeting: MeetingListItem) => void
+}
+
+const UI = {
+  ink: '#1a1a1a',
+  slate: '#5d5b54',
+  steel: '#787671',
+  muted: '#bbb8b1',
+  canvas: '#ffffff',
+  surfaceSoft: '#fafaf9',
+  hairline: '#e5e3df',
+  hairlineStrong: '#c8c4be',
+  lavender: '#e6e0f5',
+  primary: '#5645d4',
+  error: '#e03131',
+  success: '#1aae39',
+  warning: '#dd5b00',
 }
 
 function fmtDt(iso: string): string {
@@ -29,32 +43,61 @@ function statusColors(status: string): { bg: string; fg: string } {
 }
 
 export default function HistoryView({ onOpenResults }: Props) {
-  const searchQuery = useAppStore((s) => s.searchQuery)
+  const [loading, setLoading] = useState(true)
+  const [meetings, setMeetings] = useState<MeetingListItem[]>([])
+  const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const searchQuery = useAppStore((s) => s.searchQuery)
+  const currentMeetingId = useAppStore((s) => s.currentMeetingId)
+  const setCurrentMeetingId = useAppStore((s) => s.setCurrentMeetingId)
+  const setSelectedMeeting = useAppStore((s) => s.setSelectedMeeting)
+  const setMeetingDetail = useAppStore((s) => s.setMeetingDetail)
 
-  // React Query: auto fetch + cache
-  const { data, isLoading, error } = useMeetingsList({ limit: 100 })
-  const { mutate: remove } = useDeleteMeeting()
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const resp = await listMeetings()
+      const missingCounts = resp.items.filter((item) => item.jira_links_count == null)
+      if (missingCounts.length > 0) {
+        console.warn('[history] missing jira_links_count for meetings:', missingCounts.map((item) => item.id))
+      }
+      setMeetings(resp.items)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const items = data?.items ?? []
+  useEffect(() => {
+    load()
+  }, [load])
 
-  // Client-side search filter
+  const handleDelete = useCallback(async (meeting: MeetingListItem) => {
+    const ok = window.confirm(`Xoá cuộc họp "${meeting.title || 'Untitled'}"?`)
+    if (!ok) return
+    setDeletingId(meeting.id)
+    setError(null)
+    try {
+      await deleteMeeting(meeting.id)
+      setMeetings((prev) => prev.filter((item) => item.id !== meeting.id))
+      if (currentMeetingId === meeting.id) {
+        setCurrentMeetingId(null)
+        setSelectedMeeting(null)
+        setMeetingDetail(null)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setDeletingId(null)
+    }
+  }, [currentMeetingId, setCurrentMeetingId, setMeetingDetail, setSelectedMeeting])
+
   const q = searchQuery.trim().toLowerCase()
-  const filtered = useMemo(
-    () => q ? items.filter((m) => (m.title ?? '').toLowerCase().includes(q)) : items,
-    [items, q]
-  )
+  const filtered = q ? meetings.filter((m) => m.title.toLowerCase().includes(q)) : meetings
 
-  const handleDelete = useCallback((e: React.MouseEvent, meetingId: string) => {
-    e.stopPropagation() // Ngăn click mở meeting
-    if (!confirm('Bạn có chắc muốn xoá cuộc họp này?')) return
-    setDeletingId(meetingId)
-    remove(meetingId, {
-      onSettled: () => setDeletingId(null),
-    })
-  }, [remove])
-
-  if (isLoading) {
+  if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 24, color: UI.steel }}>
         <div style={{ width: 20, height: 20, border: `2px solid ${UI.primary}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -67,8 +110,8 @@ export default function HistoryView({ onOpenResults }: Props) {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       {error && (
-        <div style={{ marginBottom: 16, padding: 12, background: '#fee2e2', borderRadius: 8, color: '#991b1b', fontSize: 13 }}>
-          {error.message}
+        <div style={{ marginBottom: 16, padding: 12, background: '#fee2e2', borderRadius: 10, color: '#991b1b', fontSize: 13 }}>
+          {error}
         </div>
       )}
       <div style={{ background: UI.canvas, borderRadius: 16, border: `1px solid ${UI.hairline}`, overflow: 'hidden' }}>
@@ -133,25 +176,8 @@ export default function HistoryView({ onOpenResults }: Props) {
                 </button>
                 <span style={{ color: UI.muted, fontSize: 18 }}>›</span>
               </div>
-              <button
-                onClick={(e) => handleDelete(e, m.id)}
-                disabled={deletingId === m.id}
-                title="Xoá cuộc họp"
-                style={{
-                  padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0',
-                  background: deletingId === m.id ? '#fee2e2' : 'transparent',
-                  color: '#991b1b', cursor: 'pointer', fontSize: 12,
-                  opacity: deletingId === m.id ? 0.5 : 0.6,
-                  transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={(e) => { if (deletingId !== m.id) e.currentTarget.style.opacity = '1' }}
-                onMouseLeave={(e) => { if (deletingId !== m.id) e.currentTarget.style.opacity = '0.6' }}
-              >
-                {deletingId === m.id ? '⏳' : '🗑'}
-              </button>
-              <span style={{ color: '#cbd5e1', fontSize: 18 }}>›</span>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>
