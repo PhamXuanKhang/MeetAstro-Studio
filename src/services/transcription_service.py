@@ -6,7 +6,6 @@ transcribe_diarized(): Whisper API with speaker diarization, fallback to transcr
                        Automatically uses WhisperLiveKit when WHISPER_LIVEKIT_URL is set,
                        otherwise falls back to OpenAI gpt-4o-transcribe-diarize.
 """
-import asyncio
 from typing import Callable, Optional
 
 from src.config import get_logger, get_settings

@@ -1,20 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ai_meeting
-      POSTGRES_PASSWORD: ai_meeting_pass
-      POSTGRES_DB: ai_meeting_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ai_meeting -d ai_meeting_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     ports:
@@ -27,29 +11,12 @@ services:
       timeout: 3s
       retries: 5
 
-  migrate:
-    build: .
-    command: alembic upgrade head
-    environment:
-      POSTGRES_URL: postgresql://ai_meeting:ai_meeting_pass@postgres:5432/ai_meeting_db
-    env_file:
-      - path: .env
-        required: false
-    depends_on:
-      postgres:
-        condition: service_healthy
-    # Mount source để alembic thấy migration files mới nhất
-    volumes:
-      - ./src:/app/src
-      - ./alembic.ini:/app/alembic.ini
-
   api:
     build: .
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     environment:
-      POSTGRES_URL: postgresql://ai_meeting:ai_meeting_pass@postgres:5432/ai_meeting_db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       WHLK_WEBSOCKET_URL: ${WHLK_WEBSOCKET_URL}
@@ -57,12 +24,8 @@ services:
       - path: .env
         required: false
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     volumes:
       - ./src:/app/src
       - ./data:/app/data
@@ -73,24 +36,18 @@ services:
       celery -A src.workers.celery_app worker
       -Q default --loglevel=info --concurrency=2
     environment:
-      POSTGRES_URL: postgresql://ai_meeting:ai_meeting_pass@postgres:5432/ai_meeting_db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      WHLK_WEBSOCKET_URL: ${WHLK_WEBSOCKET_URL} 
+      WHLK_WEBSOCKET_URL: ${WHLK_WEBSOCKET_URL}
     env_file:
       - path: .env
         required: false
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     volumes:
       - ./src:/app/src
       - ./data:/app/data
 
 volumes:
-  postgres_data:
   redis_data:

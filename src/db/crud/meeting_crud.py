@@ -1,181 +1,234 @@
 """
-Async CRUD cho Meeting, Transcript, AnalysisResult.
+CRUD cho Meeting, Transcript (segments), AnalysisResult via Supabase.
 
-Tất cả hàm nhận AsyncSession từ FastAPI dependency injection.
+Dùng supabase-py client (SERVICE_ROLE_KEY). Tất cả hàm đồng bộ (sync).
+
+Transcript storage sử dụng transcript_segments table (per-segment: speaker, start, end, content)
+thay vì transcripts table (per-meeting: raw_text, diarized_text).
 """
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import text
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
-from src.db.models import AnalysisResult, Meeting, Transcript
+from src.db import supabase_client as sc
 
 
-async def _ensure_auth_user(db: AsyncSession, user_id: uuid.UUID) -> None:
-    """Đảm bảo user tồn tại trong auth.users để satisfy FK (local/dev không có Supabase)."""
-    await db.execute(
-        text("INSERT INTO auth.users (id) VALUES (:id) ON CONFLICT (id) DO NOTHING"),
-        {"id": user_id},
-    )
-
-
-async def create_meeting(
-    db: AsyncSession,
+def create_meeting(
     *,
     title: str,
-    audio_path: Optional[str] = None,
-    user_id: uuid.UUID = uuid.UUID(int=0),
-) -> Meeting:
+    audio_storage_path: Optional[str] = None,
+    user_id: str = "7f3572eb-aed9-4e7f-a4b1-41ecb03319e9",
+) -> dict[str, Any]:
     """Tạo meeting mới với trạng thái pending."""
-    await _ensure_auth_user(db, user_id)
-    meeting = Meeting(title=title, audio_path=audio_path, user_id=user_id)
-    db.add(meeting)
-    await db.flush()
-    await db.refresh(meeting)
-    return meeting
+    return sc.insert(sc.TABLE_MEETINGS, {
+        "title": title,
+        "audio_storage_path": audio_storage_path,
+        "user_id": user_id,
+        "status": "pending",
+    })
 
 
-async def get_meeting(
-    db: AsyncSession, meeting_id: uuid.UUID, *, load_relations: bool = False
-) -> Optional[Meeting]:
-    """Lấy meeting theo ID. load_relations=True để load transcript + analysis."""
-    stmt = select(Meeting).where(Meeting.id == meeting_id)
-    if load_relations:
-        stmt = stmt.options(
-            selectinload(Meeting.transcript),
-            selectinload(Meeting.analysis),
-        )
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
+def get_meeting(meeting_id: str | uuid.UUID) -> Optional[dict[str, Any]]:
+    """Lấy meeting theo ID."""
+    return sc.fetch_one(sc.TABLE_MEETINGS, {"id": str(meeting_id)})
 
 
-async def list_meetings(
-    db: AsyncSession,
+def list_meetings(
     *,
-    user_id: uuid.UUID = uuid.UUID(int=0),
+    user_id: str = "7f3572eb-aed9-4e7f-a4b1-41ecb03319e9",
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
-) -> tuple[list[Meeting], int]:
+) -> tuple[list[dict[str, Any]], int]:
     """Lấy danh sách meetings, trả về (items, total)."""
-    from sqlalchemy import func
-
-    base_stmt = select(Meeting).where(Meeting.user_id == user_id)
+    client = sc.get_supabase_client()
+    filters: dict[str, Any] = {"user_id": user_id}
     if status:
-        base_stmt = base_stmt.where(Meeting.status == status)
+        filters["status"] = status
 
-    count_stmt = select(func.count()).select_from(base_stmt.subquery())
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar_one()
+    query = client.table(sc.TABLE_MEETINGS).select("*", count="exact")
+    for col, val in filters.items():
+        query = query.eq(col, val)
+    query = query.order("created_at", ascending=False)
+    query = query.range((page - 1) * page_size, page * page_size - 1)
+    result = query.execute()
 
-    stmt = (
-        base_stmt.order_by(Meeting.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    result = await db.execute(stmt)
-    return list(result.scalars().all()), total
+    count_result = client.table(sc.TABLE_MEETINGS).select("id", count="exact")
+    for col, val in filters.items():
+        count_result = count_result.eq(col, val)
+    total = count_result.execute().count or 0
+
+    return result.data or [], total
 
 
-async def update_meeting_status(
-    db: AsyncSession,
-    meeting_id: uuid.UUID,
+def update_meeting(
+    meeting_id: str | uuid.UUID,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Cập nhật meeting fields."""
+    return sc.update_by_id(sc.TABLE_MEETINGS, str(meeting_id), kwargs)
+
+
+def update_meeting_status(
+    meeting_id: str | uuid.UUID,
     *,
     status: str,
-    celery_task_id: Optional[str] = None,
     error_message: Optional[str] = None,
-) -> None:
-    """Cập nhật status và celery_task_id."""
-    values: dict = {"status": status}
-    if celery_task_id is not None:
-        values["celery_task_id"] = celery_task_id
+) -> dict[str, Any]:
+    """Cập nhật status của meeting."""
+    data: dict[str, Any] = {"status": status}
     if error_message is not None:
-        values["error_message"] = error_message
-    await db.execute(update(Meeting).where(Meeting.id == meeting_id).values(**values))
+        data["error_message"] = error_message
+    return sc.update_by_id(sc.TABLE_MEETINGS, str(meeting_id), data)
 
 
-async def delete_meeting(db: AsyncSession, meeting_id: uuid.UUID) -> bool:
-    """Xóa meeting và cascade xóa transcript, analysis, review_items."""
-    meeting = await get_meeting(db, meeting_id)
-    if not meeting:
-        return False
-    await db.delete(meeting)
-    return True
+def delete_meeting(meeting_id: str | uuid.UUID) -> bool:
+    """Xóa meeting (cascade tự động qua Supabase RLS/foreign keys)."""
+    return sc.delete_by_id(sc.TABLE_MEETINGS, str(meeting_id))
 
 
-async def create_transcript(
-    db: AsyncSession,
-    *,
-    meeting_id: uuid.UUID,
-    raw_text: str,
-    diarized_text: Optional[str] = None,
-    language: str = "en",
-) -> Transcript:
-    """Lưu transcript sau khi transcribe xong."""
-    transcript = Transcript(
-        meeting_id=meeting_id,
-        raw_text=raw_text,
-        diarized_text=diarized_text,
-        language=language,
-        char_count=len(raw_text),
+# ── Transcript (segments) CRUD ──────────────────────────────────────────
+
+
+def delete_transcript_segments_for_meeting(meeting_id: str | uuid.UUID) -> bool:
+    """Xóa tất cả transcript segments của meeting."""
+    client = sc.get_supabase_client()
+    result = client.table(sc.TABLE_TRANSCRIPT_SEGMENTS).delete().eq(
+        "meeting_id", str(meeting_id)
+    ).execute()
+    return bool(result.data)
+
+
+def create_transcript_segments(
+    meeting_id: str | uuid.UUID,
+    segments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Lưu transcript segments sau khi transcribe xong.
+
+    Args:
+        meeting_id: UUID của meeting.
+        segments: Danh sách segment dicts từ WhisperLiveKit, mỗi dict có:
+            speaker (str|None), start (float), end (float), text (str).
+
+    Returns:
+        Danh sách các segment đã lưu.
+    """
+    meeting_uuid = str(meeting_id)
+
+    # Xóa segments cũ nếu có
+    delete_transcript_segments_for_meeting(meeting_uuid)
+
+    if not segments:
+        return []
+
+    # Insert all segments
+    rows = [
+        {
+            "meeting_id": meeting_uuid,
+            "speaker": seg.get("speaker"),
+            "start_time": float(seg.get("start", 0)),
+            "end_time": float(seg.get("end", 0)),
+            "content": seg.get("text", ""),
+        }
+        for seg in segments
+    ]
+
+    client = sc.get_supabase_client()
+    result = client.table(sc.TABLE_TRANSCRIPT_SEGMENTS).insert(rows).execute()
+    return result.data or []
+
+
+def get_transcript_segments(meeting_id: str | uuid.UUID) -> list[dict[str, Any]]:
+    """
+    Lấy tất cả transcript segments của meeting, sắp xếp theo start_time.
+    """
+    client = sc.get_supabase_client()
+    result = (
+        client.table(sc.TABLE_TRANSCRIPT_SEGMENTS)
+        .select("*")
+        .eq("meeting_id", str(meeting_id))
+        .order("start_time", desc=False)
+        .execute()
     )
-    db.add(transcript)
-    await db.flush()
-    await db.refresh(transcript)
-    return transcript
+    return result.data or []
 
 
-async def get_transcript(
-    db: AsyncSession, meeting_id: uuid.UUID
-) -> Optional[Transcript]:
-    """Lấy transcript của meeting."""
-    result = await db.execute(
-        select(Transcript).where(Transcript.meeting_id == meeting_id)
-    )
-    return result.scalar_one_or_none()
+def build_transcript_text(
+    segments: list[dict[str, Any]],
+    include_timing: bool = False,
+) -> str:
+    """
+    Chuyển danh sách segments thành text.
+
+    - Nếu có speaker: dùng định dạng [Speaker N]: text
+    - Nếu không có speaker (plain Whisper): nối text thường
+    - Nếu include_timing: thêm thời gian ở đầu dòng
+    """
+    if not segments:
+        return ""
+
+    lines: list[str] = []
+    for seg in segments:
+        speaker = seg.get("speaker")
+        content = (seg.get("content") or "").strip()
+        if not content:
+            continue
+
+        if speaker:
+            prefix = f"[{speaker}]: "
+        else:
+            prefix = ""
+
+        if include_timing:
+            start = seg.get("start_time", 0)
+            mins, secs = divmod(int(start), 60)
+            prefix = f"[{mins:02d}:{secs:02d}] {prefix}"
+
+        lines.append(f"{prefix}{content}")
+
+    return "\n".join(lines)
 
 
-async def create_analysis_result(
-    db: AsyncSession,
+def get_transcript_text(
+    meeting_id: str | uuid.UUID,
+    include_timing: bool = False,
+) -> str:
+    """Lấy transcript text của meeting (reassembled từ segments)."""
+    segments = get_transcript_segments(meeting_id)
+    return build_transcript_text(segments, include_timing=include_timing)
+
+
+def get_analysis_result(meeting_id: str | uuid.UUID) -> Optional[dict[str, Any]]:
+    """Lấy analysis result của meeting."""
+    return sc.fetch_one(sc.TABLE_ANALYSIS_RESULTS, {"meeting_id": str(meeting_id)})
+
+
+def create_analysis_result(
     *,
-    meeting_id: uuid.UUID,
-    analysis_json: dict,
+    meeting_id: str | uuid.UUID,
+    analysis_json: dict[str, Any],
     summary: Optional[str] = None,
     overall_confidence: Optional[float] = None,
-    validation_metrics: Optional[dict] = None,
-) -> AnalysisResult:
-    """Upsert analysis result — update if one already exists for the meeting."""
-    existing = await db.execute(
-        select(AnalysisResult).where(AnalysisResult.meeting_id == meeting_id)
-    )
-    result = existing.scalar_one_or_none()
-    if result is not None:
-        result.analysis_json = analysis_json
-        result.summary = summary
-        result.overall_confidence = overall_confidence
-        result.validation_metrics = validation_metrics
-    else:
-        result = AnalysisResult(
-            meeting_id=meeting_id,
-            analysis_json=analysis_json,
-            summary=summary,
-            overall_confidence=overall_confidence,
-            validation_metrics=validation_metrics,
-        )
-        db.add(result)
-    await db.flush()
-    await db.refresh(result)
-    return result
+    validation_metrics: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """
+    Upsert analysis result cho meeting.
 
-
-async def get_analysis_result(
-    db: AsyncSession, meeting_id: uuid.UUID
-) -> Optional[AnalysisResult]:
-    """Lấy analysis result của meeting."""
-    result = await db.execute(
-        select(AnalysisResult).where(AnalysisResult.meeting_id == meeting_id)
-    )
-    return result.scalar_one_or_none()
+    Column mapping to Supabase analysis_results:
+      - analysis_json     → raw_response
+      - summary           → summary_text
+      - key_decisions     → key_decisions
+      - parking_lot       → parking_lot
+    """
+    meeting_uuid = str(meeting_id)
+    existing = sc.fetch_one(sc.TABLE_ANALYSIS_RESULTS, {"meeting_id": meeting_uuid})
+    data: dict[str, Any] = {
+        "meeting_id": meeting_uuid,
+        "raw_response": analysis_json,
+        "summary_text": summary,
+        "key_decisions": analysis_json.get("key_decisions"),
+        "parking_lot": analysis_json.get("parking_lot"),
+    }
+    if existing:
+        return sc.update_by_id(sc.TABLE_ANALYSIS_RESULTS, existing["id"], data)
+    return sc.insert(sc.TABLE_ANALYSIS_RESULTS, data)

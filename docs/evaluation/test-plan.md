@@ -8,9 +8,9 @@ Chiến lược testing cho AI Meeting Assistant.
 
 | Loại test | Coverage | Status |
 |-----------|----------|--------|
-| **Unit tests** | 13 test files trong `tests/` | Cần chạy lại trong môi trường đã cài dev deps |
-| **Integration tests** | Có `tests/test_integration.py`, mock external APIs | Cần mở rộng E2E với audio mẫu |
-| **Manual smoke test** | Flet UI + FastAPI + worker + real audio | Chưa chạy định kỳ |
+| **Unit tests** | 14 test files trong `tests/` | Đã chạy thành công với dev deps |
+| **Integration tests** | `tests/test_integration.py`, mock external APIs | E2E script `test_e2e.sh` sẵn sàng |
+| **Manual smoke test** | Flet UI + FastAPI + worker + real audio | Cần chạy định kỳ |
 | **Eval test** | AI quality: recall, precision, WER | Chưa tự động hóa |
 
 ---
@@ -25,6 +25,7 @@ Chiến lược testing cho AI Meeting Assistant.
 | `tests/test_openai_analyzer.py` | Mock OpenAI analyzer, JSON parsing, retry/error handling |
 | `tests/test_openai_transcriber.py` | Mock OpenAI Whisper API transcriber |
 | `tests/test_openai_diarize_transcriber.py` | Mock OpenAI diarization transcriber |
+| `tests/test_whisper_livekit_transcriber.py` | Mock Whisper via LiveKit transcriber |
 | `tests/test_transcription_service.py` | Plain transcription + diarization fallback về plain OpenAI transcription |
 | `tests/test_analysis_service.py` | Analysis orchestration, empty transcript validation |
 | `tests/test_validation_service.py` | Confidence scoring, rule-based cross validation |
@@ -32,6 +33,7 @@ Chiến lược testing cho AI Meeting Assistant.
 | `tests/test_exporter.py` | Markdown/JSON/CSV export |
 | `tests/test_jira_client.py` | Jira REST payloads, auth, stub mode |
 | `tests/test_jira_service.py` | Jira push orchestration Epic -> Task -> Subtask |
+| `tests/test_audio_ingestion.py` | Audio upload validation, ffmpeg normalization, video-to-audio extraction |
 | `tests/test_integration.py` | Mocked integration flow |
 | `tests/__init__.py` | Test package marker |
 
@@ -43,6 +45,12 @@ pytest tests/ -v
 
 # Một file cụ thể
 pytest tests/test_transcription_service.py -v
+
+# Một test class cụ thể
+pytest tests/test_schema.py::TestPriority -v
+
+# Một test cụ thể
+pytest tests/test_schema.py::TestPriority::test_values -v
 
 # Với coverage nếu cần
 pytest tests/ -v --cov=src --cov-report=term-missing
@@ -57,22 +65,27 @@ pytest tests/ -v --cov=src --cov-report=term-missing
 
 ---
 
-## Integration Test Plan [TBD]
+## Integration Test Plan
 
 ### E2E Flow Test
 
+Script `test_e2e.sh` đã có sẵn, chạy end-to-end với audio thật:
+
 ```text
 Audio file (<= 2 phút)
-    -> upload audio qua FastAPI
+    -> POST /api/v1/meetings (tạo meeting)
+    -> POST /api/v1/meetings/{id}/audio (upload + trigger transcribe)
     -> poll /api/v1/jobs/{job_id}
-    -> assert transcript not empty, len > 50
-    -> assert analysis has >= 1 epic
-    -> review approve/reject items
-    -> export markdown/json/csv
-    -> optional: push Jira in STUB mode
+    -> assert transcript not empty
+    -> export JSON
 ```
 
-**Cần:** audio file mẫu, PostgreSQL + Redis + worker, `OPENAI_API_KEY` thật hoặc mock server.
+**Cần:** audio file mẫu tại `data/recordings/test_audio.mp3`, PostgreSQL + Redis + worker đang chạy, `OPENAI_API_KEY`.
+
+```bash
+# Chạy E2E test
+./test_e2e.sh
+```
 
 ### Diarization Fallback Integration Test
 
@@ -91,12 +104,13 @@ Audio file (<= 2 phút)
 
 ## Manual Smoke Test Checklist
 
-Run `python frontend\main.py` với API + worker đang chạy và verify:
+Run `python -m frontend.main` với API + worker đang chạy và verify:
 
 ### Upload & Transcribe
 
 - [ ] Upload file `.wav` -> job được queue và transcript hiển thị sau polling.
 - [ ] Upload file `.mp3` -> job được queue và transcript hiển thị sau polling.
+- [ ] Upload file `.m4a`, `.ogg`, `.mp4`, `.mkv`, `.webm` -> được convert và transcribe đúng.
 - [ ] Bật/tắt diarization -> transcript vẫn trả về hợp lệ.
 - [ ] Transcript field editable -> edits được lưu qua `PATCH /transcript`.
 
@@ -146,3 +160,41 @@ flake8 . --max-line-length=100 && mypy . --ignore-missing-imports && pytest test
 | `flake8` | Lint style | 0 warnings |
 | `mypy` | Type checking | 0 errors |
 | `pytest` | Unit tests | All passing |
+
+---
+
+## API Endpoints Testing
+
+API endpoints cần test (tham khảo `src/api/routers/`):
+
+| Router | Endpoints cần smoke test |
+|--------|-------------------------|
+| `meetings.py` | POST /meetings, GET /meetings, GET /meetings/{id}, PATCH /meetings/{id}, DELETE /meetings/{id} |
+| `transcriptions.py` | GET /meetings/{id}/transcript, PATCH /meetings/{id}/transcript |
+| `analysis.py` | POST /meetings/{id}/analyze |
+| `reviews.py` | GET /meetings/{id}/reviews, PATCH /reviews/{id}, POST /meetings/{id}/reviews/approve-all |
+| `jira.py` | POST /meetings/{id}/jira/push |
+| `exports.py` | GET /meetings/{id}/export/{format} |
+| `stream.py` | Streaming endpoints |
+| `settings.py` | GET/PUT settings |
+| `main.py` | GET /api/v1/health |
+
+---
+
+## Database Migrations Testing
+
+Khi chạy migration mới:
+
+```bash
+# Chạy migration
+alembic upgrade head
+
+# Verify schema
+alembic current
+alembic history --ind -10
+
+# Rollback nếu cần
+alembic downgrade -1
+```
+
+Test migration rollback path trên dev trước khi apply lên production.

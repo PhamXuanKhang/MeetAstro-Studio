@@ -45,8 +45,12 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ── Database ──
+    # ── Database (PostgreSQL — deprecated, use Supabase instead) ──
     postgres_url: str = Field(default="", alias="POSTGRES_URL")
+
+    # ── Supabase ──
+    supabase_url: str = Field(default="", alias="SUPABASE_URL")
+    supabase_service_role_key: str = Field(default="", alias="SUPABASE_SERVICE_ROLE_KEY")
 
     # ── Jira Integration (optional) ──
     jira_base_url: str = Field(default="", alias="JIRA_BASE_URL")

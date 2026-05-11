@@ -287,16 +287,17 @@ class TestProcessUpload:
         # Create a fake upload stream
         file_stream = io.BytesIO(b"fake mp3 data")
 
-        audio_path, storage_path, duration = process_upload(
+        vps_path, duration = process_upload(
             file_stream=file_stream,
             filename="meeting.mp3",
             user_id="test_user",
             meeting_id="uuid-1234",
         )
 
-        assert storage_path == "meeting-audio/test_user/uuid-1234.wav"
-        assert audio_path.endswith("uuid-1234.wav")
-        assert os.path.exists(audio_path)
+        # The returned path is a random temp file in .tmp/ dir (not the meeting_id)
+        assert vps_path.endswith(".mp3")
+        assert ".tmp" in vps_path
+        assert os.path.exists(vps_path)
         assert abs(duration - 5.0) < 0.01
         mock_normalize.assert_called_once()
 
@@ -316,14 +317,13 @@ class TestProcessUpload:
 
         file_stream = io.BytesIO(b"fake mp4 data")
 
-        audio_path, storage_path, duration = process_upload(
+        vps_path, duration = process_upload(
             file_stream=file_stream,
             filename="recording.mp4",
             user_id="user_abc",
             meeting_id="uuid-5678",
         )
 
-        assert storage_path == "meeting-audio/user_abc/uuid-5678.wav"
         assert abs(duration - 120.0) < 0.1
         mock_extract.assert_called_once()
 
@@ -377,10 +377,10 @@ class TestProcessUpload:
             meeting_id="mid",
         )
 
-        # tmp dir should have no leftover files
+        # tmp dir should contain the returned vps_path (kept for pipeline to consume)
         tmp_dir = os.path.join(storage_base, ".tmp")
         if os.path.exists(tmp_dir):
-            assert len(os.listdir(tmp_dir)) == 0
+            assert len(os.listdir(tmp_dir)) == 1
 
     @patch("src.services.audio_ingestion_service.normalize_audio")
     def test_temp_file_cleaned_up_on_error(self, mock_normalize, tmp_path, monkeypatch):

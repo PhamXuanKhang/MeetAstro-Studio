@@ -59,21 +59,19 @@ export interface MeetingRecord {
 export interface ReviewItem {
   id?: string | null
   meeting_id: string
+  parent_id?: string | null
   item_type: ItemType
-  item_index: string
   summary: string
   assignee?: string | null
   deadline?: string | null
   priority: Priority
   context: string
-  confidence: number
+  confidence_score: number
   is_flagged: boolean
   review_status: ReviewStatus
-  edited_summary?: string | null
-  edited_assignee?: string | null
-  edited_deadline?: string | null
-  edited_priority?: string | null
-  validation_notes: string[]
+  sync_status?: string | null
+  jira_issue_key?: string | null
+  jira_issue_url?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -161,21 +159,20 @@ export interface StartAnalysisResponse {
 export interface ReviewItemResponse {
   id: string
   meeting_id: string
+  parent_id?: string | null
   item_type: ItemType
-  item_index: string
   summary: string
+  description?: string | null
   assignee?: string | null
   deadline?: string | null
   priority?: Priority | null
   context?: string | null
-  confidence: number
+  confidence_score: number
   is_flagged: boolean
   review_status: ReviewStatus
-  edited_summary?: string | null
-  edited_assignee?: string | null
-  edited_deadline?: string | null
-  edited_priority?: string | null
-  validation_notes: unknown[]
+  sync_status?: string | null
+  jira_issue_key?: string | null
+  jira_issue_url?: string | null
   created_at: string
   updated_at: string
 }

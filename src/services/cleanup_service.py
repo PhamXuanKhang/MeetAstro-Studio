@@ -18,26 +18,26 @@ logger = get_logger(__name__)
 TIMESTAMP_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")
 
 
-def delete_audio_file(audio_path: str) -> bool:
+def delete_audio_file(vps_temp_path: str) -> bool:
     """
-    Delete an audio file after successful processing.
+    Delete a temporary VPS audio file after transcription completes.
 
     Args:
-        audio_path: Path to the audio file to delete.
+        vps_temp_path: Absolute path to the temp VPS file to delete.
 
     Returns:
         True if file was deleted, False if it didn't exist or deletion failed.
     """
     try:
-        path = Path(audio_path)
+        path = Path(vps_temp_path)
         if path.exists():
             path.unlink()
-            logger.info("Deleted audio file: %s", audio_path)
+            logger.info("Deleted VPS temp audio file: %s", vps_temp_path)
             return True
-        logger.debug("Audio file not found for deletion: %s", audio_path)
+        logger.debug("VPS temp file not found for deletion: %s", vps_temp_path)
         return False
     except Exception as exc:
-        logger.error("Failed to delete audio file %s: %s", audio_path, exc)
+        logger.error("Failed to delete VPS temp file %s: %s", vps_temp_path, exc)
         return False
 
 

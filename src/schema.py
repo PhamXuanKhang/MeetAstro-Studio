@@ -123,32 +123,37 @@ class MeetingRecord(_BaseSchemaModel):
     title: str
     transcript: str = ""
     id: Optional[str] = None
-    audio_path: Optional[str] = None
+    audio_storage_path: Optional[str] = None
     analysis: Optional[MeetingAnalysis] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ReviewItem(_BaseSchemaModel):
-    """Item trích xuất từ analysis, chờ human review trước khi push Jira."""
+    """
+    Item trích xuất từ analysis, chờ human review trước khi push Jira.
+
+    Field names mirror `action_items` columns in Supabase:
+      - summary    → title
+      - context    → description
+      - is_flagged → is_selected (inverted)
+    """
 
     id: Optional[str] = None
     meeting_id: str = ""
+    parent_id: Optional[str] = None
     item_type: str = "task"           # epic | task | subtask
-    item_index: str = ""              # "0.1.2"
-    summary: str = ""
+    summary: str = ""                 # maps to action_items.title
     assignee: Optional[str] = None
     deadline: Optional[str] = None
     priority: Priority = Priority.MEDIUM
-    context: str = ""
+    context: str = ""                 # maps to action_items.description
     confidence: float = 0.0
     is_flagged: bool = False
     review_status: ReviewStatus = ReviewStatus.DRAFT
-    edited_summary: Optional[str] = None
-    edited_assignee: Optional[str] = None
-    edited_deadline: Optional[str] = None
-    edited_priority: Optional[str] = None
-    validation_notes: list[str] = Field(default_factory=list)
+    sync_status: str = "pending"
+    jira_issue_key: Optional[str] = None
+    jira_issue_url: Optional[str] = None
 
     @field_validator("priority", mode="before")
     @classmethod
