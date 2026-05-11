@@ -19,7 +19,15 @@ jobs:
           persist-credentials: false
 
       - name: Force push to deploy repository
+        shell: bash
         run: |
           git remote remove deploy 2>/dev/null || true
           git remote add deploy "https://x-access-token:${{ secrets.MIRROR_REPO_TOKEN }}@github.com/PhamXuanKhang/MeetAstro-Studio.git"
-          git push --force deploy HEAD:main
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan mirror-public
+          git rm -r --cached .github/workflows
+          git commit -m "Mirror source without workflows"
+          git push --force deploy mirror-public:main
