@@ -18,6 +18,16 @@ This document outlines the security measures implemented.
 
 ## Credential Management
 
+### Supabase Keys
+
+| Key | Used by | Purpose |
+|-----|---------|---------|
+| `SUPABASE_URL` | Backend + Electron | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Electron frontend only | Public, for client-side auth |
+| `SUPABASE_SERVICE_ROLE_KEY` | Backend only | Full database access, never expose |
+
+**Important:** Never put `SUPABASE_SERVICE_ROLE_KEY` in frontend code or Electron `.env`.
+
 ### Credential Vault (Fernet Encryption)
 
 Provider credentials (OpenAI API keys, Jira tokens, etc.) are encrypted at rest using **Fernet symmetric encryption** before storing in PostgreSQL.
@@ -63,8 +73,8 @@ def decrypt(ciphertext: str) -> str:
 |----------|-------------|----------------|
 | `OPENAI_API_KEY` | OpenAI API access | Unauthorized API usage, cost |
 | `APP_SECRET_KEY` | Fernet encryption key | Credential decryption |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase database access | Full data access |
 | `JIRA_API_TOKEN` | Jira API token | Unauthorized Jira access |
-| `POSTGRES_URL` | Database connection | Database access |
 
 ### .gitignore Protection
 
@@ -94,9 +104,9 @@ APP_SECRET_KEY=your_fernet_key_here
 | Measure | Status | Notes |
 |---------|--------|-------|
 | HTTPS | Deployment-dependent | Use nginx/reverse proxy |
-| Authentication | Not implemented | Single-user MVP |
+| Authentication | Supabase Auth | Email/password + OAuth |
 | Rate Limiting | Basic | Per-IP limiting available |
-| CORS | Configured | For Flet desktop client |
+| CORS | Configured | For Flet/Electron desktop clients |
 | Input Validation | Pydantic | All API inputs validated |
 
 ### Rate Limiting
@@ -227,9 +237,10 @@ if not all([base_url, email, token, project_key]):
 ### Before Production
 
 - [ ] Generate unique `APP_SECRET_KEY`
-- [ ] Set strong `POSTGRES_URL` credentials
+- [ ] Configure Supabase project with proper RLS policies
+- [ ] Set `SUPABASE_SERVICE_ROLE_KEY` only in backend environment
+- [ ] Set `SUPABASE_ANON_KEY` in Electron frontend `.env`
 - [ ] Configure HTTPS (nginx/reverse proxy)
-- [ ] Enable PostgreSQL TDE if needed
 - [ ] Set appropriate file permissions (`chmod 600 .env`)
 - [ ] Disable debug logging in production
 - [ ] Configure firewall (only expose port 443)

@@ -20,17 +20,17 @@ http://localhost:8000/api/v1
 GET /api/v1/health
 ```
 
-Check API and database connectivity.
+Check API and Supabase connectivity.
 
 **Response:**
 ```json
 {
   "status": "ok",
-  "db": "ok"
+  "supabase": "ok"
 }
 ```
 
-If PostgreSQL is not available, `db` is returned as `"unavailable"`.
+If Supabase is not available, `supabase` is returned as `"unavailable"`.
 
 ---
 
@@ -127,19 +127,25 @@ POST /api/v1/meetings/{meeting_id}/audio
 ```
 
 **Request:** `multipart/form-data`
-- `file`: Audio file (.wav, .mp3, .m4a)
+- `file`: Audio file (.wav, .mp3, .m4a, .ogg) or video (.mp4, .mkv, .webm)
 
 Form fields:
+- `client_path` (str, optional): file:// URI of the original audio on the user's machine
 - `diarize` (bool, default: false): Enable speaker diarization
 - `language` (str, default: "en"): Transcription language
+
+**Supported formats:**
+- Audio: .mp3, .wav, .m4a, .ogg
+- Video: .mp4, .mkv, .webm (audio track is extracted)
 
 **Response:**
 ```json
 {
   "meeting_id": "uuid",
   "job_id": "celery-task-uuid",
-  "status": "queued",
-  "message": "Pipeline đã được queue. Dùng /jobs/{job_id} để theo dõi tiến trình."
+  "audio_storage_path": "file:///Users/name/recordings/meeting.wav",
+  "audio_duration_seconds": 180,
+  "message": "Pipeline đã được queue."
 }
 ```
 
@@ -539,9 +545,9 @@ DELETE /api/v1/settings/providers/{provider_name}
 
 ---
 
-### Job Status
+### Jobs
 
-#### Get Job Status
+#### Job Status
 
 ```
 GET /api/v1/jobs/{job_id}
@@ -563,6 +569,42 @@ Poll Celery task status.
 ```
 
 State values: `PENDING`, `STARTED`, `SUCCESS`, `FAILURE`, `RETRY`, `REVOKED`
+
+#### Stream Transcription (SSE)
+
+```
+GET /api/v1/meetings/{meeting_id}/transcribe/stream
+```
+
+Real-time transcription via Server-Sent Events (SSE).
+
+**Query parameters:**
+- `ws_url` (optional): Custom WhisperLiveKit WebSocket URL.
+
+**SSE Response Format:**
+
+```text
+event: partial
+data: {"segments": [...], "done": false}
+```
+
+```text
+event: done
+data: {"segments": [...], "done": true, "full_transcript": "..."}
+```
+
+```text
+event: error
+data: {"error": "WebSocket connection failed", "code": "WLK_CONNECTION_ERROR"}
+```
+
+**SSE Events:**
+
+| Event | Description |
+|-------|-------------|
+| `partial` | Partial transcript segments as they arrive |
+| `done` | Transcription complete |
+| `error` | Error occurred |
 
 ---
 
