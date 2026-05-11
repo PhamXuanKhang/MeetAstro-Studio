@@ -168,22 +168,22 @@ AppState trong `frontend/core/state.py`:
 
 ---
 
-## Database Schema (PostgreSQL)
+## Database Schema (Supabase)
 
 8 tables — UUID primary keys, TIMESTAMPTZ timestamps:
 
 | Table | Columns key | Quan hệ |
 |-------|-------------|---------|
 | `meetings` | id, title, audio_path, status, user_id, celery_task_id | parent |
-| `transcripts` | id, meeting_id, raw_text, diarized_text, language, char_count | belongs to meeting |
-| `analysis_results` | id, meeting_id, analysis_json (JSONB), summary, overall_confidence | belongs to meeting |
-| `review_items` | id, meeting_id, item_type, item_index, summary, assignee, deadline, priority, confidence, is_flagged, review_status, edited_* | belongs to meeting |
+| `transcript_segments` | id, meeting_id, speaker, start_time, end_time, content | belongs to meeting |
+| `analysis_results` | id, meeting_id, raw_response (JSONB), summary, overall_confidence | belongs to meeting |
+| `action_items` | id, meeting_id, item_type, parent_id, summary, assignee, deadline, priority, context, confidence, review_status, is_flagged, jira_issue_key | belongs to meeting |
 | `provider_configs` | id, user_id, provider_name, config_json (encrypted), active | standalone |
 | `user_plans` | id, user_id, plan_type, plan_started_at, plan_expires_at, is_active | quota management |
 | `usage_records` | id, user_plan_id, usage_type, usage_count, period_start, period_end | usage tracking |
 | `quota_limits` | id, plan_type, limit_type, limit_value, period_type, is_active | quota rules |
 
-Migrations quản lý bằng Alembic (`src/db/migrations/`).
+Database access via Supabase SDK (`src/db/supabase_client.py`).
 
 ---
 

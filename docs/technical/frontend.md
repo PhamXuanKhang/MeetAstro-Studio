@@ -1,4 +1,15 @@
-# Frontend (Flet Desktop App)
+# Frontend (Dual Desktop Apps)
+
+AI Meeting Assistant has two frontend implementations:
+
+1. **Flet Desktop App** — Python, rapid development, HTTP-only client
+2. **Electron Desktop App** — TypeScript + React, native features, Supabase auth
+
+Both frontends call the same FastAPI backend endpoints.
+
+---
+
+## Flet Desktop App
 
 Desktop UI for AI Meeting Assistant. The app is **HTTP-only** and communicates with the FastAPI backend for all operations.
 
@@ -503,3 +514,80 @@ flet pack frontend/main.py --name "AI Meeting Assistant"
 The executable will be in `dist/` directory.
 
 Configure `API_BASE_URL` to point to production server before distribution.
+
+---
+
+## Electron Desktop App
+
+React + TypeScript + Vite + Electron desktop application with Supabase auth.
+
+### Project Structure
+
+```
+electron-app/
+├── src/
+│   ├── App.tsx                    # Main app with routing
+│   ├── views/
+│   │   ├── DashboardView.tsx       # Meeting overview
+│   │   ├── HistoryView.tsx        # Past meetings
+│   │   ├── ReviewView.tsx         # Human-in-the-loop review
+│   │   └── ResultsView.tsx        # Analysis results
+│   ├── api/
+│   │   └── supabase/
+│   │       ├── meetings.api.ts     # Meeting CRUD
+│   │       ├── transcript.api.ts  # Transcript operations
+│   │       └── analysis.api.ts    # Analysis operations
+│   ├── store/
+│   │   └── appStore.ts           # Zustand state management
+│   └── types/
+│       ├── schema.ts              # TypeScript types matching Python schema
+│       └── supabase-models.ts     # Supabase generated types
+├── package.json
+├── vite.config.ts
+└── .env
+```
+
+### Running
+
+```bash
+cd electron-app
+npm install
+npm run dev     # Development mode
+npm run build   # Production build (.exe via electron-builder)
+npm run lint    # ESLint
+npm run typecheck # TypeScript check
+```
+
+### Configuration
+
+Environment variables in `electron-app/.env`:
+
+```bash
+VITE_API_BASE_URL=http://localhost:8000
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=xxx
+```
+
+### State Management
+
+Uses Zustand store (`src/store/appStore.ts`) for global state:
+
+```typescript
+interface AppState {
+  user: User | null;
+  meetings: Meeting[];
+  currentMeeting: Meeting | null;
+  transcript: string;
+  analysis: MeetingAnalysis | null;
+  reviewItems: ActionItem[];
+  isLoading: boolean;
+}
+```
+
+### API Integration
+
+- **Auth & User Data:** Supabase JS SDK (ANON_KEY)
+- **Heavy Operations:** Axios calls to FastAPI backend
+  - Audio upload
+  - Jira push
+  - Export operations

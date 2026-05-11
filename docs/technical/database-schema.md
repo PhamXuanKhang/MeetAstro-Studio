@@ -1,15 +1,15 @@
 # Database Schema
 
-PostgreSQL database schema for AI Meeting Assistant.
+PostgreSQL database schema via Supabase for AI Meeting Assistant.
 
 ---
 
 ## Overview
 
-The database uses **PostgreSQL 16** with **SQLAlchemy async** + **asyncpg**. Migrations are managed by **Alembic**.
+The database uses **Supabase** (PostgreSQL 16) with **Supabase SDK** for backend access. Migrations are managed by **Alembic**.
 
 Database: `ai_meeting_db`
-Connection: `POSTGRES_URL` environment variable
+Connection: `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` environment variables
 
 Supabase ownership/RLS foundation is documented in
 [`supabase-schema.md`](supabase-schema.md). Revision `0003` changes user-owned
@@ -22,34 +22,33 @@ direct per-user usage ownership.
 ## Entity Relationship Diagram
 
 ```
-┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
-│    meetings     │       │   transcripts   │       │ analysis_results│
-│─────────────────│       │─────────────────│       │─────────────────│
-│ id (UUID, PK)   │───┐   │ id (UUID, PK)   │   ┌───│ id (UUID, PK)   │
-│ title           │   │   │ meeting_id (FK) │◄──┤   │ meeting_id (FK) │
-│ audio_path      │   │   │ raw_text        │   │   │ analysis_json   │
-│ status          │   │   │ diarized_text   │   │   │ summary         │
-│ user_id         │   │   │ language        │   │   │ overall_conf.   │
-│ celery_task_id  │   │   │ char_count      │   │   │ created_at      │
-│ created_at      │   └───│ created_at      │   │   └─────────────────┘
-│ updated_at      │       └─────────────────┘   │
+┌─────────────────┐       ┌─────────────────────┐       ┌─────────────────┐
+│    meetings     │       │ transcript_segments │       │ analysis_results │
+│─────────────────│       │─────────────────────│       │─────────────────│
+│ id (UUID, PK)   │───┐   │ id (UUID, PK)       │   ┌───│ id (UUID, PK)   │
+│ title           │   │   │ meeting_id (FK)     │◄──┤   │ meeting_id (FK) │
+│ audio_path      │   │   │ speaker             │   │   │ raw_response    │
+│ status          │   │   │ start_time          │   │   │ summary         │
+│ user_id         │   │   │ end_time            │   │   │ overall_conf.   │
+│ celery_task_id  │   │   │ content             │   │   └─────────────────┘
+│ created_at      │   └───│ created_at          │   │
+│ updated_at      │       └─────────────────────┘   │
 └─────────────────┘                             │   ┌─────────────────┐
-        │                                       │   │  review_items   │
+        │                                       │   │  action_items   │
         │                                       │   │─────────────────│
         │                                       └───│ id (UUID, PK)   │
         │                                           │ meeting_id (FK) │
         │                                           │ item_type       │
-        │                                           │ item_index      │
+        │                                           │ parent_id       │
         │                                           │ summary         │
         │                                           │ assignee        │
         │                                           │ deadline        │
         │                                           │ priority        │
         │                                           │ context         │
         │                                           │ confidence      │
-        │                                           │ is_flagged      │
         │                                           │ review_status   │
-        │                                           │ edited_*        │
-        │                                           │ created_at      │
+        │                                           │ is_flagged      │
+        │                                           │ jira_issue_key  │
         │                                           └─────────────────┘
         │
         │
@@ -78,18 +77,16 @@ Core table storing meeting metadata.
 |--------|------|----------|---------|-------------|
 | `id` | UUID | No | `gen_random_uuid()` | Primary key |
 | `title` | TEXT | No | - | Meeting title |
-| `audio_path` | TEXT | Yes | NULL | Path to audio file on server |
+| `audio_storage_path` | TEXT | Yes | NULL | file:// URI of audio on user's machine |
+| `audio_duration_seconds` | INTEGER | Yes | NULL | Duration of audio |
 | `status` | TEXT | No | `'pending'` | Status: `pending`, `transcribing`, `transcribed`, `analyzing`, `draft`, `reviewed`, `pushed` |
-| `user_id` | TEXT | No | `'default_user'` | User identifier |
+| `user_id` | UUID | No | - | FK to `auth.users(id)` |
 | `celery_task_id` | TEXT | Yes | NULL | Active Celery task ID for polling |
 | `error_message` | TEXT | Yes | NULL | Last pipeline error message |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
 | `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
 
-Indexes:
-- None in migration `0001_initial.py`.
-
-### transcripts
+### transcript_segments
 
 Stores transcription results from Whisper API.
 
@@ -97,10 +94,10 @@ Stores transcription results from Whisper API.
 |--------|------|----------|---------|-------------|
 | `id` | UUID | No | `gen_random_uuid()` | Primary key |
 | `meeting_id` | UUID | No | - | FK to `meetings.id` |
-| `raw_text` | TEXT | No | - | Plain transcript text |
-| `diarized_text` | TEXT | Yes | NULL | Transcript with speaker labels |
-| `language` | TEXT | Yes | `'en'` | Transcription language code |
-| `char_count` | INTEGER | Yes | NULL | Character count |
+| `speaker` | TEXT | Yes | NULL | Speaker label (e.g., "Speaker 1") |
+| `start_time` | FLOAT | Yes | NULL | Start time in seconds |
+| `end_time` | FLOAT | Yes | NULL | End time in seconds |
+| `content` | TEXT | No | - | Transcript text for this segment |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
 
 Constraints:
@@ -114,7 +111,7 @@ Stores GPT-4o analysis output.
 |--------|------|----------|---------|-------------|
 | `id` | UUID | No | `gen_random_uuid()` | Primary key |
 | `meeting_id` | UUID | No | - | FK to `meetings.id` |
-| `analysis_json` | JSONB | No | - | Full `MeetingAnalysis` as JSON |
+| `raw_response` | JSONB | No | - | Full `MeetingAnalysis` as JSON |
 | `summary` | TEXT | Yes | NULL | Extracted summary text |
 | `overall_confidence` | FLOAT | Yes | NULL | Overall confidence score (0.0-1.0) |
 | `validation_metrics` | JSONB | Yes | NULL | Validation metrics from analysis pipeline |
@@ -124,7 +121,7 @@ Stores GPT-4o analysis output.
 Constraints:
 - FK `meeting_id` -> `meetings.id` ON DELETE CASCADE
 
-`analysis_json` structure:
+`raw_response` structure:
 ```json
 {
   "summary": "...",
@@ -150,7 +147,7 @@ Constraints:
 }
 ```
 
-### review_items
+### action_items
 
 Flattened action items for human review (Human-in-the-Loop).
 
@@ -159,7 +156,7 @@ Flattened action items for human review (Human-in-the-Loop).
 | `id` | UUID | No | `gen_random_uuid()` | Primary key |
 | `meeting_id` | UUID | No | - | FK to `meetings.id` |
 | `item_type` | TEXT | No | - | `'epic'`, `'task'`, or `'subtask'` |
-| `item_index` | TEXT | No | - | Hierarchical index (e.g., `"0.1.2"`) |
+| `parent_id` | UUID | Yes | NULL | FK to parent action_item (for Task/Subtask hierarchy) |
 | `summary` | TEXT | No | - | AI-generated summary |
 | `assignee` | TEXT | Yes | NULL | AI-extracted assignee |
 | `deadline` | TEXT | Yes | NULL | AI-extracted deadline |
@@ -173,15 +170,18 @@ Flattened action items for human review (Human-in-the-Loop).
 | `edited_deadline` | TEXT | Yes | NULL | User-edited deadline |
 | `edited_priority` | TEXT | Yes | NULL | User-edited priority |
 | `validation_notes` | JSONB | No | `[]` | Reasons for confidence/flagging decisions |
+| `jira_issue_key` | TEXT | Yes | NULL | Jira issue key if pushed |
+| `jira_issue_url` | TEXT | Yes | NULL | Jira issue URL if pushed |
 | `created_at` | TIMESTAMPTZ | No | `NOW()` | Creation timestamp |
 | `updated_at` | TIMESTAMPTZ | No | `NOW()` | Last update timestamp |
 
 Constraints:
 - FK `meeting_id` -> `meetings.id` ON DELETE CASCADE
+- FK `parent_id` -> `action_items.id` ON DELETE SET NULL
 
 Indexes:
-- `ix_review_items_meeting_id` on `meeting_id`
-- `ix_review_items_is_flagged` on `is_flagged`
+- `ix_action_items_meeting_id` on `meeting_id`
+- `ix_action_items_is_flagged` on `is_flagged`
 
 ### provider_configs
 
@@ -190,7 +190,7 @@ Stores encrypted provider credentials (Fernet encryption).
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | UUID | No | `gen_random_uuid()` | Primary key |
-| `user_id` | TEXT | No | `'default_user'` | User identifier |
+| `user_id` | UUID | No | - | FK to `auth.users(id)` |
 | `provider_name` | TEXT | No | - | Provider name (e.g., `'jira'`, `'openai'`) |
 | `config_json` | TEXT | No | - | **Fernet-encrypted** JSON config |
 | `active` | BOOLEAN | No | TRUE | Whether config is active |
@@ -207,7 +207,7 @@ Stores the current quota plan for each user.
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | UUID | No | `gen_random_uuid()` | Primary key |
-| `user_id` | TEXT | No | - | User identifier |
+| `user_id` | UUID | No | - | FK to `auth.users(id)` |
 | `plan_type` | TEXT | No | `'free'` | Plan type: `free`, `basic`, `pro`, `enterprise` |
 | `plan_started_at` | TIMESTAMPTZ | No | `NOW()` | Start timestamp |
 | `plan_expires_at` | TIMESTAMPTZ | Yes | NULL | Expiration timestamp |
@@ -298,56 +298,61 @@ Async CRUD functions are in `src/db/crud/`:
 ### meeting_crud.py
 
 ```python
-async def create_meeting(db: AsyncSession, title: str, user_id: str) -> Meeting
-async def get_meeting(db: AsyncSession, meeting_id: UUID) -> Meeting | None
-async def list_meetings(db: AsyncSession, user_id: str) -> list[Meeting]
-async def update_meeting_status(db: AsyncSession, meeting_id: UUID, status: str) -> Meeting
-async def update_meeting_audio_path(db: AsyncSession, meeting_id: UUID, path: str) -> Meeting
+def create_meeting(title: str, user_id: str) -> dict
+def get_meeting(meeting_id: str) -> dict | None
+def list_meetings(user_id: str, status: str | None, page: int, page_size: int) -> tuple[list[dict], int]
+def update_meeting(meeting_id: str, **fields) -> dict
+def update_meeting_status(meeting_id: str, status: str) -> dict
+def delete_meeting(meeting_id: str) -> bool
 
-async def create_transcript(db: AsyncSession, meeting_id: UUID, raw_text: str, ...) -> Transcript
-async def get_transcript(db: AsyncSession, meeting_id: UUID) -> Transcript | None
+def create_transcript_segment(meeting_id: str, speaker: str | None, start_time: float | None, end_time: float | None, content: str) -> dict
+def get_transcript_segments(meeting_id: str) -> list[dict]
 
-async def create_analysis_result(db: AsyncSession, meeting_id: UUID, ...) -> AnalysisResult
-async def get_analysis_result(db: AsyncSession, meeting_id: UUID) -> AnalysisResult | None
+def create_analysis_result(meeting_id: str, raw_response: dict, summary: str | None, overall_confidence: float | None) -> dict
+def get_analysis_result(meeting_id: str) -> dict | None
 ```
 
 ### review_crud.py
 
 ```python
-async def bulk_create_review_items(db: AsyncSession, items: list[dict]) -> None
-async def list_review_items(db: AsyncSession, meeting_id: UUID, status: str | None) -> list[ReviewItem]
-async def get_review_item(db: AsyncSession, item_id: UUID) -> ReviewItem | None
-async def update_review_item(db: AsyncSession, item_id: UUID, **fields) -> ReviewItem
-async def approve_review_item(db: AsyncSession, item_id: UUID) -> ReviewItem
-async def reject_review_item(db: AsyncSession, item_id: UUID) -> ReviewItem
-async def approve_all_review_items(db: AsyncSession, meeting_id: UUID) -> int
+def create_action_item(meeting_id: str, item_type: str, **fields) -> dict
+def bulk_create_action_items(items: list[dict]) -> list[dict]
+def list_action_items(meeting_id: str, status: str | None) -> list[dict]
+def get_action_item(item_id: str) -> dict | None
+def update_action_item(item_id: str, **fields) -> dict
+def approve_action_item(item_id: str) -> dict
+def reject_action_item(item_id: str) -> dict
+def approve_all_action_items(meeting_id: str) -> int
 ```
 
 ### provider_crud.py
 
 ```python
-async def get_provider_config(db: AsyncSession, user_id: str, provider_name: str) -> ProviderConfig | None
-async def set_provider_config(db: AsyncSession, user_id: str, provider_name: str, config: dict) -> ProviderConfig
-async def list_provider_configs(db: AsyncSession, user_id: str) -> list[ProviderConfig]
-async def delete_provider_config(db: AsyncSession, user_id: str, provider_name: str) -> None
+def get_provider_config(user_id: str, provider_name: str) -> dict | None
+def set_provider_config(provider_name: str, config: dict, user_id: str) -> dict
+def list_provider_configs(user_id: str) -> list[str]
+def delete_provider_config(provider_name: str, user_id: str) -> bool
 ```
 
 ---
 
 ## Connection
 
-Connection is managed via `src/db/session.py`:
+Connection is managed via `src/db/supabase_client.py`:
 
 ```python
-from src.db.session import get_async_session, async_engine
+from src.db.supabase_client import get_supabase_client
 
-# In FastAPI dependency
-async def get_db():
-    async with get_async_session() as session:
-        yield session
+# Get Supabase client (SERVICE_ROLE_KEY)
+client = get_supabase_client()
+
+# Insert
+client.table("meetings").insert(data).execute()
+
+# Query
+client.table("meetings").select("*").eq("user_id", user_id).execute()
 ```
 
-Environment variable:
-- `POSTGRES_URL`: PostgreSQL connection string
-  - Format: `postgresql+asyncpg://user:password@host:port/dbname`
-  - Example: `postgresql+asyncpg://ai_meeting:password@localhost:5432/ai_meeting_db`
+Environment variables:
+- `SUPABASE_URL`: Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY`: Backend database access key

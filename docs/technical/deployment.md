@@ -82,16 +82,15 @@ Services:
 
 Revision `0003_supabase_rls_foundation.py` changes user-owned database rows to
 Supabase Auth ownership (`user_id uuid references auth.users(id)`) and enables
-RLS. To apply it against Supabase, set `POSTGRES_URL` to the Supabase
-PostgreSQL connection string, then run:
+RLS. Backend uses `SERVICE_ROLE_KEY` for all operations; Electron frontend uses `ANON_KEY` for auth.
+
+To apply migrations against Supabase:
 
 ```bash
 alembic upgrade head
 ```
 
-Do not put Supabase service-role keys or plaintext Jira credentials in desktop
-or frontend configuration. Jira config rows are per-user and should store
-credential fields encrypted.
+For local development with Docker Compose, PostgreSQL runs locally instead of Supabase.
 
 ### Chỉ khởi động infrastructure (không build app)
 
@@ -162,16 +161,42 @@ Xem `.env.example` để biết đầy đủ. Các biến quan trọng:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `SUPABASE_URL` | Yes | — | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes (backend) | — | Backend database access |
+| `SUPABASE_ANON_KEY` | Yes (Electron) | — | Frontend auth |
 | `OPENAI_API_KEY` | Yes | — | GPT-4o + Whisper API |
-| `POSTGRES_URL` | Yes (server) | — | PostgreSQL connection string |
 | `APP_SECRET_KEY` | Yes | — | Fernet key cho credential encryption |
 | `CELERY_BROKER_URL` | No | `redis://localhost:6379/0` | Redis broker |
 | `CELERY_RESULT_BACKEND` | No | `redis://localhost:6379/1` | Redis result backend |
-| `API_BASE_URL` | No | `http://localhost:8000` | Server URL (Flet client) |
-| `DEFAULT_TRANSCRIPTION_LANGUAGE` | No | `vi` | Ngôn ngữ Whisper |
+| `WHISPER_LIVEKIT_URL` | No | — | LiveKit WebSocket URL |
 | `JIRA_BASE_URL` | No | — | Jira instance URL (stub mode nếu thiếu) |
 | `JIRA_EMAIL` | No | — | Jira Basic Auth email |
 | `JIRA_API_TOKEN` | No | — | Jira API token |
 | `JIRA_PROJECT_KEY` | No | — | Jira project key |
 | `CONFIDENCE_LOW_THRESHOLD` | No | `0.4` | Threshold để flag review items |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
+
+---
+
+## Dual Frontend Deployment
+
+### Flet Desktop App
+
+Build standalone `.exe` using [flet pack](https://flet.dev/docs/publish):
+
+```bash
+uv pip install -e ".[frontend]"
+flet pack frontend/main.py --name "AI Meeting Assistant"
+```
+
+Configure `API_BASE_URL` in `.env` to point to production server.
+
+### Electron Desktop App
+
+```bash
+cd electron-app
+npm install
+npm run build  # Production build (.exe via electron-builder)
+```
+
+Electron uses Supabase JS SDK for auth and user queries. Backend is called via axios for heavy operations.
