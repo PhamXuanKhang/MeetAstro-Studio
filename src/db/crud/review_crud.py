@@ -56,7 +56,7 @@ def list_review_items(
         query = query.eq("review_status", status)
     if flagged_only:
         query = query.eq("is_selected", True)
-    query = query.order("is_selected", ascending=False).order("created_at", ascending=True)
+    query = query.order("is_selected", desc=False).order("created_at", desc=True)
     result = query.execute()
     return result.data or []
 
