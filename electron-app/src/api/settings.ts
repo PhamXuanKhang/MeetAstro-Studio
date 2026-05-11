@@ -1,5 +1,5 @@
 import { getClient, getCurrentUserId } from './client'
-import type { ProviderListResponse } from '../types/schema'
+import type { ProviderListResponse } from '../types/supabase-models'
 
 export async function listProviderConfigs(userId = getCurrentUserId()): Promise<string[]> {
   const { data } = await getClient().get<ProviderListResponse>('/settings/providers', {

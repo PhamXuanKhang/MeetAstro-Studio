@@ -19,11 +19,6 @@ import LoginView from './views/auth/LoginView'
 import RegisterView from './views/auth/RegisterView'
 import ForgotPasswordView from './views/auth/ForgotPasswordView'
 import ResetPasswordView from './views/auth/ResetPasswordView'
-import type { MeetingResponse } from './types/schema'
-
-// Minimal shape accepted by openResults — compatible with both
-// MeetingResponse (schema.ts) and MeetingItem (supabase-models.ts)
-type OpenableMeeting = { id: string; title?: string | null; [key: string]: unknown }
 
 type AuthRoute = 'login' | 'register' | 'forgot' | 'reset'
 
@@ -48,7 +43,7 @@ export default function App() {
 
   const { user, initialized, initializing, handleAuthCallback } = useAuthStore()
   const { route, setRoute, busy, progressText, searchQuery, setSearchQuery, setBusy } = useAppStore()
-  const { setSelectedMeeting, setAnalysis, setTranscript, setCurrentMeetingId } = useAppStore()
+  const { setCurrentMeetingId, setCurrentMeetingTitle, setTranscript } = useAppStore()
   const [authRoute, setAuthRoute] = useState<AuthRoute>('login')
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null)
 
@@ -74,15 +69,13 @@ export default function App() {
   }, [handleAuthCallback])
 
   const openResults = useCallback(
-    (meeting: OpenableMeeting) => {
-      // Cast to MeetingResponse for appStore compatibility (Phase 3 will unify types)
-      setSelectedMeeting(meeting as unknown as MeetingResponse)
-      setAnalysis(null)
-      setTranscript('')
+    (meeting: { id: string; title?: string | null }) => {
       setCurrentMeetingId(meeting.id)
+      setCurrentMeetingTitle(meeting.title ?? null)
+      setTranscript('')
       setRoute('results')
     },
-    [setSelectedMeeting, setAnalysis, setTranscript, setCurrentMeetingId, setRoute]
+    [setCurrentMeetingId, setCurrentMeetingTitle, setTranscript, setRoute]
   )
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)

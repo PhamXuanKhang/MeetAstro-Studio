@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { pollJob } from '../api/jobs'
-import type { JobStatusResponse, JobState } from '../types/schema'
+import type { JobStatusResponse, JobState } from '../types/supabase-models'
 
 interface UseJobPollerResult {
   isPolling: boolean
