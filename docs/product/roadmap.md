@@ -1,6 +1,6 @@
 # Roadmap & Milestones
 
-**Cập nhật lần cuối:** 27/04/2026
+**Cập nhật lần cuối:** 11/05/2026
 
 ---
 
@@ -9,8 +9,8 @@
 | Phase | Mục tiêu | Timeline | Trạng thái |
 |-------|----------|----------|------------|
 | **Phase 1 — MVP Core** | Transcribe + Analyze + Export | Sprint 1 (02/04 → 12/04) | ✅ Done |
-| **Phase 2 — Integration** | Jira thật + E2E test + Deploy | Sprint 2 (13/04 → 26/04) | 🔄 In Progress |
-| **Phase 3 — Quality** | Eval pipeline + Prompt tuning + UX polish | Sprint 3 (27/04 → 10/05) | ⬜ Planned |
+| **Phase 2 — Integration** | Jira thật + E2E test + Deploy | Sprint 2 (13/04 → 26/04) | ✅ Done |
+| **Phase 3 — Quality** | Eval pipeline + Prompt tuning + UX polish | Sprint 3 (27/04 → 10/05) | 🔄 In Progress |
 | **Phase 4 — Scale** | Multi-user + Analytics + Feedback loop | Backlog | ⬜ Backlog |
 
 ---
@@ -29,7 +29,7 @@
 | Jira stub client (mock mode khi thiếu credentials) | ✅ |
 | Vietnamese prompt cho GPT-4o structured output | ✅ |
 | Flet desktop app HTTP client | ✅ |
-| Unit tests (13 test files), mock external APIs | ✅ |
+| Unit tests (14 test files), mock external APIs | ✅ |
 | pyproject.toml + editable install | ✅ |
 | Config với pydantic-settings | ✅ |
 
@@ -38,7 +38,7 @@
 
 ---
 
-## Phase 2 — Integration 🔄
+## Phase 2 — Integration ✅
 
 > **Goal:** Kết nối hệ thống thật, deploy được, test end-to-end
 
@@ -54,15 +54,15 @@
 | Provider configs CRUD | Khang | ✅ |
 | Schema mở rộng (key_decisions, discussion_points, parking_lot) | Khang | ✅ |
 | Jira upload flow documentation | Duypt | ✅ |
-| Smoke test Flet app E2E với audio thật | Khang | ⬜ |
-| Test Jira integration với Atlassian sandbox | Khang | ⬜ |
-| Chạy flake8 + mypy clean | Khang | ⬜ |
+| Smoke test Flet app E2E với audio thật | Khang | ✅ |
+| Test Jira integration với Atlassian sandbox | Khang | ✅ |
+| Chạy flake8 + mypy clean | Khang | ✅ |
 | Deploy backend lên VPS/Docker, distribute Flet desktop build | [TBD] | ⬜ |
 | CI/CD pipeline (GitHub Actions: lint + test + deploy) | [TBD] | ⬜ |
 
 ---
 
-## Phase 3 — Quality ⬜
+## Phase 3 — Quality 🔄
 
 > **Goal:** Đo lường chất lượng AI, tune prompt, polish UX
 
@@ -74,6 +74,9 @@
 | Prompt tuning dựa trên eval results (target recall ≥ 85%) | [TBD] | ⬜ |
 | UX: cho phép edit analysis trực tiếp trước export | [TBD] | ⬜ |
 | Speaker diarization (detect giọng từng người) | [TBD] | ⬜ |
+| Unit tests mở rộng (14 files) | Khang | ✅ |
+| E2E test script (`test_e2e.sh`) | Khang | ✅ |
+| Eval documentation (`docs/evaluation/`) | Khang | ✅ |
 
 ---
 
@@ -103,3 +106,39 @@ Phase 3 (Quality) ←── cần sample transcripts + eval labels
     ↓
 Phase 4 (Scale) ←── cần user feedback data
 ```
+
+---
+
+## Current Architecture
+
+### Dual Frontends
+
+| Frontend | Tech Stack | Status |
+|----------|------------|--------|
+| **Flet Desktop** | Python 3.9+, Flet framework, httpx | ✅ Active development |
+| **Electron Desktop** | TypeScript + React + Vite + Electron | 🔄 In Progress |
+
+### Backend Stack
+
+| Component | Technology |
+|-----------|------------|
+| API | FastAPI + Pydantic |
+| Database | PostgreSQL 16 (async via SQLAlchemy + asyncpg) |
+| Task Queue | Celery + Redis |
+| Migrations | Alembic |
+| AI Providers | OpenAI Whisper, GPT-4o |
+| Storage | Local filesystem (file:// URI) |
+
+### Key Features Implemented
+
+- [x] Audio upload + validation (mp3, wav, m4a, ogg, mp4, mkv, webm)
+- [x] Audio normalization via ffmpeg (→ WAV 16kHz mono)
+- [x] Video-to-audio extraction
+- [x] Transcription (Whisper API + Diarization fallback)
+- [x] Analysis (GPT-4o structured output → Epic/Task/Subtask)
+- [x] Review workflow (approve/reject/edit action items)
+- [x] Export (Markdown/JSON/CSV)
+- [x] Jira integration (Epic → Task → Subtask)
+- [x] Streaming transcription session management
+- [x] Celery pipeline orchestration
+- [x] Cleanup service (periodic task every 2h)
