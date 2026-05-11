@@ -48,7 +48,6 @@ class Meeting(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    audio_path: Mapped[Optional[str]] = mapped_column(Text)
     audio_storage_path: Mapped[Optional[str]] = mapped_column(Text)
     audio_duration_seconds: Mapped[Optional[float]] = mapped_column(Float)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")

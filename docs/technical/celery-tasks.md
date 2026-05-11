@@ -112,12 +112,12 @@ def run_pipeline(
 
 ### transcribe_audio
 
-Transcribes audio file using OpenAI Whisper API.
+Transcribes audio file using WhisperLiveKit WebSocket streaming or OpenAI Whisper API.
 
 **Location:** `src/workers/tasks/transcribe_task.py`
 
 ```python
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=5)
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=5)
 def transcribe_audio(
     self,
     meeting_id: str,
@@ -127,20 +127,27 @@ def transcribe_audio(
 ) -> dict:
     """
     Transcribe audio file.
-    
+
+    When diarize=True:
+    1. Try WhisperLiveKit WebSocket streaming (if WHISPER_LIVEKIT_URL configured)
+       - ffmpeg → PCM chunks → WebSocket → WhisperLiveKit Server
+       - Partial results via SSE → Frontend (C10 streaming flow)
+    2. Fall back to OpenAIDiarizeTranscriber (gpt-4o-transcribe-diarize)
+    3. Fall back to OpenAITranscriber (whisper-1) if all fail
+
     Args:
         meeting_id: UUID of the meeting
         audio_path: Path to audio file
         diarize: Enable speaker diarization
         language: Transcription language
-        
+
     Returns:
         {
             "transcript_id": "uuid",
             "char_count": 1234,
             "diarized": false
         }
-        
+
     Raises:
         Retry on transient errors (network, rate limit)
         Fail on permanent errors (file not found, invalid audio)
@@ -148,8 +155,9 @@ def transcribe_audio(
 ```
 
 **Features:**
-- Retry 3 times with 5s delay on transient errors
-- Fallback from diarization to plain transcription on failure
+- Retry 2 times with 5s delay on transient errors
+- WhisperLiveKit streaming when `WHISPER_LIVEKIT_URL` is configured
+- Fallback chain: WhisperLiveKit → OpenAIDiarizeTranscriber → OpenAITranscriber
 - Updates `Transcript` in PostgreSQL
 
 ### analyze_transcript

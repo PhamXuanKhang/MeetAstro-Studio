@@ -1,42 +1,33 @@
-name: Build & Push Docker Image
+name: Mirror to Deploy Repository
 
 on:
   push:
     branches:
       - main
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/a20-app-089
-
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  mirror:
+    runs-on: self-hosted
     permissions:
       contents: read
-      packages: write
 
     steps:
-      - name: Checkout
+      - name: Checkout source repository
         uses: actions/checkout@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      - name: Deploy via Coolify webhook
+      - name: Force push to deploy repository
+        shell: bash
         run: |
-          curl --silent --show-error --fail \
-            -X GET "${{ secrets.COOLIFY_WEBHOOK_URL }}"
+          git remote remove deploy 2>/dev/null || true
+          git remote add deploy "https://x-access-token:${{ secrets.MIRROR_REPO_TOKEN }}@github.com/PhamXuanKhang/MeetAstro-Studio.git"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan mirror-public
+          git rm -r --cached .github/workflows
+          git commit -m "Mirror source without workflows"
+          git push --force deploy mirror-public:main

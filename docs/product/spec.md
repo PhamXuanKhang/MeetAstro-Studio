@@ -2,13 +2,12 @@
 
 **Nhóm:** A20-App-089
 **Track:** ☑ Open
+**Cập nhật:** 11/05/2026
 **Problem statement:** Nhân viên văn phòng và team lead mất 20–40 phút sau mỗi cuộc họp để nghe lại, ghi chép và tạo Jira tickets — AI Meeting Assistant tự động transcribe audio và extract action items có cấu trúc, giảm thời gian xuống còn 2 phút.
 
 ---
 
 ## 1. AI Product Canvas
-
-> Chi tiết đầy đủ: [canvas.md](canvas.md)
 
 |   | Value | Trust | Feasibility |
 |---|-------|-------|-------------|
@@ -29,7 +28,7 @@ Justify: User luôn review và confirm trước khi export — cost of reject = 
 
 ### Feature 1: Transcribe Audio
 
-**Trigger:** User upload file audio (.wav/.mp3/.m4a) → nhấn "Transcribe" → Whisper API xử lý → hiển thị transcript.
+**Trigger:** User upload file audio (.wav/.mp3/.m4a/.ogg hoặc video .mp4/.mkv/.webm) → nhấn "Transcribe" → Whisper API xử lý → hiển thị transcript.
 
 | Path | Mô tả |
 |------|-------|
@@ -47,7 +46,7 @@ Justify: User luôn review và confirm trước khi export — cost of reject = 
 | **Happy — AI đúng, tự tin** | Analysis hiển thị Epic/Task/Subtask chính xác, đúng assignee/deadline/priority. User nhấn export hoặc push Jira. |
 | **Low-confidence — AI không chắc** | GPT-4o trả về assignee = `null` hoặc deadline = `null` cho nhiều tasks → UI hiện "TBD" / "N/A". User biết cần bổ sung thông tin. |
 | **Failure — AI sai** | GPT-4o hallucinate action item không có trong transcript, hoặc gán sai priority. User thấy bất thường khi review → không push Jira, sửa transcript → re-analyze. |
-| **Correction — user sửa** | User sửa transcript → re-analyze. [TBD] Cho phép edit trực tiếp analysis output trước khi export. |
+| **Correction — user sửa** | User sửa transcript → re-analyze. User có thể edit action items trực tiếp trong review view trước khi export. |
 
 ### Feature 3: Export & Push to Jira
 
@@ -81,9 +80,9 @@ Justify: User luôn review và confirm trước khi export — cost of reject = 
 
 | # | Trigger | Hậu quả | Mitigation |
 |---|---------|---------|------------|
-| 1 | **Audio chất lượng kém** (nhiều người nói cùng lúc, tiếng ồn, accent nặng) | Whisper transcribe sai → analysis dựa trên transcript lỗi → action items vô nghĩa. User **có thể không biết** nếu không đọc kỹ transcript. | Hiển thị transcript để user verify trước khi analyze. [TBD] Thêm confidence score per segment. |
+| 1 | **Audio chất lượng kém** (nhiều người nói cùng lúc, tiếng ồn, accent nặng) | Whisper transcribe sai → analysis dựa trên transcript lỗi → action items vô nghĩa. User **có thể không biết** nếu không đọc kỹ transcript. | Hiển thị transcript để user verify trước khi analyze. Confidence score per segment. |
 | 2 | **GPT-4o hallucinate action items** không có trong transcript | Tạo task giả, giao cho người không liên quan. Nếu user không review kỹ → push lên Jira → confusion. | Yêu cầu GPT-4o trích dẫn `context` từ transcript cho mỗi task. User cross-check context ↔ transcript. Augmentation mode bắt buộc review trước push. |
-| 3 | **API outage** (OpenAI down hoặc rate limit) | User không transcribe/analyze được → workflow bị block. | Celery retry + error message rõ ràng. Diarization có thể fallback sang plain OpenAI transcription, nhưng không fallback sang Local Whisper. [TBD] Retry queue/cache analyzer. |
+| 3 | **API outage** (OpenAI down hoặc rate limit) | User không transcribe/analyze được → workflow bị block. | Celery retry + error message rõ ràng. Diarization có thể fallback sang plain OpenAI transcription, nhưng không fallback sang Local Whisper. |
 
 ---
 
@@ -109,6 +108,63 @@ AI **không tự quyết** — user luôn review transcript và analysis trướ
 Quality target: recall ≥ 85% (không sót task), WER ≤ 20%, structured output valid ≥ 95%. Risk chính: audio kém chất lượng và hallucination. Mitigation: human review bắt buộc, diarization fallback sang plain OpenAI transcription, context trích dẫn.
 
 Data flywheel hiện chưa có — hướng phát triển: log user corrections (transcript edits, tasks bị bỏ) → improve prompt → fine-tune model domain-specific dài hạn.
+
+---
+
+## 7. Implemented Features
+
+### Audio Processing
+- [x] Upload audio (.wav, .mp3, .m4a, .ogg)
+- [x] Upload video (.mp4, .mkv, .webm) → extract audio
+- [x] Audio normalization via ffmpeg (→ WAV 16kHz mono)
+- [x] Chunked recording (rotation every N seconds)
+
+### Transcription
+- [x] OpenAI Whisper API transcription
+- [x] Diarization (speaker detection) via OpenAI
+- [x] Fallback to plain transcription on diarization failure
+- [x] LiveKit Whisper transcriber (alternative provider)
+
+### Analysis
+- [x] GPT-4o structured output extraction
+- [x] Epic → Task → Subtask hierarchy
+- [x] Vietnamese prompts (`src/prompts/extract_action_items.md`)
+- [x] Summary, key decisions, parking lot items
+- [x] Confidence scoring via cross-validation
+
+### Review Workflow
+- [x] View action items (Epic/Task/Subtask)
+- [x] Approve individual items
+- [x] Reject individual items
+- [x] Edit items inline
+- [x] Approve all at once
+- [x] Low-confidence items flagged
+
+### Export & Integration
+- [x] Export Markdown
+- [x] Export JSON
+- [x] Export CSV
+- [x] Push to Jira (Epic → Task → Subtask)
+- [x] Jira stub mode (no credentials)
+
+### Infrastructure
+- [x] PostgreSQL 16 with async SQLAlchemy
+- [x] Celery + Redis for background tasks
+- [x] Alembic migrations
+- [x] Docker Compose deployment
+- [x] GitHub Actions CI/CD (deploy only)
+
+---
+
+## 8. Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| PostgreSQL over SQLite | Multi-user support, production-ready, async via SQLAlchemy |
+| Celery + Redis over threading | Resilient job queue, retry on failure, separate worker process |
+| FastAPI over Flask | Auto OpenAPI docs, Pydantic validation, async native |
+| Flet + Electron dual frontend | Flet for rapid Python dev, Electron for native features |
+| MockAnalyzer when no API key | Developer-friendly, no OpenAI key needed for testing |
 
 ---
 

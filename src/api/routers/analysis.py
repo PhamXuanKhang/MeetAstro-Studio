@@ -8,17 +8,17 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db
+from src.api.deps import get_supabase
 from src.api.schemas.meeting_schemas import AnalysisResponse
 from src.api.schemas.task_schemas import JobStatusResponse
 from src.db.crud.meeting_crud import (
     get_analysis_result,
     get_meeting,
-    get_transcript,
+    get_transcript_segments,
     update_meeting_status,
 )
+from supabase import Client
 
 router = APIRouter(prefix="/meetings", tags=["analysis"])
 
@@ -26,23 +26,24 @@ router = APIRouter(prefix="/meetings", tags=["analysis"])
 @router.post("/{meeting_id}/analyze", response_model=JobStatusResponse)
 async def start_analysis(
     meeting_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
 ) -> JobStatusResponse:
     """Start analysis job. Transcript must exist first."""
-    meeting = await get_meeting(db, meeting_id)
+    meeting = get_meeting(str(meeting_id))
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
 
-    transcript = await get_transcript(db, meeting_id)
-    if not transcript:
+    segments = get_transcript_segments(str(meeting_id))
+    if not segments:
         raise HTTPException(
             status_code=400, detail="Transcript not found. Run transcription first."
         )
 
     from src.workers.tasks.analyze_task import analyze_transcript
-    task = analyze_transcript.delay(str(meeting_id), str(transcript.id))
-    await update_meeting_status(
-        db, meeting_id, status="analyzing", celery_task_id=task.id
+
+    task = analyze_transcript.delay(str(meeting_id), transcript_id="")
+    update_meeting_status(
+        str(meeting_id), status="analyzing"
     )
     return JobStatusResponse(job_id=task.id, state="PENDING")
 
@@ -50,10 +51,10 @@ async def start_analysis(
 @router.get("/{meeting_id}/analysis", response_model=AnalysisResponse)
 async def get_analysis_endpoint(
     meeting_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
 ) -> AnalysisResponse:
     """Get analysis result for meeting."""
-    result = await get_analysis_result(db, meeting_id)
+    result = get_analysis_result(str(meeting_id))
     if not result:
         raise HTTPException(
             status_code=404, detail="Analysis not found. Run analyze first."

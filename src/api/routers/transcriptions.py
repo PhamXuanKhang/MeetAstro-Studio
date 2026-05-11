@@ -4,7 +4,7 @@ Router: /api/v1/meetings/{id}/transcribe - manage transcripts.
 POST /meetings/{id}/transcribe           Start transcription job (Celery, non-blocking)
 GET  /meetings/{id}/transcribe/stream   Stream partial results via SSE (real-time)
 GET  /meetings/{id}/transcript          Get saved transcript text
-PATCH /meetings/{id}/transcript         Edit transcript
+PATCH /meetings/{id}/transcript          Edit transcript
 """
 import asyncio
 import json
@@ -13,13 +13,23 @@ from typing import Annotated, Any, Union
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_db
-from src.api.schemas.meeting_schemas import TranscriptPatch, TranscriptResponse
+from src.api.deps import get_supabase
+from src.api.schemas.meeting_schemas import (
+    TranscriptPatch,
+    TranscriptResponse,
+    TranscriptSegmentResponse,
+)
 from src.api.schemas.task_schemas import JobStatusResponse
 from src.config import get_settings
-from src.db.crud.meeting_crud import get_meeting, get_transcript, update_meeting_status
+from src.db.crud.meeting_crud import (
+    build_transcript_text,
+    create_transcript_segments,
+    get_meeting,
+    get_transcript_segments,
+    update_meeting_status,
+)
+from supabase import Client
 
 router = APIRouter(prefix="/meetings", tags=["transcriptions"])
 
@@ -27,33 +37,32 @@ router = APIRouter(prefix="/meetings", tags=["transcriptions"])
 @router.post("/{meeting_id}/transcribe", response_model=JobStatusResponse)
 async def start_transcription(
     meeting_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
     diarize: bool = False,
     language: str = "en",
 ) -> JobStatusResponse:
-    """Start transcription job for meeting with existing audio_path."""
-    meeting = await get_meeting(db, meeting_id)
+    """Start transcription job for meeting with existing audio_storage_path."""
+    meeting = get_meeting(str(meeting_id))
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
-    if not meeting.audio_path:
+    if not meeting.get("audio_storage_path"):
         raise HTTPException(
             status_code=400, detail="Meeting has no audio. Upload audio first."
         )
 
     from src.workers.tasks.transcribe_task import transcribe_audio
+
     task = transcribe_audio.delay(
-        str(meeting_id), meeting.audio_path, diarize=diarize, language=language
+        str(meeting_id), meeting["audio_storage_path"], diarize=diarize, language=language
     )
-    await update_meeting_status(
-        db, meeting_id, status="transcribing", celery_task_id=task.id
-    )
+    update_meeting_status(str(meeting_id), status="transcribing")
     return JobStatusResponse(job_id=task.id, state="PENDING")
 
 
 @router.get("/{meeting_id}/transcribe/stream")
 async def stream_transcribe(
     meeting_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
     diarize: bool = False,
     language: str = "en",
 ) -> StreamingResponse:
@@ -62,31 +71,11 @@ async def stream_transcribe(
 
     Streams diarized partial results as the WhisperLiveKit server processes audio,
     so the frontend can display transcripts in real-time as they are generated.
-
-    SSE events:
-        event: partial
-        data: {"lines": [...], "segments": [...], "done": false}
-
-        event: done
-        data: {"done": true}
-
-        event: error
-        data: {"error": "..."}
-
-    Frontend usage (JavaScript/Fetch):
-        const es = new EventSource(`/api/v1/meetings/${id}/transcribe/stream`);
-        es.addEventListener('partial', (e) => {
-            const data = JSON.parse(e.data);
-            appendSegments(data.segments);
-        });
-        es.addEventListener('done', () => es.close());
-
-    Client can abort the stream at any time (e.g., user closes the page).
     """
-    meeting = await get_meeting(db, meeting_id)
+    meeting = get_meeting(str(meeting_id))
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
-    if not meeting.audio_path:
+    if not meeting.get("audio_storage_path"):
         raise HTTPException(
             status_code=400, detail="Meeting has no audio. Upload audio first."
         )
@@ -96,8 +85,7 @@ async def stream_transcribe(
     if not url:
         raise HTTPException(
             status_code=503,
-            detail="WHISPER_LIVEKIT_URL not configured. "
-                   "Enable WhisperLiveKit or use POST /transcribe for batch processing.",
+            detail="WHISPER_LIVEKIT_URL not configured.",
         )
 
     async def event_generator() -> Any:
@@ -106,7 +94,6 @@ async def stream_transcribe(
             stream_to_callback,
         )
 
-        # Queue bridges the sync callback → async generator
         partial_queue: asyncio.Queue[Union[list[dict], Exception]] = asyncio.Queue()
 
         def sync_callback(lines: list[dict]) -> None:
@@ -132,12 +119,11 @@ async def stream_transcribe(
             return result
 
         try:
-            # Run async stream_to_callback in a thread pool so it doesn't block the event loop
             stream_future = asyncio.get_running_loop().run_in_executor(
                 None,
                 asyncio.run,
                 stream_to_callback(
-                    meeting.audio_path, url, sync_callback
+                    meeting["audio_storage_path"], url, sync_callback
                 ),
             )
 
@@ -185,29 +171,40 @@ async def stream_transcribe(
 @router.get("/{meeting_id}/transcript", response_model=TranscriptResponse)
 async def get_transcript_endpoint(
     meeting_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
 ) -> TranscriptResponse:
-    """Get saved transcript for meeting."""
-    transcript = await get_transcript(db, meeting_id)
-    if not transcript:
+    """Get saved transcript for meeting (reassembled from segments)."""
+    segments = get_transcript_segments(str(meeting_id))
+    if not segments:
         raise HTTPException(
             status_code=404, detail="Transcript not found. Run transcription first."
         )
-    return TranscriptResponse.model_validate(transcript)
+    text = build_transcript_text(segments)
+    return TranscriptResponse(
+        meeting_id=meeting_id,
+        text=text,
+        segments=[TranscriptSegmentResponse.model_validate(s) for s in segments],
+        char_count=len(text),
+    )
 
 
 @router.patch("/{meeting_id}/transcript", response_model=TranscriptResponse)
 async def patch_transcript(
     meeting_id: uuid.UUID,
     payload: TranscriptPatch,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    supabase: Annotated[Client, Depends(get_supabase)],
 ) -> TranscriptResponse:
-    """Allow user to edit transcript before analysis."""
-    transcript = await get_transcript(db, meeting_id)
-    if not transcript:
-        raise HTTPException(status_code=404, detail="Transcript not found.")
-    transcript.raw_text = payload.raw_text
-    transcript.char_count = len(payload.raw_text)
-    await db.flush()
-    await db.refresh(transcript)
-    return TranscriptResponse.model_validate(transcript)
+    """Allow user to edit transcript segments before analysis."""
+    meeting = get_meeting(str(meeting_id))
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found.")
+
+    create_transcript_segments(str(meeting_id), payload.segments)
+    segments = get_transcript_segments(str(meeting_id))
+    text = build_transcript_text(segments)
+    return TranscriptResponse(
+        meeting_id=meeting_id,
+        text=text,
+        segments=[TranscriptSegmentResponse.model_validate(s) for s in segments],
+        char_count=len(text),
+    )

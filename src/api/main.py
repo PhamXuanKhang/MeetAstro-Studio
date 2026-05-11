@@ -15,33 +15,44 @@ from src.api.routers import (
     meetings,
     reviews,
     settings,
+    stream,
     transcriptions,
 )
 from src.config import get_logger, get_settings
-from src.db.session import get_engine, init_engine
+from src.db.supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize DB engine on startup, dispose on shutdown."""
+    """Initialize Supabase client on startup."""
     app_settings = get_settings()
-    if not app_settings.postgres_url:
-        logger.warning("POSTGRES_URL not set - database endpoints will fail.")
+    if not app_settings.supabase_url or not app_settings.supabase_service_role_key:
+        logger.warning(
+            "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — "
+            "database endpoints will fail."
+        )
     else:
         try:
-            init_engine()
-            logger.info("PostgreSQL engine initialized successfully.")
+            client = get_supabase_client()
+            logger.info(
+                "Supabase client initialized: %s",
+                app_settings.supabase_url,
+            )
+            # Verify connection with a simple query
+            client.table("meetings").select("id").limit(1).execute()
+            logger.info("Supabase connection verified.")
         except Exception as exc:
-            logger.error(f"Failed to connect to PostgreSQL: {exc}")
+            logger.error("Failed to connect to Supabase: %s", exc)
     yield
+    # Cleanup on shutdown
     try:
-        engine = get_engine()
-        await engine.dispose()
-        logger.info("PostgreSQL engine disposed.")
-    except RuntimeError:
-        pass
+        from src.services.stream_session_manager import get_stream_manager
+        manager = get_stream_manager()
+        await manager.close_all()
+    except Exception as exc:
+        logger.warning("Error closing streaming sessions on shutdown: %s", exc)
 
 
 def setup_rate_limiting(app: FastAPI) -> None:
@@ -104,11 +115,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Configure middleware
     setup_cors(app)
     setup_rate_limiting(app)
 
-    # Register API routers
     prefix = "/api/v1"
     app.include_router(meetings.router, prefix=prefix)
     app.include_router(transcriptions.router, prefix=prefix)
@@ -117,23 +126,19 @@ def create_app() -> FastAPI:
     app.include_router(jira.router, prefix=prefix)
     app.include_router(exports.router, prefix=prefix)
     app.include_router(settings.router, prefix=prefix)
+    app.include_router(stream.router, prefix=prefix)
 
     @app.get("/api/v1/health", tags=["health"])
     async def health_check() -> dict:
         """Health check endpoint for monitoring."""
-        db_ok = False
+        supabase_ok = False
         try:
-            from sqlalchemy import text
-
-            from src.db.session import _session_factory
-
-            if _session_factory:
-                async with _session_factory() as session:
-                    await session.execute(text("SELECT 1"))
-                    db_ok = True
+            client = get_supabase_client()
+            client.table("meetings").select("id").limit(1).execute()
+            supabase_ok = True
         except Exception:
             pass
-        return {"status": "ok", "db": "ok" if db_ok else "unavailable"}
+        return {"status": "ok", "supabase": "ok" if supabase_ok else "unavailable"}
 
     @app.get("/api/v1/jobs/{job_id}", tags=["jobs"])
     async def get_job_status(job_id: str) -> dict:
