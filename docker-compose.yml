@@ -1,24 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-ai_meeting}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_meeting_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-ai_meeting_db}
-    expose:
-      - "5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    networks:
-      - coolify
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -35,23 +15,6 @@ services:
     networks:
       - coolify
 
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: alembic upgrade head
-    restart: "no"
-    environment:
-      POSTGRES_URL: postgresql://${POSTGRES_USER:-ai_meeting}:${POSTGRES_PASSWORD:-ai_meeting_pass}@postgres:5432/${POSTGRES_DB:-ai_meeting_db}
-    env_file:
-      - path: .env
-        required: false
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - coolify
-
   api:
     build:
       context: .
@@ -61,7 +24,6 @@ services:
       - "8000"
     restart: unless-stopped
     environment:
-      POSTGRES_URL: postgresql://${POSTGRES_USER:-ai_meeting}:${POSTGRES_PASSWORD:-ai_meeting_pass}@postgres:5432/${POSTGRES_DB:-ai_meeting_db}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
@@ -108,7 +70,6 @@ services:
       celery -A src.workers.celery_app worker
       -Q default --loglevel=info --concurrency=2
     environment:
-      POSTGRES_URL: postgresql://${POSTGRES_USER:-ai_meeting}:${POSTGRES_PASSWORD:-ai_meeting_pass}@postgres:5432/${POSTGRES_DB:-ai_meeting_db}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}

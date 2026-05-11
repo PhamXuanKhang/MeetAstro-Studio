@@ -9,7 +9,7 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 WORKDIR /build
 
-# Toolchain only in this stage (native wheels / cryptography / asyncpg build fallback)
+# Toolchain only in this stage for native wheel build fallbacks.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
@@ -20,7 +20,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml .
 COPY src ./src/
-COPY frontend ./frontend/
 
 RUN pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir ".[server]"
@@ -37,7 +36,6 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user (fixed uid/gid for volume ownership if needed)
@@ -45,7 +43,6 @@ RUN useradd --create-home --uid 1000 --user-group --shell /usr/sbin/nologin app
 
 COPY --from=builder /opt/venv /opt/venv
 
-COPY --chown=app:app alembic.ini .
 COPY --chown=app:app src/ ./src/
 
 RUN mkdir -p data/recordings data/meeting-audio \
