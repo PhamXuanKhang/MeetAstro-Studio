@@ -1,7 +1,18 @@
 # syntax=docker/dockerfile:1
-# Multi-stage: faster rebuilds (cached deps layer), smaller & safer final image (no gcc, non-root).
+# Multi-stage: cached Python deps, built landing page assets, smaller runtime image.
 
-# ── Stage 1: install Python deps into a dedicated venv ───────────────────────
+# Stage 1: build landing page static assets
+FROM node:20-slim AS website-builder
+
+WORKDIR /website
+
+COPY website/package*.json ./
+RUN npm ci
+
+COPY website/ ./
+RUN npm run build
+
+# Stage 2: install Python deps into a dedicated venv
 FROM python:3.11-slim AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
@@ -9,7 +20,6 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 WORKDIR /build
 
-# Toolchain only in this stage for native wheel build fallbacks.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
@@ -24,7 +34,7 @@ COPY src ./src/
 RUN pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir ".[server]"
 
-# ── Stage 2: minimal runtime — no compilers; ffmpeg for audio ingestion ─────
+# Stage 3: minimal runtime ? no compilers; ffmpeg for audio ingestion
 FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -38,15 +48,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user (fixed uid/gid for volume ownership if needed)
 RUN useradd --create-home --uid 1000 --user-group --shell /usr/sbin/nologin app
 
 COPY --from=builder /opt/venv /opt/venv
-
 COPY --chown=app:app src/ ./src/
+COPY --from=website-builder --chown=app:app /website/dist ./website/dist/
 
-RUN mkdir -p data/recordings data/meeting-audio \
-    && chown -R app:app /app/data
+RUN mkdir -p data/recordings data/meeting-audio downloads \
+    && chown -R app:app /app/data /app/downloads
 
 USER app
 

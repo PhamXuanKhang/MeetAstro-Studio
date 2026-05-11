@@ -15,6 +15,10 @@ build/
 # OS
 .DS_Store
 
+# Frontend dependencies/build output
+node_modules/
+dist/
+
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 capture_system_audio_to_wav.py

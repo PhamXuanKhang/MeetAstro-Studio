@@ -28,6 +28,9 @@ services:
       API_BASE_URL: ${API_BASE_URL:-https://a20-app-089.smartnovi.tech}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
+      APP_DOWNLOAD_FILENAME: ${APP_DOWNLOAD_FILENAME:-MeetAstro-Setup.msi}
+      APP_DOWNLOAD_VERSION: ${APP_DOWNLOAD_VERSION:-0.1.0}
+      APP_DOWNLOAD_SIZE: ${APP_DOWNLOAD_SIZE:-}
       COOLIFY_DEPLOYMENT: "true"
     env_file:
       - path: .env
@@ -37,6 +40,7 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/app/data
+      - ${APP_DOWNLOADS_DIR:-./downloads}:/app/downloads:ro
     healthcheck:
       test:
         - CMD
