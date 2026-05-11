@@ -67,15 +67,15 @@ async def jira_push_status(
 
     if meeting.get("status") == "pushed":
         return JobStatusResponse(
-            job_id=meeting.get("celery_task_id") or "", state="SUCCESS"
+            job_id="", state="SUCCESS"
         )
     if meeting.get("status") == "failed" and meeting.get("error_message"):
         return JobStatusResponse(
-            job_id=meeting.get("celery_task_id") or "",
+            job_id="",
             state="FAILURE",
             error=meeting.get("error_message"),
         )
     return JobStatusResponse(
-        job_id=meeting.get("celery_task_id") or "",
+        job_id="",
         state="PENDING" if meeting.get("status") != "approved" else "STARTED",
     )

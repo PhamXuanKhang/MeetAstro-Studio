@@ -55,7 +55,7 @@ async def list_review_items_endpoint(
     """List review items with flagged items first."""
     _assert_meeting_exists(meeting_id)
     items = list_review_items(str(meeting_id), status=status, flagged_only=flagged_only)
-    return [ReviewItemResponse.model_validate(i) for i in items]
+    return [ReviewItemResponse.from_action_item(i) for i in items]
 
 
 @router.get("/{meeting_id}/review/{item_id}", response_model=ReviewItemResponse)
@@ -66,7 +66,7 @@ async def get_review_item_endpoint(
 ) -> ReviewItemResponse:
     """Get details of a specific review item."""
     item = _get_item_or_404(item_id, meeting_id)
-    return ReviewItemResponse.model_validate(item)
+    return ReviewItemResponse.from_action_item(item)
 
 
 @router.patch("/{meeting_id}/review/{item_id}", response_model=ReviewItemResponse)
@@ -85,7 +85,7 @@ async def patch_review_item(
         edited_deadline=payload.edited_deadline,
         edited_priority=payload.edited_priority,
     )
-    return ReviewItemResponse.model_validate(updated)
+    return ReviewItemResponse.from_action_item(updated)
 
 
 @router.post("/{meeting_id}/review/{item_id}/approve", response_model=ReviewItemResponse)
@@ -97,7 +97,7 @@ async def approve_item(
     """Approve a review item."""
     _get_item_or_404(item_id, meeting_id)
     updated = set_review_status(str(item_id), status="approved")
-    return ReviewItemResponse.model_validate(updated)
+    return ReviewItemResponse.from_action_item(updated)
 
 
 @router.post("/{meeting_id}/review/{item_id}/reject", response_model=ReviewItemResponse)
@@ -109,7 +109,7 @@ async def reject_item(
     """Reject a review item."""
     _get_item_or_404(item_id, meeting_id)
     updated = set_review_status(str(item_id), status="rejected")
-    return ReviewItemResponse.model_validate(updated)
+    return ReviewItemResponse.from_action_item(updated)
 
 
 @router.post("/{meeting_id}/review/approve_all")

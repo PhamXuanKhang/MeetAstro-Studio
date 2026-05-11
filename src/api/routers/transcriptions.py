@@ -15,13 +15,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from src.api.deps import get_supabase
-from src.api.schemas.meeting_schemas import TranscriptPatch, TranscriptResponse
+from src.api.schemas.meeting_schemas import (
+    TranscriptPatch,
+    TranscriptResponse,
+    TranscriptSegmentResponse,
+)
 from src.api.schemas.task_schemas import JobStatusResponse
 from src.config import get_settings
 from src.db.crud.meeting_crud import (
+    build_transcript_text,
+    create_transcript_segments,
     get_meeting,
-    get_transcript,
-    update_transcript,
+    get_transcript_segments,
     update_meeting_status,
 )
 from supabase import Client
@@ -36,11 +41,11 @@ async def start_transcription(
     diarize: bool = False,
     language: str = "en",
 ) -> JobStatusResponse:
-    """Start transcription job for meeting with existing audio_path."""
+    """Start transcription job for meeting with existing audio_storage_path."""
     meeting = get_meeting(str(meeting_id))
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
-    if not meeting.get("audio_path"):
+    if not meeting.get("audio_storage_path"):
         raise HTTPException(
             status_code=400, detail="Meeting has no audio. Upload audio first."
         )
@@ -48,11 +53,9 @@ async def start_transcription(
     from src.workers.tasks.transcribe_task import transcribe_audio
 
     task = transcribe_audio.delay(
-        str(meeting_id), meeting["audio_path"], diarize=diarize, language=language
+        str(meeting_id), meeting["audio_storage_path"], diarize=diarize, language=language
     )
-    update_meeting_status(
-        str(meeting_id), status="transcribing", celery_task_id=task.id
-    )
+    update_meeting_status(str(meeting_id), status="transcribing")
     return JobStatusResponse(job_id=task.id, state="PENDING")
 
 
@@ -72,7 +75,7 @@ async def stream_transcribe(
     meeting = get_meeting(str(meeting_id))
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
-    if not meeting.get("audio_path"):
+    if not meeting.get("audio_storage_path"):
         raise HTTPException(
             status_code=400, detail="Meeting has no audio. Upload audio first."
         )
@@ -120,7 +123,7 @@ async def stream_transcribe(
                 None,
                 asyncio.run,
                 stream_to_callback(
-                    meeting["audio_path"], url, sync_callback
+                    meeting["audio_storage_path"], url, sync_callback
                 ),
             )
 
@@ -170,13 +173,19 @@ async def get_transcript_endpoint(
     meeting_id: uuid.UUID,
     supabase: Annotated[Client, Depends(get_supabase)],
 ) -> TranscriptResponse:
-    """Get saved transcript for meeting."""
-    transcript = get_transcript(str(meeting_id))
-    if not transcript:
+    """Get saved transcript for meeting (reassembled from segments)."""
+    segments = get_transcript_segments(str(meeting_id))
+    if not segments:
         raise HTTPException(
             status_code=404, detail="Transcript not found. Run transcription first."
         )
-    return TranscriptResponse.model_validate(transcript)
+    text = build_transcript_text(segments)
+    return TranscriptResponse(
+        meeting_id=meeting_id,
+        text=text,
+        segments=[TranscriptSegmentResponse.model_validate(s) for s in segments],
+        char_count=len(text),
+    )
 
 
 @router.patch("/{meeting_id}/transcript", response_model=TranscriptResponse)
@@ -185,9 +194,17 @@ async def patch_transcript(
     payload: TranscriptPatch,
     supabase: Annotated[Client, Depends(get_supabase)],
 ) -> TranscriptResponse:
-    """Allow user to edit transcript before analysis."""
-    transcript = get_transcript(str(meeting_id))
-    if not transcript:
-        raise HTTPException(status_code=404, detail="Transcript not found.")
-    updated_transcript = update_transcript(str(meeting_id), raw_text=payload.raw_text)
-    return TranscriptResponse.model_validate(updated_transcript)
+    """Allow user to edit transcript segments before analysis."""
+    meeting = get_meeting(str(meeting_id))
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found.")
+
+    create_transcript_segments(str(meeting_id), payload.segments)
+    segments = get_transcript_segments(str(meeting_id))
+    text = build_transcript_text(segments)
+    return TranscriptResponse(
+        meeting_id=meeting_id,
+        text=text,
+        segments=[TranscriptSegmentResponse.model_validate(s) for s in segments],
+        char_count=len(text),
+    )

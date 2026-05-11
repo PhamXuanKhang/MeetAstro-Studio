@@ -27,11 +27,12 @@ from src.db.crud.meeting_crud import (
     update_meeting,
     update_meeting_status,
 )
+from src.db.supabase_client import ConflictError
 from supabase import Client
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
-ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+ZERO_UUID = "7f3572eb-aed9-4e7f-a4b1-41ecb03319e9"
 
 
 @router.post("", response_model=MeetingResponse, status_code=status.HTTP_201_CREATED)
@@ -40,10 +41,16 @@ async def create_meeting_endpoint(
     supabase: Annotated[Client, Depends(get_supabase)],
 ) -> MeetingResponse:
     """Create a new meeting record."""
-    meeting = create_meeting(
-        title=payload.title,
-        user_id=str(payload.user_id or ZERO_UUID),
-    )
+    try:
+        meeting = create_meeting(
+            title=payload.title,
+            user_id=str(payload.user_id or ZERO_UUID),
+        )
+    except ConflictError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Meeting with title '{payload.title}' already exists for this user.",
+        )
     return MeetingResponse.model_validate(meeting)
 
 
@@ -98,11 +105,21 @@ async def upload_audio_endpoint(
     meeting_id: uuid.UUID,
     supabase: Annotated[Client, Depends(get_supabase)],
     file: UploadFile = File(...),
+    client_path: str = Form(
+        default="",
+        description="file:// URI of the original audio on the user's machine",
+    ),
     diarize: bool = Form(default=False),
     language: str = Form(default="en"),
 ) -> AudioUploadResponse:
     """
     Upload audio/video file, normalize to WAV 16kHz mono, and queue pipeline.
+
+    The original file stays on the user's machine. Only a temporary VPS copy is
+    kept for Whisper processing, and is deleted after transcription completes.
+
+    The DB stores ``audio_storage_path`` as the ``client_path`` (file:// URI),
+    which is the user's local path. The ``storage_provider`` field defaults to "local".
 
     Supported formats:
     - Audio: .mp3, .wav, .m4a, .ogg
@@ -126,9 +143,9 @@ async def upload_audio_endpoint(
             detail=f"Meeting is in '{meeting.get('status')}' state, cannot re-upload.",
         )
 
-    # Validate & process upload
+    # Validate & process upload (saves temp VPS copy for Whisper)
     try:
-        audio_path, storage_path, duration = process_upload(
+        vps_temp_path, duration = process_upload(
             file_stream=file.file,
             filename=file.filename or "upload.wav",
             user_id=meeting.get("user_id", ZERO_UUID),
@@ -142,30 +159,31 @@ async def upload_audio_endpoint(
     except AudioProcessingError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # client_path is the file:// URI on the user's machine (stored in DB)
+    audio_storage_path = client_path if client_path else None
+
     # Update meeting record
     update_meeting(
         str(meeting_id),
-        audio_path=audio_path,
-        audio_storage_path=storage_path,
-        audio_duration_seconds=duration,
+        audio_storage_path=audio_storage_path,
+        audio_duration_seconds=int(duration),
     )
 
-    # Queue pipeline
+    # Queue pipeline (VPS temp path used for Whisper processing)
     from src.workers.pipeline import run_pipeline
 
     task = run_pipeline.delay(
-        str(meeting_id), audio_path, diarize=diarize, language=language
+        str(meeting_id), vps_temp_path, diarize=diarize, language=language
     )
 
     update_meeting_status(
         str(meeting_id),
         status="pending",
-        celery_task_id=task.id,
     )
 
     return AudioUploadResponse(
         meeting_id=meeting_id,
         job_id=task.id,
-        audio_storage_path=storage_path,
-        audio_duration_seconds=duration,
+        audio_storage_path=audio_storage_path,
+        audio_duration_seconds=int(duration),
     )

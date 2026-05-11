@@ -36,7 +36,6 @@ class MeetingCreate(BaseModel):
 class MeetingResponse(BaseModel):
     id: UUID
     title: str
-    audio_path: Optional[str] = None
     audio_storage_path: Optional[str] = None
     audio_duration_seconds: Optional[float] = None
     status: str
@@ -64,37 +63,54 @@ class MeetingListResponse(BaseModel):
     page_size: int
 
 
-class TranscriptResponse(BaseModel):
+class TranscriptSegmentResponse(BaseModel):
+    """Single transcript segment."""
+
     id: UUID
     meeting_id: UUID
-    raw_text: str
-    diarized_text: Optional[str] = None
-    language: str
-    char_count: Optional[int] = None
-    created_at: datetime
+    speaker: Optional[str] = None
+    start_time: float
+    end_time: float
+    content: str
 
     @field_validator("id", "meeting_id", mode="before")
     @classmethod
     def _uuid(cls, v: Any) -> UUID:
         return _uuid_from_str(v)
 
-    @field_validator("created_at", mode="before")
+
+class TranscriptResponse(BaseModel):
+    """Transcript reassembled from segments, with raw segment data."""
+
+    meeting_id: UUID
+    text: str  # reassembled full text
+    segments: list[TranscriptSegmentResponse]
+    char_count: int
+
+    @field_validator("meeting_id", mode="before")
     @classmethod
-    def _dt(cls, v: Any) -> datetime:
-        return _datetime_from_str(v)
+    def _uuid(cls, v: Any) -> UUID:
+        return _uuid_from_str(v)
 
 
 class TranscriptPatch(BaseModel):
-    raw_text: str = Field(..., min_length=1)
+    """Patch request for editing transcript segments."""
+    segments: list[dict[str, Any]] = Field(..., min_length=1)
 
 
 class AnalysisResponse(BaseModel):
+    """Response model for analysis_results table."""
+
     id: UUID
     meeting_id: UUID
-    analysis_json: dict[str, Any]
-    summary: Optional[str] = None
-    overall_confidence: Optional[float] = None
-    validation_metrics: Optional[dict[str, Any]] = None
+    # Column mapping: Supabase uses raw_response, not analysis_json
+    raw_response: Optional[dict[str, Any]] = None
+    summary_text: Optional[str] = None
+    key_decisions: Optional[dict[str, Any]] = None
+    parking_lot: Optional[dict[str, Any]] = None
+    ai_model: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
     created_at: datetime
 
     @field_validator("id", "meeting_id", mode="before")

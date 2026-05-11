@@ -1,7 +1,7 @@
 """
 Supabase client singleton for backend access using SERVICE_ROLE_KEY.
 
-Used for all database operations: meetings, transcripts, analysis_results, review_items,
+Used for all database operations: meetings, transcripts, analysis_results, action_items,
 provider_configs. Frontend uses Supabase JS SDK (ANON_KEY) for auth/user operations.
 Backend uses this client (SERVICE_ROLE_KEY) for all read/write operations.
 """
@@ -12,6 +12,8 @@ from supabase import Client, create_client
 from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
+
+ConflictError = type("ConflictError", (RuntimeError,), {})
 
 _client: Optional[Client] = None
 
@@ -49,9 +51,9 @@ def clear_supabase_client() -> None:
 # ── Table name constants ──────────────────────────────────────────
 
 TABLE_MEETINGS = "meetings"
-TABLE_TRANSCRIPTS = "transcripts"
+TABLE_TRANSCRIPT_SEGMENTS = "transcript_segments"
 TABLE_ANALYSIS_RESULTS = "analysis_results"
-TABLE_REVIEW_ITEMS = "review_items"
+TABLE_ACTION_ITEMS = "action_items"
 TABLE_PROVIDER_CONFIGS = "provider_configs"
 
 
@@ -60,9 +62,18 @@ TABLE_PROVIDER_CONFIGS = "provider_configs"
 def insert(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Insert a row and return the inserted record."""
     client = get_supabase_client()
-    result = client.table(table).insert(data).execute()
+    try:
+        result = client.table(table).insert(data).execute()
+    except Exception as exc:  # noqa: BLE001
+        # Supabase SDK may raise httpx.HTTPStatusError for 409 Conflict
+        if hasattr(exc, "response") and getattr(exc.response, "status_code", None) == 409:
+            raise ConflictError(f"Duplicate entry in table {table}: {data}") from exc
+        raise
     if result.data:
         return result.data[0]
+    # Check status_code on the result object as fallback
+    if hasattr(result, "status_code") and result.status_code == 409:
+        raise ConflictError(f"Duplicate entry in table {table}: {data}")
     raise RuntimeError(f"Insert into {table} returned no data: {result}")
 
 
@@ -105,6 +116,8 @@ def fetch_one(table: str, filters: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     for col, val in filters.items():
         query = query.eq(col, val)
     result = query.maybe_single().execute()
+    if result is None:
+        return None
     return result.data if result.data else None
 
 

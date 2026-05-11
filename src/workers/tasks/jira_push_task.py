@@ -1,14 +1,21 @@
 """
-Celery task: push approved review items to Jira.
+Celery task: push approved action items to Jira.
 
 Input:  meeting_id (str)
 Output: {"epic_keys": list, "task_count": int, "subtask_count": int, "is_stub": bool}
 """
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from src.config import get_logger
-from src.db.crud.meeting_crud import get_analysis_result, update_meeting_status
+from src.db.crud.meeting_crud import update_meeting_status
 from src.db.crud.review_crud import list_review_items
 from src.services.jira_service import push_analysis_to_jira
 from src.workers.celery_app import celery_app
+
+if TYPE_CHECKING:
+    from src.schema import MeetingAnalysis
 
 logger = get_logger(__name__)
 
@@ -28,8 +35,7 @@ def push_to_jira(self, meeting_id: str) -> dict:
     if not items:
         raise ValueError("No approved items to push.")
 
-    analysis_result = get_analysis_result(meeting_id)
-    meeting_analysis = _reconstruct_analysis(items, analysis_result)
+    meeting_analysis = _reconstruct_analysis(items)
 
     try:
         push_result = push_analysis_to_jira(meeting_analysis)
@@ -53,89 +59,88 @@ def push_to_jira(self, meeting_id: str) -> dict:
     }
 
 
-def _reconstruct_analysis(approved_items, analysis_result):
+def _reconstruct_analysis(approved_items: list[dict]) -> "MeetingAnalysis":  # noqa: F821
     """
-    Reconstruct MeetingAnalysis from list of approved ReviewItems.
+    Reconstruct MeetingAnalysis from flat list of approved action_items.
 
-    Uses edited_* fields if user has made edits, otherwise uses original fields.
+    action_items has no `item_index` column, so we rebuild hierarchy using
+    `parent_id` and `item_type`:
+      - Epic items (item_type=epic, parent_id=None)
+      - Task items (item_type=task, parent_id=None → top-level task)
+      - Subtask items (item_type=subtask, parent_id → belongs to parent task)
+
+    Edits are stored directly in title/assignee/deadline/priority (no edited_* fields).
     """
     from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
 
-    epics_map: dict[str, dict] = {}
+    # Separate by item_type
+    epics_raw = [i for i in approved_items if i.get("item_type") == "epic"]
+    tasks_raw = [i for i in approved_items if i.get("item_type") == "task"]
+    subtasks_raw = [i for i in approved_items if i.get("item_type") == "subtask"]
 
-    for item in approved_items:
-        parts = item.get("item_index", "").split(".")
-        summary = item.get("edited_summary") or item.get("summary")
-        assignee = item.get("edited_assignee") or item.get("assignee")
-        deadline = item.get("edited_deadline") or item.get("deadline")
-        priority_str = item.get("edited_priority") or item.get("priority") or "Medium"
+    # Build subtask list per task_id
+    subtasks_by_task: dict[str, list[Subtask]] = {}
+    for sub in subtasks_raw:
+        parent_id = sub.get("parent_id")
+        if not parent_id:
+            continue
+        priority_str = sub.get("priority") or "Medium"
         valid_priorities = [p.value for p in Priority]
-        priority = Priority(priority_str) if priority_str in valid_priorities else Priority.MEDIUM
+        priority = (
+            Priority(priority_str)
+            if priority_str in valid_priorities
+            else Priority.MEDIUM
+        )
+        subtask = Subtask(
+            summary=sub.get("title") or "",
+            assignee=sub.get("assignee"),
+            deadline=sub.get("deadline"),
+            priority=priority,
+            context=sub.get("description") or "",
+        )
+        subtasks_by_task.setdefault(parent_id, []).append(subtask)
 
-        if item.get("item_type") == "epic":
-            epic_idx = parts[0]
-            if epic_idx not in epics_map:
-                epics_map[epic_idx] = {
-                    "summary": summary,
-                    "description": item.get("context") or "",
-                    "tasks": {},
-                }
+    # Build task list per epic_id; orphan_tasks are top-level tasks with no parent epic
+    tasks_by_epic: dict[str, list[Task]] = {}
+    orphan_tasks: list[Task] = []
+    for task in tasks_raw:
+        parent_id = task.get("parent_id")
+        priority_str = task.get("priority") or "Medium"
+        valid_priorities = [p.value for p in Priority]
+        priority = (
+            Priority(priority_str)
+            if priority_str in valid_priorities
+            else Priority.MEDIUM
+        )
+        t = Task(
+            summary=task.get("title") or "",
+            assignee=task.get("assignee"),
+            deadline=task.get("deadline"),
+            priority=priority,
+            context=task.get("description") or "",
+            subtasks=subtasks_by_task.get(task["id"], []),
+        )
+        if parent_id:
+            tasks_by_epic.setdefault(parent_id, []).append(t)
+        else:
+            orphan_tasks.append(t)
 
-        elif item.get("item_type") == "task":
-            epic_idx, task_idx = parts[0], parts[1]
-            if epic_idx not in epics_map:
-                epics_map[epic_idx] = {
-                    "summary": f"Epic {epic_idx}", "description": "", "tasks": {}
-                }
-            epics_map[epic_idx]["tasks"][task_idx] = {
-                "summary": summary,
-                "assignee": assignee,
-                "deadline": deadline,
-                "priority": priority,
-                "context": item.get("context") or "",
-                "subtasks": {},
-            }
-
-        elif item.get("item_type") == "subtask":
-            epic_idx, task_idx, sub_idx = parts[0], parts[1], parts[2]
-            if epic_idx not in epics_map:
-                epics_map[epic_idx] = {
-                    "summary": f"Epic {epic_idx}", "description": "", "tasks": {}
-                }
-            if task_idx not in epics_map[epic_idx]["tasks"]:
-                epics_map[epic_idx]["tasks"][task_idx] = {
-                    "summary": f"Task {task_idx}", "assignee": None,
-                    "deadline": None, "priority": Priority.MEDIUM,
-                    "context": "", "subtasks": {},
-                }
-            epics_map[epic_idx]["tasks"][task_idx]["subtasks"][sub_idx] = Subtask(
-                summary=summary, assignee=assignee, deadline=deadline,
-                priority=priority, context=item.get("context") or "",
-            )
-
+    # Build epics
     epics = []
-    for epic_idx in sorted(epics_map.keys(), key=int):
-        epic_data = epics_map[epic_idx]
-        tasks = []
-        for task_idx in sorted(epic_data["tasks"].keys(), key=int):
-            task_data = epic_data["tasks"][task_idx]
-            subtasks = [
-                task_data["subtasks"][s]
-                for s in sorted(task_data["subtasks"].keys(), key=int)
-            ]
-            tasks.append(Task(
-                summary=task_data["summary"],
-                assignee=task_data["assignee"],
-                deadline=task_data["deadline"],
-                priority=task_data["priority"],
-                context=task_data["context"],
-                subtasks=subtasks,
-            ))
+    for epic in epics_raw:
+        epic_tasks = tasks_by_epic.get(epic["id"], [])
         epics.append(Epic(
-            summary=epic_data["summary"],
-            description=epic_data["description"],
-            tasks=tasks,
+            summary=epic.get("title") or "",
+            description=epic.get("description") or "",
+            tasks=epic_tasks,
         ))
 
-    summary_text = analysis_result.get("summary", "") if analysis_result else ""
-    return MeetingAnalysis(epics=epics, summary=summary_text)
+    # Include any top-level tasks that have no parent epic
+    for orphan_task in orphan_tasks:
+        epics.append(Epic(
+            summary="Action Items",
+            description="Top-level action items without a parent epic",
+            tasks=[orphan_task],
+        ))
+
+    return MeetingAnalysis(epics=epics)

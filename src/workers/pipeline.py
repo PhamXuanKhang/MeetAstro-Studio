@@ -24,9 +24,8 @@ def run_pipeline(
     transcribe_result = transcribe_audio(
         meeting_id, audio_path, diarize=diarize, language=language
     )
-    transcript_id = transcribe_result["transcript_id"]
 
-    analyze_result = analyze_transcript(meeting_id, transcript_id)
+    analyze_result = analyze_transcript(meeting_id, transcript_id="")
     return {
         "transcribe": transcribe_result,
         "analyze": analyze_result,

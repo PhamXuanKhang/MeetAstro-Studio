@@ -15,7 +15,7 @@ from src.api.schemas.task_schemas import JobStatusResponse
 from src.db.crud.meeting_crud import (
     get_analysis_result,
     get_meeting,
-    get_transcript,
+    get_transcript_segments,
     update_meeting_status,
 )
 from supabase import Client
@@ -33,17 +33,17 @@ async def start_analysis(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found.")
 
-    transcript = get_transcript(str(meeting_id))
-    if not transcript:
+    segments = get_transcript_segments(str(meeting_id))
+    if not segments:
         raise HTTPException(
             status_code=400, detail="Transcript not found. Run transcription first."
         )
 
     from src.workers.tasks.analyze_task import analyze_transcript
 
-    task = analyze_transcript.delay(str(meeting_id), str(transcript["id"]))
+    task = analyze_transcript.delay(str(meeting_id), transcript_id="")
     update_meeting_status(
-        str(meeting_id), status="analyzing", celery_task_id=task.id
+        str(meeting_id), status="analyzing"
     )
     return JobStatusResponse(job_id=task.id, state="PENDING")
 

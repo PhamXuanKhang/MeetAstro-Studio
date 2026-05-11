@@ -24,7 +24,8 @@ def _get_analysis_or_404(meeting_id: str) -> MeetingAnalysis:
         raise HTTPException(
             status_code=404, detail="Analysis not found. Run analyze first."
         )
-    return MeetingAnalysis.from_dict(result.get("analysis_json", {}))
+    # Column mapping: Supabase uses raw_response, not analysis_json
+    return MeetingAnalysis.from_dict(result.get("raw_response", {}))
 
 
 def _assert_meeting_exists(meeting_id: str) -> None:

@@ -221,10 +221,14 @@ def process_upload(
     user_id: Union[str, uuid.UUID],
     meeting_id: str,
     file_size: Optional[int] = None,
-) -> tuple[str, str, float]:
+) -> tuple[str, float]:
     """Process an uploaded audio/video file end-to-end.
 
-    Pipeline: validate → save temp → normalize/extract → move to storage → get duration
+    Saves the uploaded file to a **temporary** location on VPS for Whisper processing.
+    The original file stays on the user's machine (tracked via audio_storage_path
+    in the DB). The temp VPS copy is deleted by the pipeline after transcription.
+
+    Pipeline: validate → save temp → normalize/extract → get duration
 
     Args:
         file_stream: File-like object of the upload.
@@ -234,7 +238,7 @@ def process_upload(
         file_size: File size in bytes (optional).
 
     Returns:
-        Tuple of (absolute_wav_path, relative_storage_path, duration_seconds).
+        Tuple of (vps_temp_path, duration_seconds).
 
     Raises:
         UnsupportedFileFormat: If format is invalid.
@@ -244,14 +248,7 @@ def process_upload(
     ext = validate_upload(filename, file_size)
     settings = get_settings()
 
-    # Build output paths
-    user_id_str = str(user_id)
-    storage_path = build_storage_path(user_id_str, meeting_id)
-    abs_output_dir = os.path.join(settings.audio_storage_base, user_id_str)
-    os.makedirs(abs_output_dir, exist_ok=True)
-    abs_output_path = os.path.join(abs_output_dir, f"{meeting_id}.wav")
-
-    # Save uploaded file to a temporary location
+    # Save uploaded file to a temporary location on VPS
     tmp_dir = os.path.join(settings.audio_storage_base, ".tmp")
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -261,25 +258,34 @@ def process_upload(
         with os.fdopen(tmp_fd, "wb") as tmp_f:
             shutil.copyfileobj(file_stream, tmp_f)
 
-        # Process: normalize or extract
-        if is_video_extension(ext):
-            extract_audio_from_video(tmp_path, abs_output_path)
-        else:
-            normalize_audio(tmp_path, abs_output_path)
+        # Normalize/extract to a second temp file (Whisper optimal format)
+        norm_suffix = ".wav"
+        norm_fd, norm_path = tempfile.mkstemp(suffix=norm_suffix, dir=tmp_dir)
+        os.close(norm_fd)
+        try:
+            if is_video_extension(ext):
+                extract_audio_from_video(tmp_path, norm_path)
+            else:
+                normalize_audio(tmp_path, norm_path)
 
-    finally:
-        # Clean up temp file
+            # Get duration from the normalized WAV; norm_path is temp, deleted below
+            duration = get_audio_duration(norm_path)
+        finally:
+            try:
+                os.unlink(norm_path)
+            except OSError:
+                pass
+
+    except Exception:
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
-
-    # Get duration
-    duration = get_audio_duration(abs_output_path)
+        raise
 
     logger.info(
         "File ingestion complete: user=%s meeting=%s duration=%.1fs path=%s",
-        user_id_str, meeting_id, duration, abs_output_path,
+        user_id, meeting_id, duration, tmp_path,
     )
 
-    return abs_output_path, storage_path, duration
+    return tmp_path, duration
