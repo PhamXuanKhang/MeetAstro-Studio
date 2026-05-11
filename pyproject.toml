@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Backend: FastAPI server + Celery worker + PostgreSQL
+# Backend: FastAPI server + Celery worker + Supabase + Redis
 server = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.29",
@@ -28,15 +28,6 @@ server = [
     "slowapi>=0.1.9",
     "ffmpeg-python>=0.2.0",
     "supabase>=2.5.0",
-]
-
-# Frontend: Flet desktop app + local audio recording
-frontend = [
-    "flet[all]>=0.28",
-    "sounddevice>=0.5.0",
-    # Upstream explicitly rejects Linux; only macOS / Windows wheels exist.
-    "pysysaudio==0.1.3; sys_platform == 'darwin' or sys_platform == 'win32'",
-    "numpy>=1.26.0",
 ]
 
 # Dev: testing + linting + type checking
@@ -51,13 +42,12 @@ dev = [
 # All-in-one cho local dev environment
 all = [
     "a20-app-089[server]",
-    "a20-app-089[frontend]",
     "a20-app-089[dev]",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["src*", "frontend*"]
+include = ["src*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -70,5 +60,3 @@ no_site_packages = true
 [tool.flake8]
 max-line-length = 100
 
-[tool.alembic]
-script_location = "src/db/migrations"
