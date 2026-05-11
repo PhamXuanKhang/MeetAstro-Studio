@@ -1,16 +1,16 @@
 import type { CSSProperties } from 'react'
 
 export const colors = {
-  background: '#f8fafc',
+  background: '#f6f5f4',
   surface: '#ffffff',
-  text: '#0f172a',
-  muted: '#64748b',
-  primary: '#0ea5e9',
-  success: '#16a34a',
-  warning: '#ca8a04',
-  danger: '#dc2626',
-  border: '#e2e8f0',
-  input: '#f8fafc',
+  text: '#1a1a1a',
+  muted: '#5d5b54',
+  primary: '#5645d4',
+  success: '#1aae39',
+  warning: '#dd5b00',
+  danger: '#e03131',
+  border: '#e5e3df',
+  input: '#fafaf9',
 }
 
 export const spacing = {
@@ -30,7 +30,7 @@ export const radius = {
 }
 
 export const shadows = {
-  card: '0 4px 24px rgba(15, 23, 42, 0.06)',
+  card: '0 4px 12px rgba(15, 15, 15, 0.08)',
 }
 
 export const inputStyle: CSSProperties = {
@@ -70,12 +70,12 @@ export const buttonSecondary: CSSProperties = {
 export const buttonDanger: CSSProperties = {
   ...buttonSecondary,
   color: colors.danger,
-  border: '1px solid #fca5a5',
+  border: '1px solid #f4b8b8',
 }
 
 export const buttonDisabled: CSSProperties = {
-  background: '#f1f5f9',
-  color: '#94a3b8',
+  background: colors.border,
+  color: '#bbb8b1',
   border: `1px solid ${colors.border}`,
   cursor: 'not-allowed',
   opacity: 0.8,
@@ -83,27 +83,27 @@ export const buttonDisabled: CSSProperties = {
 
 export const alertSuccess: CSSProperties = {
   padding: '10px 14px',
-  background: '#dcfce7',
-  border: '1px solid #bbf7d0',
+  background: '#d9f3e1',
+  border: '1px solid #b7e6c4',
   borderRadius: radius.md,
   fontSize: 13,
-  color: '#166534',
+  color: '#0f6f25',
 }
 
 export const alertError: CSSProperties = {
   padding: '10px 14px',
-  background: '#fee2e2',
-  border: '1px solid #fecaca',
+  background: '#fde0ec',
+  border: '1px solid #f5b8cf',
   borderRadius: radius.md,
   fontSize: 13,
-  color: '#991b1b',
+  color: '#9f1d1d',
 }
 
 export const alertWarning: CSSProperties = {
   padding: '10px 14px',
-  background: '#fef9c3',
-  border: '1px solid #fde68a',
+  background: '#fef7d6',
+  border: '1px solid #f5d75e',
   borderRadius: radius.md,
   fontSize: 12,
-  color: '#713f12',
+  color: '#793400',
 }

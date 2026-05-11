@@ -364,6 +364,76 @@
 ---
 
 ## ═══════════════════════════════════════
+## EXTRA TASKS — Website & Distribution
+### Mục tiêu: Có public website chạy cùng backend để quảng bá MeetAstro và cho phép tải app trực tiếp
+---
+
+### Extra-1 — Public Landing Page Website
+**Người phụ trách:** Khang
+**Use cases:** Marketing / Distribution ngoài app
+
+#### Subtasks
+
+**[Extra-1.1] Landing page React UI theo DESIGN.md** 🟥 P0
+- **Input:** `DESIGN.md`, positioning sản phẩm MeetAstro, Electron app là sản phẩm tải về
+- **Output:** Public landing page responsive chạy được trên domain; UI cùng style với app theo `DESIGN.md` (Notion-style: deep navy hero band, purple primary CTA, pastel feature cards, workspace/app mockup card, typography/spacing/radius theo token); không lệch visual language so với Electron app
+- **Nội dung bắt buộc:** Hero section, CTA tải app, product mockup, problem/solution, feature grid, workflow “Record/Upload → Transcript → Action Items → Jira”, trust/security section, target users, FAQ, final CTA, footer
+- **Ghi chú:** Có thể lấy cảm hứng layout từ Cursor/Notion nhưng copy/content phải là của MeetAstro; landing page ưu tiên rõ ràng, đẹp, deploy được hơn là nhiều interaction phức tạp
+
+**[Extra-1.2] Download MSI flow** 🟥 P0
+- **Input:** File build `.msi` của Electron app, version/release metadata nếu có
+- **Output:** Nút “Download for Windows” tải trực tiếp file `.msi`; hiển thị version, file size nếu có, platform Windows; có fallback message nếu MSI chưa được publish
+- **Ghi chú:** Đường dẫn download phải cấu hình qua env/config, không hardcode secret hoặc URL tạm; nếu backend serve static file thì cần cache/header hợp lý
+
+**[Extra-1.3] Landing page content & SEO baseline** 🟧 P1
+- **Input:** Product scope trong docs, Jira integration target, AI meeting minutes positioning
+- **Output:** Title/meta description, OpenGraph tags, favicon/app icon, semantic sections, accessible headings, alt text cho mockup; copy đủ cho landing page SaaS/app: value proposition, features, how it works, FAQ, download CTA
+- **Ghi chú:** Nội dung nên nhấn mạnh: biến audio cuộc họp thành transcript, summary, action items Epic/Task/Subtask và đẩy Jira
+
+**[Extra-1.4] Responsive polish & visual QA** 🟧 P1
+- **Input:** Breakpoints trong `DESIGN.md`
+- **Output:** Layout đẹp ở mobile/tablet/desktop; top nav collapse hoặc tối giản trên mobile; CTA luôn dễ thấy; không overflow mockup/card; màu/button/card đúng token
+- **Ghi chú:** Test tối thiểu ở widths: 390px, 768px, 1280px
+
+**Trích dẫn:**
+- Design system → `DESIGN.md`: hero-band-dark, workspace-mockup-card, pastel feature cards, button-primary, responsive breakpoints
+- Product scope → `CLAUDE.md` Overview + `docs/task_breakdown.md` Phase 1 flow
+
+---
+
+### Extra-2 — Website Runtime & Backend Deployment Integration
+**Người phụ trách:** Duy + Khang
+**Use cases:** Deploy / Distribution ngoài app
+
+#### Subtasks
+
+**[Extra-2.1] Serve landing page cùng backend/domain** 🟥 P0
+- **Input:** FastAPI backend đang deploy trên domain, landing page build output
+- **Output:** Domain root (`/`) hiển thị landing page; API vẫn hoạt động dưới `/api/v1/*`; health/docs endpoints không bị ảnh hưởng; refresh trực tiếp trên route website không 404
+- **Ghi chú:** Có thể serve static build qua FastAPI hoặc reverse proxy tùy deploy hiện tại; không phá Docker backend stack Redis/API/Worker
+
+**[Extra-2.2] Static MSI hosting endpoint/path** 🟥 P0
+- **Input:** Electron `.msi` artifact, download route hoặc static folder
+- **Output:** Stable download URL cho CTA landing page; hỗ trợ content-type/download filename đúng; có verify bằng browser/curl tải được file
+- **Ghi chú:** File `.msi` không commit vào repo nếu quá lớn; ưu tiên artifact/release/static volume được mount khi deploy
+
+**[Extra-2.3] Docker/deploy config update** 🟧 P1
+- **Input:** Dockerfile/docker-compose/deploy workflow hiện tại
+- **Output:** Build/deploy include landing page static assets; env var cấu hình download URL/version; `docker compose config` pass; backend import smoke pass
+- **Ghi chú:** Không thêm PostgreSQL/Flet legacy trở lại; giữ runtime là Electron + FastAPI + Celery + Redis + Supabase
+
+**[Extra-2.4] End-to-end website verification** 🟧 P1
+- **Input:** Domain production/staging
+- **Output:** Checklist verify: landing page load tại `/`, CTA download `.msi` hoạt động, `/api/v1/health` vẫn OK, mobile responsive cơ bản, no console errors nghiêm trọng
+- **Ghi chú:** Sau frontend change phải test bằng browser trước khi báo hoàn thành
+
+**Trích dẫn:**
+- Deploy runtime → `CLAUDE.md` Commands + Docker backend stack
+- Cleanup scan → `.claude/specs/scan-deploy-cleanup-electron-supabase-no-postgres-no-flet.md`
+
+---
+
+## ═══════════════════════════════════════
 ## PHASE 2 — Enhancement (P1)
 ### Mục tiêu: UX hoàn chỉnh, tính năng cộng tác, export nâng cao
 ---
