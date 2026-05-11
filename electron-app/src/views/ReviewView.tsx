@@ -11,6 +11,7 @@ import { pushToJira } from '../api/jira'
 import { subscribeActionItemSyncStatus, unsubscribeChannel } from '../api/supabase/realtime'
 import ConfidenceBadge from '../components/ConfidenceBadge'
 import type { ActionItem, ActionItemPriority } from '../types/supabase-models'
+import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionitemtree'
 
 interface Props {
   onNavigate: (route: string) => void
@@ -233,6 +234,47 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
   )
 })
 
+// ─── Recursive Tree Renderer ────────────────────────────
+
+function ActionItemTreeRenderer({
+  node,
+  onToast,
+  syncOverrides,
+}: {
+  node: ActionItemTreeNode
+  onToast: (msg: string, err?: boolean) => void
+  syncOverrides: Record<string, { sync_status: string; sync_error: string | null }>
+}) {
+  return (
+    <div style={{ marginBottom: node.depth === 0 ? 16 : 8 }}>
+      <ReviewItemCard
+        item={node.item}
+        onToast={onToast}
+        syncOverride={syncOverrides[node.item.id]}
+      />
+      {node.children.length > 0 && (
+        <div
+          style={{
+            marginLeft: 24,
+            paddingLeft: 16,
+            borderLeft: '2px dashed #cbd5e1',
+            marginTop: 8,
+          }}
+        >
+          {node.children.map((child) => (
+            <ActionItemTreeRenderer
+              key={child.item.id}
+              node={child}
+              onToast={onToast}
+              syncOverrides={syncOverrides}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Toast ──────────────────────────────────────────────
 
 function Toast({ msg, isError, onClose }: { msg: string; isError: boolean; onClose: () => void }) {
@@ -324,8 +366,7 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   }
 
   const pushDisabled = summary.pending > 0 || summary.approved === 0
-  const flagged = items.filter((i) => i.confidence_score < 0.6 && i.review_status === 'draft')
-  const normal = items.filter((i) => !(i.confidence_score < 0.6 && i.review_status === 'draft'))
+  const treeNodes = buildActionItemTree(items)
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -394,37 +435,18 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
         </div>
       ) : (
         <>
-          {flagged.length > 0 && (
+          {treeNodes.length > 0 ? (
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#c2410c', marginBottom: 8 }}>
-                ⚠️ Cần xem ({flagged.length} items — độ tin cậy thấp)
-              </div>
-              {flagged.map((item) => (
-                <ReviewItemCard
-                  key={item.id}
-                  item={item}
+              {treeNodes.map((node) => (
+                <ActionItemTreeRenderer
+                  key={node.item.id}
+                  node={node}
                   onToast={showToast}
-                  syncOverride={syncOverrides[item.id]}
+                  syncOverrides={syncOverrides}
                 />
               ))}
             </div>
-          )}
-          {normal.length > 0 && (
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>
-                Các items khác ({normal.length})
-              </div>
-              {normal.map((item) => (
-                <ReviewItemCard
-                  key={item.id}
-                  item={item}
-                  onToast={showToast}
-                  syncOverride={syncOverrides[item.id]}
-                />
-              ))}
-            </div>
-          )}
-          {items.length === 0 && (
+          ) : (
             <div style={{ color: '#94a3b8', fontSize: 13 }}>Không có items để review.</div>
           )}
         </>

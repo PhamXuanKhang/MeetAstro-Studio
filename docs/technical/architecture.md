@@ -1,55 +1,67 @@
 # System Architecture
 
+**Cập nhật:** 11/05/2026
+
 ---
 
 ## High-level overview
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                  Flet Desktop App (HTTP Client)              │
-│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌─────────┐  │
-│  │ Upload / │  │  Transcript  │  │  Review  │  │ History │  │
-│  │ Record   │→ │  Editor      │→ │  Items   │→ │ + Jira  │  │
-│  └──────────┘  └──────────────┘  └──────────┘  └─────────┘  │
-└──────────────────────────┬───────────────────────────────────┘
-                           │ HTTP (httpx)
-                           ▼
+│                   Dual Frontend                               │
+├────────────────────┬─────────────────────────────────────────┤
+│ Flet Desktop App   │ Electron Desktop App (React + TypeScript)│
+│ (Python + httpx)   │ (Supabase SDK + Zustand)               │
+└─────────┬──────────┴──────────────────────┬─────────────────┘
+          │ HTTP / Supabase SDK             │
+          ▼                                 ▼
 ┌──────────────────────────────────────────────────────────────┐
-│               FastAPI Server (src/api/)                      │
-│  POST /meetings  POST /audio  GET /review  POST /jira/push   │
+│                  FastAPI Server (src/api/)                   │
+│  /meetings  /audio  /transcript  /analysis  /review  /jira │
 └──────┬─────────────────────────────────────────┬────────────┘
-       │ enqueue task                             │ query/write
-       ▼                                         ▼
+       │ enqueue task                          │ query/write
+       ▼                                       ▼
 ┌─────────────────────┐               ┌──────────────────────┐
-│   Celery Workers    │               │   PostgreSQL DB       │
-│  (src/workers/)     │               │  meetings             │
-│                     │               │  transcripts          │
-│  transcribe_task    │──────────────→│  analysis_results     │
-│  analyze_task       │               │  review_items         │
-│  jira_push_task     │               │  provider_configs     │
+│   Celery Workers    │               │     Supabase          │
+│  (src/workers/)    │               │  (PostgreSQL 16)      │
+│                     │               │                       │
+│  run_pipeline      │───────────────│  meetings            │
+│  transcribe_task   │               │  transcript_segments  │
+│  analyze_task      │               │  analysis_results     │
+│  jira_push_task    │               │  action_items        │
+│  cleanup_task      │               │  provider_configs     │
 └──────┬──────────────┘               └──────────────────────┘
        │
        ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Providers (Strategy Pattern)                                 │
 │                                                              │
-│  BaseAnalyzer (ABC) → OpenAIAnalyzer (GPT-4o JSON mode)     │
+│  BaseAnalyzer (ABC) → OpenAIAnalyzer (GPT-4o JSON mode)    │
 │  BaseTranscriber (ABC) → OpenAITranscriber (Whisper API)    │
-│                       → OpenAIDiarizeTranscriber            │
+│                       → OpenAIDiarizeTranscriber             │
+│                       → WhisperLiveKitTranscriber            │
 │  MockAnalyzer (testing/offline)                              │
-└──────┬───────────────────────────────────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────────────────────────────────────┐
-│ External APIs                                                │
-│  • OpenAI Whisper API (transcription)                        │
-│  • OpenAI GPT-4o (analysis, JSON mode)                       │
-│  • Jira REST API v3 (push issues)                            │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Infrastructure** (Docker): PostgreSQL 16 + Redis 7 + FastAPI + Celery Worker.
-**Frontend**: Flet desktop app (`.exe`), connect tới server qua `API_BASE_URL`.
+**Infrastructure:** PostgreSQL 16 (Supabase) + Redis 7 + FastAPI + Celery Worker
+**Frontend:** Flet desktop app (`.exe`) + Electron desktop app
+
+---
+
+## Dual Frontend Architecture
+
+### Flet Desktop App
+- **Tech:** Python 3.9+, Flet framework, httpx client
+- **Entry:** `python -m frontend.main`
+- **Build:** `flet pack frontend/main.py`
+
+### Electron Desktop App
+- **Tech:** TypeScript + React + Vite + Electron
+- **Entry:** `cd electron-app && npm run dev`
+- **Build:** `cd electron-app && npm run build`
+- **Auth:** Supabase JS SDK (email/password + Google OAuth)
+- **State:** Zustand store
 
 ---
 
@@ -57,12 +69,13 @@
 
 | Layer | Path | Vai trò | Phụ thuộc |
 |-------|------|---------|-----------|
-| **Desktop App** | `frontend/` | Flet HTTP client — UI + local audio recording | FastAPI server |
-| **API** | `src/api/` | FastAPI routers + request validation | Services, DB |
-| **Worker** | `src/workers/` | Celery tasks — transcribe, analyze, jira push | Services, DB |
+| **Frontend (Flet)** | `frontend/` | Flet HTTP client — UI + local audio recording | FastAPI server |
+| **Frontend (Electron)** | `electron-app/` | React + TypeScript — UI + Supabase auth | FastAPI + Supabase |
+| **API** | `src/api/` | FastAPI routers + request validation | Services, Supabase |
+| **Worker** | `src/workers/` | Celery tasks — transcribe, analyze, jira push | Services, Supabase |
 | **Services** | `src/services/` | Orchestration logic | Providers, Modules |
 | **Providers** | `src/providers/` | Strategy pattern — OpenAI API calls | External APIs |
-| **DB** | `src/db/` | SQLAlchemy async models + CRUD + Alembic | PostgreSQL |
+| **DB** | `src/db/supabase_client.py` | Supabase client (SERVICE_ROLE_KEY) | Supabase |
 | **Modules** | `src/modules/` | Jira client, audio recorder, exporter, vault | External APIs |
 | **Core** | `src/schema.py`, `src/config.py` | Data models, configuration | stdlib |
 
@@ -84,8 +97,6 @@ Epic (BaseModel) ─── summary, description, tasks: list[Task]
 MeetingAnalysis (BaseModel) ─── epics, summary, key_decisions, discussion_points, parking_lot, created_at
     └── to_dict() / from_dict() / to_json() / from_json()
 
-MeetingRecord (BaseModel) ─── id, title, audio_path, transcript, analysis, created_at, updated_at
-
 ReviewItem (BaseModel) ─── id, meeting_id, item_type, item_index, summary, assignee, deadline,
                             priority, context, confidence, is_flagged, review_status,
                             edited_summary, edited_assignee, edited_deadline, edited_priority
@@ -100,6 +111,7 @@ ReviewItem (BaseModel) ─── id, meeting_id, item_type, item_index, summary,
 | `openai_analyzer.py` | `OpenAIAnalyzer` | extends BaseAnalyzer | `analyze()` | GPT-4o JSON mode, retry 3x |
 | `openai_transcriber.py` | `OpenAITranscriber` | extends BaseTranscriber | `transcribe()` | Whisper API |
 | `openai_diarize_transcriber.py` | `OpenAIDiarizeTranscriber` | extends BaseTranscriber | `transcribe()` | Whisper + speaker labels |
+| `whisper_livekit_transcriber.py` | `WhisperLiveKitTranscriber` | extends BaseTranscriber | `transcribe()` | LiveKit WebSocket streaming |
 | `mock_analyzer.py` | `MockAnalyzer` | extends BaseAnalyzer | `analyze()` | Testing / offline fallback |
 
 **Thêm provider mới:** Kế thừa ABC tương ứng + tạo test file riêng.
@@ -108,13 +120,14 @@ ReviewItem (BaseModel) ─── id, meeting_id, item_type, item_index, summary,
 
 | Router | Prefix | Key endpoints |
 |--------|--------|---------------|
-| `meetings.py` | `/meetings` | CRUD meetings, upload audio, get transcript |
-| `transcriptions.py` | `/meetings/{id}` | patch transcript |
+| `meetings.py` | `/meetings` | CRUD meetings, upload audio |
+| `transcriptions.py` | `/meetings/{id}` | get/update transcript |
 | `analysis.py` | `/meetings/{id}` | trigger analysis, get analysis |
 | `reviews.py` | `/meetings/{id}/review` | list, patch, approve, reject items |
 | `jira.py` | `/meetings/{id}/jira` | push approved items |
 | `exports.py` | `/meetings/{id}/export` | markdown, json, csv |
 | `settings.py` | `/settings` | provider config CRUD |
+| `stream.py` | `/meetings/{id}/transcribe/stream` | real-time SSE streaming |
 
 ### `src/workers/` — Celery Tasks
 
@@ -124,38 +137,41 @@ ReviewItem (BaseModel) ─── id, meeting_id, item_type, item_index, summary,
 | `transcribe_task.py` | `transcribe_audio` | meeting_id, audio_path, diarize | `{transcript_id, char_count}` |
 | `analyze_task.py` | `analyze_transcript` | meeting_id, transcript_id | `{analysis_id, review_item_count, flagged_count}` |
 | `jira_push_task.py` | `push_to_jira` | meeting_id | `{epic_keys, task_count, subtask_count, is_stub}` |
+| `cleanup_task.py` | `cleanup_old_recordings` | days | `{deleted_count, freed_bytes}` |
 
-### `src/db/` — Database Layer
+### `src/db/supabase_client.py` — Supabase Access
 
-| Path | Vai trò |
-|------|---------|
-| `models.py` | SQLAlchemy ORM: Meeting, Transcript, AnalysisResult, ReviewItem, ProviderConfig |
-| `base.py` | DeclarativeBase |
-| `session.py` | Async engine + session factory |
-| `crud/meeting_crud.py` | Async CRUD: Meeting, Transcript, AnalysisResult |
-| `crud/review_crud.py` | Async CRUD: ReviewItem (approve/reject/bulk) |
-| `crud/provider_crud.py` | Async CRUD: ProviderConfig (encrypted) |
-| `migrations/` | Alembic migration scripts |
+| Function | Description |
+|----------|-------------|
+| `get_supabase_client()` | Singleton Supabase client (SERVICE_ROLE_KEY) |
+| `insert(table, data)` | Insert row, return record |
+| `upsert(table, data)` | Upsert row, return record |
+| `update_by_id(table, id, data)` | Update row by ID |
+| `delete_by_id(table, id)` | Delete row |
+| `fetch_one(table, filters)` | Fetch single row |
+| `fetch_all(table, filters)` | Fetch all matching rows |
 
 ### `src/services/` — Orchestration
 
 | File | Function | Logic |
 |------|----------|-------|
-| `transcription_service.py` | `transcribe()`, `transcribe_diarized()`, `transcribe_chunks()` | OpenAI Whisper API; diarize fallback về plain transcribe |
+| `transcription_service.py` | `transcribe()`, `transcribe_diarized()` | OpenAI Whisper API; diarize fallback |
 | `analysis_service.py` | `analyze(transcript)` | Validate → OpenAIAnalyzer → extraction → validation → summarization |
-| `jira_service.py` | `push_analysis_to_jira(analysis)` | Orchestrate Jira push: Epic → Task → Subtask |
+| `audio_ingestion_service.py` | `process_upload()` | Validate, normalize (ffmpeg → WAV 16kHz mono), extract from video |
+| `jira_service.py` | `push_analysis_to_jira()` | Orchestrate Jira push: Epic → Task → Subtask |
 | `recording_service.py` | `start_recording()`, `stop_recording()` | Orchestrate `AudioRecorder` (local desktop) |
-| `extraction_service.py` | `rule_based_extraction(transcript)` | Regex-based extraction để cross-validate AI |
-| `validation_service.py` | `validate_action_items(...)` | Cross-validate AI vs rule-based, trả về confidence scores |
-| `summarization_service.py` | `generate_summary(transcript)` | Async OpenAI call — summary, key_decisions, parking_lot |
+| `extraction_service.py` | `rule_based_extraction()` | Regex-based extraction để cross-validate AI |
+| `validation_service.py` | `validate_action_items()` | Cross-validate AI vs rule-based, trả về confidence scores |
+| `summarization_service.py` | `generate_summary()` | OpenAI call — summary, key_decisions, parking_lot |
+| `stream_session_manager.py` | `StreamSessionManager` | Manage real-time transcription sessions |
 
 ### `src/modules/` — Persistence & Integration
 
 | File | Vai trò |
 |------|---------|
-| `exporter.py` | `export_markdown()`, `export_json()`, `export_csv()` — pure functions |
+| `exporter.py` | `export_markdown()`, `export_json()`, `export_csv()` |
 | `jira_client.py` | Jira REST API v3, auto stub mode khi thiếu credentials |
-| `audio_recorder.py` | System audio capture (pysysaudio) + mic mixing, chunk rotation |
+| `audio_recorder.py` | System audio capture + mic mixing, chunk rotation |
 | `credential_vault.py` | `encrypt()` / `decrypt()` — Fernet symmetric encryption |
 
 ---
@@ -179,15 +195,15 @@ POST /meetings/{id}/audio
     ▼
 Celery: run_pipeline.delay(meeting_id, audio_path, diarize)
     │
-    ├─ transcribe_audio → Whisper API → lưu Transcript
+    ├─ transcribe_audio → Whisper API → lưu TranscriptSegment[]
     │
-    └─ analyze_transcript → GPT-4o → lưu AnalysisResult + ReviewItem[]
+    └─ analyze_transcript → GPT-4o → lưu AnalysisResult + ActionItem[]
 ```
 
 ### 3. Human-in-the-Loop Review
 
 ```
-ReviewItem (status=draft)
+ActionItem (status=draft)
     │
     ├─ User approve → status=approved
     ├─ User edit + approve → edited_* fields + status=approved
@@ -213,3 +229,27 @@ GPT-4o + JSON mode → `MeetingAnalysis.from_dict()`:
 ### 5. Stub Pattern (Jira)
 
 `JiraClient` auto-detect thiếu credentials → `is_stub = True` → fake key `"STUB-001"`.
+
+### 6. Dual Database Access
+
+- **Backend (FastAPI/Celery):** Uses `src/db/supabase_client.py` with `SERVICE_ROLE_KEY` for all operations
+- **Electron Frontend:** Uses Supabase JS SDK with `ANON_KEY` for auth and client-side queries
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes (backend) | Backend database access |
+| `SUPABASE_ANON_KEY` | Yes (Electron) | Frontend auth |
+| `OPENAI_API_KEY` | Yes | GPT-4o + Whisper API |
+| `APP_SECRET_KEY` | Yes | Fernet key cho credential encryption |
+| `CELERY_BROKER_URL` | No | Redis broker (default: `redis://localhost:6379/0`) |
+| `CELERY_RESULT_BACKEND` | No | Redis result backend (default: `redis://localhost:6379/1`) |
+| `WHISPER_LIVEKIT_URL` | No | LiveKit WebSocket URL for real-time transcription |
+| `JIRA_BASE_URL` | No | Jira instance URL (stub mode nếu thiếu) |
+| `JIRA_EMAIL` | No | Jira Basic Auth email |
+| `JIRA_API_TOKEN` | No | Jira API token |
+| `JIRA_PROJECT_KEY` | No | Jira project key |

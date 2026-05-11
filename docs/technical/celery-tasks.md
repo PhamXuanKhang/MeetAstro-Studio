@@ -401,16 +401,42 @@ In `docker-compose.yml`:
 
 ```yaml
 services:
+  migrate:
+    build: .
+    command: alembic upgrade head
+    depends_on:
+      - postgres
+    environment:
+      - POSTGRES_URL=postgresql+asyncpg://ai_meeting:password@postgres:5432/ai_meeting_db
+    restart: "no"
+
+  api:
+    build: .
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      - postgres
+      - redis
+    environment:
+      - SUPABASE_URL=http://postgres:5432
+      - SUPABASE_SERVICE_ROLE_KEY=...
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./data/recordings:/app/data/recordings
+
   worker:
     build: .
     command: celery -A src.workers.celery_app worker -Q default --loglevel=info
     depends_on:
-      - redis
       - postgres
+      - redis
     environment:
+      - SUPABASE_URL=http://postgres:5432
+      - SUPABASE_SERVICE_ROLE_KEY=...
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      - POSTGRES_URL=postgresql+asyncpg://...
     volumes:
       - ./data/recordings:/app/data/recordings
 ```
