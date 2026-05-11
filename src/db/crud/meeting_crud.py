@@ -48,7 +48,7 @@ def list_meetings(
     query = client.table(sc.TABLE_MEETINGS).select("*", count="exact")
     for col, val in filters.items():
         query = query.eq(col, val)
-    query = query.order("created_at", ascending=False)
+    query = query.order("created_at", desc=False)
     query = query.range((page - 1) * page_size, page * page_size - 1)
     result = query.execute()
 
