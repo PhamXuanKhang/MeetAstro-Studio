@@ -17,3 +17,6 @@ tests/
 .env.*
 uv.lock
 a20_app_089.egg-info/
+
+website/node_modules
+website/dist

@@ -103,8 +103,15 @@ class Settings(BaseSettings):
     confidence_low_threshold: float = Field(default=0.4, alias="CONFIDENCE_LOW_THRESHOLD")
     confidence_high_threshold: float = Field(default=0.7, alias="CONFIDENCE_HIGH_THRESHOLD")
 
-    # ── HTTP Backend (Flet desktop -> FastAPI) ──
+    # HTTP Backend (Electron desktop -> FastAPI)
     api_base_url: str = Field(default="http://localhost:8000", alias="API_BASE_URL")
+
+    # Windows Installer Download
+    app_download_filename: str = Field(
+        default="MeetAstro-Setup.msi", alias="APP_DOWNLOAD_FILENAME"
+    )
+    app_download_version: str = Field(default="0.1.0", alias="APP_DOWNLOAD_VERSION")
+    app_download_size: str = Field(default="", alias="APP_DOWNLOAD_SIZE")
 
     # ── CORS Configuration ──
     cors_origins: str = Field(

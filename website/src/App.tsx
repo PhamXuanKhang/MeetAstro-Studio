@@ -1,4 +1,6 @@
-import { downloadConfig } from './config'
+import { useEffect, useState } from 'react'
+
+import { fallbackDownloadMetadata, fetchDownloadMetadata, type DownloadMetadata } from './config'
 
 const features = [
   {
@@ -41,10 +43,10 @@ const faqs = [
   ['Does the web page replace the app?', 'No. The web page explains and distributes the desktop app; the actual workflow runs in MeetAstro.'],
 ]
 
-function DownloadButton({ variant = 'primary' }: { variant?: 'primary' | 'light' }) {
+function DownloadButton({ metadata, variant = 'primary' }: { metadata: DownloadMetadata; variant?: 'primary' | 'light' }) {
   const className = variant === 'light' ? 'button button-light' : 'button button-primary'
 
-  if (!downloadConfig.url) {
+  if (!metadata.available || !metadata.url) {
     return (
       <span className={`${className} is-disabled`} aria-disabled="true">
         Download coming soon
@@ -53,18 +55,26 @@ function DownloadButton({ variant = 'primary' }: { variant?: 'primary' | 'light'
   }
 
   return (
-    <a className={className} href={downloadConfig.url} target="_blank" rel="noreferrer">
+    <a className={className} href={metadata.url}>
       Download for Windows
     </a>
   )
 }
 
 export default function App() {
+  const [downloadMetadata, setDownloadMetadata] = useState<DownloadMetadata>(fallbackDownloadMetadata)
+
+  useEffect(() => {
+    fetchDownloadMetadata()
+      .then(setDownloadMetadata)
+      .catch(() => setDownloadMetadata(fallbackDownloadMetadata))
+  }, [])
+
   const releaseMeta = [
-    'Windows installer',
-    `v${downloadConfig.version}`,
-    downloadConfig.size,
-  ].filter(Boolean).join(' · ')
+    downloadMetadata.platform ? `${downloadMetadata.platform} installer` : 'Windows installer',
+    `v${downloadMetadata.version}`,
+    downloadMetadata.size,
+  ].filter(Boolean).join(' ? ')
 
   return (
     <div className="site-shell">
@@ -79,7 +89,7 @@ export default function App() {
           <a href="#security">Security</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <DownloadButton />
+        <DownloadButton metadata={downloadMetadata} />
       </header>
 
       <main id="top">
@@ -98,7 +108,7 @@ export default function App() {
               MeetAstro converts meeting audio into transcripts, decisions, and reviewed action items structured as Epics, Tasks, and Subtasks.
             </p>
             <div className="hero-actions">
-              <DownloadButton variant="light" />
+              <DownloadButton metadata={downloadMetadata} variant="light" />
               <a className="button button-outline-dark" href="#workflow">See how it works</a>
             </div>
             <p className="download-meta">{releaseMeta}</p>
@@ -212,7 +222,7 @@ export default function App() {
         <section className="section final-cta" aria-labelledby="final-cta-title">
           <h2 id="final-cta-title">Bring meeting follow-up into one reviewed workflow.</h2>
           <p>Download MeetAstro for Windows and turn your next conversation into structured execution.</p>
-          <DownloadButton />
+          <DownloadButton metadata={downloadMetadata} />
           <span>{releaseMeta}</span>
         </section>
       </main>

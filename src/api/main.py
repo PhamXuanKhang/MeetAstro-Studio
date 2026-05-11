@@ -4,9 +4,12 @@ FastAPI application factory for AI Meeting Assistant.
 Entry point: uvicorn src.api.main:app --reload --port 8000
 """
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from src.api.routers import (
     analysis,
@@ -22,6 +25,90 @@ from src.config import get_logger, get_settings
 from src.db.supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
+
+API_PREFIX = "/api/v1"
+WEB_STATIC_DIR = Path(__file__).resolve().parents[2] / "website" / "dist"
+DOWNLOAD_DIR = Path("/app/downloads")
+INDEX_CACHE_CONTROL = "no-cache"
+ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+MSI_MEDIA_TYPE = "application/x-msi"
+
+class CacheStaticFiles(StaticFiles):
+    """Serve Vite assets with immutable cache headers."""
+
+    async def get_response(self, path: str, scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = ASSET_CACHE_CONTROL
+        return response
+
+def get_download_filename() -> str:
+    """Return a safe MSI filename configured by environment."""
+    filename = get_settings().app_download_filename.strip()
+    if not filename or filename != Path(filename).name or not filename.lower().endswith(".msi"):
+        raise HTTPException(status_code=404, detail="Windows installer is not published.")
+    return filename
+
+def get_download_file_path() -> Path:
+    """Resolve the configured MSI path inside the downloads directory."""
+    return DOWNLOAD_DIR / get_download_filename()
+
+def build_download_metadata() -> dict:
+    """Build runtime metadata for the Windows installer."""
+    app_settings = get_settings()
+    filename = app_settings.app_download_filename.strip()
+    available = False
+    try:
+        available = get_download_file_path().is_file()
+    except HTTPException:
+        available = False
+    return {
+        "available": available,
+        "url": "/download/windows" if available else "",
+        "filename": filename,
+        "version": app_settings.app_download_version.strip(),
+        "size": app_settings.app_download_size.strip(),
+        "platform": "Windows",
+    }
+
+def setup_website_routes(app: FastAPI) -> None:
+    """Serve the landing page and download endpoints."""
+    assets_dir = WEB_STATIC_DIR / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", CacheStaticFiles(directory=str(assets_dir)), name="website-assets")
+
+    @app.get("/downloads/metadata.json", include_in_schema=False)
+    async def download_metadata() -> JSONResponse:
+        return JSONResponse(
+            build_download_metadata(),
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    @app.get("/download/windows", include_in_schema=False)
+    @app.get("/downloads/windows", include_in_schema=False)
+    async def download_windows() -> FileResponse:
+        file_path = get_download_file_path()
+        if not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Windows installer is not published.")
+        return FileResponse(
+            path=str(file_path),
+            media_type=MSI_MEDIA_TYPE,
+            filename=get_download_filename(),
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def serve_website(path: str, request: Request) -> FileResponse:
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        index_path = WEB_STATIC_DIR / "index.html"
+        if not index_path.is_file():
+            raise HTTPException(status_code=404, detail="Website build is not available.")
+        return FileResponse(
+            path=str(index_path),
+            media_type="text/html",
+            headers={"Cache-Control": INDEX_CACHE_CONTROL},
+        )
+
 
 
 @asynccontextmanager
@@ -118,7 +205,7 @@ def create_app() -> FastAPI:
     setup_cors(app)
     setup_rate_limiting(app)
 
-    prefix = "/api/v1"
+    prefix = API_PREFIX
     app.include_router(meetings.router, prefix=prefix)
     app.include_router(transcriptions.router, prefix=prefix)
     app.include_router(analysis.router, prefix=prefix)
@@ -154,6 +241,8 @@ def create_app() -> FastAPI:
         elif result.state == "FAILURE":
             response["error"] = str(result.info)
         return response
+
+    setup_website_routes(app)
 
     return app
 
