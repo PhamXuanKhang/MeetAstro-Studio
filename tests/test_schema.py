@@ -167,7 +167,7 @@ class TestMeetingRecord:
         r = MeetingRecord(title="Test", transcript="text")
         assert r.id is None
         assert r.analysis is None
-        assert r.audio_path is None
+        assert r.audio_storage_path is None
 
     def test_to_dict_with_analysis(self):
         analysis = make_sample_analysis()

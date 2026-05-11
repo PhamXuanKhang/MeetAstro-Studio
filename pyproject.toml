@@ -23,13 +23,11 @@ server = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",
-    "sqlalchemy[asyncio]>=2.0",
-    "asyncpg>=0.29",
-    "alembic>=1.13",
     "celery>=5.3",
     "redis>=5.0",
     "slowapi>=0.1.9",
     "ffmpeg-python>=0.2.0",
+    "supabase>=2.5.0",
 ]
 
 # Frontend: Flet desktop app + local audio recording
@@ -65,7 +63,7 @@ include = ["src*", "frontend*"]
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 no_site_packages = true
 

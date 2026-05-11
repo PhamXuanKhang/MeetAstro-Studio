@@ -1,1 +1,1 @@
-"""CRUD operations cho PostgreSQL ORM models."""
+"""CRUD operations via Supabase (supabase-py, SERVICE_ROLE_KEY)."""

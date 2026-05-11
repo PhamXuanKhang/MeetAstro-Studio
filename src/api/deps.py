@@ -1,16 +1,13 @@
 """
 FastAPI dependency injection helpers.
 
-get_db: AsyncSession cho mỗi request.
+get_supabase: Supabase client for each request (read/write via SERVICE_ROLE_KEY).
 """
-from collections.abc import AsyncGenerator
+from supabase import Client
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.db.session import get_db as _get_db
+from src.db.supabase_client import get_supabase_client
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Cấp AsyncSession từ session factory."""
-    async for session in _get_db():
-        yield session
+def get_supabase() -> Client:
+    """Return Supabase client (singleton per process, SERVICE_ROLE_KEY)."""
+    return get_supabase_client()

@@ -1,5 +1,5 @@
 """
-Pipeline: chain transcribe → analyze.
+Pipeline: chain transcribe -> analyze.
 
 Call: run_pipeline.delay(meeting_id, audio_path, diarize=False, language="en")
 """
@@ -17,17 +17,15 @@ def run_pipeline(
     language: str = "en",
 ) -> dict:
     """
-    Chạy pipeline tuần tự: transcribe → analyze.
+    Chay pipeline tuan tu: transcribe -> analyze.
 
-    Trả về kết quả của analyze_task.
+    Tra ve ket qua cua analyze_task.
     """
-    # Chạy transcribe trước, lấy transcript_id, rồi chạy analyze
     transcribe_result = transcribe_audio(
         meeting_id, audio_path, diarize=diarize, language=language
     )
-    transcript_id = transcribe_result["transcript_id"]
 
-    analyze_result = analyze_transcript(meeting_id, transcript_id)
+    analyze_result = analyze_transcript(meeting_id, transcript_id="")
     return {
         "transcribe": transcribe_result,
         "analyze": analyze_result,

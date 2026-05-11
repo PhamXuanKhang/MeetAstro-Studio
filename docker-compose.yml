@@ -69,12 +69,8 @@ services:
       - path: .env
         required: false
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     volumes:
       - app_data:/app/data
     healthcheck:
@@ -120,19 +116,14 @@ services:
       - path: .env
         required: false
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     volumes:
       - app_data:/app/data
     networks:
       - coolify
 
 volumes:
-  postgres_data:
   redis_data:
   app_data:
 

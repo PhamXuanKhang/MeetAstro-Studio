@@ -43,7 +43,26 @@ Các chỉ số đo lường chất lượng AI và product health.
 
 ---
 
-## Evaluation Pipeline (hiện tại)
+## Current Implementation Status
+
+### Đã có
+
+- [x] **Unit tests** cho tất cả services và providers (14 test files)
+- [x] **E2E script** (`test_e2e.sh`) cho full pipeline test
+- [x] **Mock infrastructure** cho OpenAI, Whisper, Jira trong tests
+- [x] **Container với MockAnalyzer** khi `OPENAI_API_KEY` không set
+- [x] **Jira stub mode** khi credentials thiếu
+
+### Chưa có / Cần implement
+
+- [ ] **Automated eval pipeline** với ground truth samples
+- [ ] **WER calculation** tự động (hiện tại manual spot-check)
+- [ ] **Recall/Precision tracking** với dashboard
+- [ ] **Latency monitoring** trong production
+
+---
+
+## Evaluation Pipeline
 
 ### Cách eval hiện tại: Manual spot-check
 
@@ -54,7 +73,7 @@ Các chỉ số đo lường chất lượng AI và product health.
 3. Chạy pipeline: audio → transcribe → analyze
 4. So sánh output vs ground truth → tính recall, precision, WER
 
-### Cách eval tương lai: [TBD] Automated eval
+### Cách eval tương lai: Automated eval
 
 ```
 audio_samples/
@@ -66,12 +85,25 @@ audio_samples/
 ```
 
 Script eval:
+
 ```python
 # [TBD] Chưa implement
 def eval_recall(ai_actions, human_actions) -> float: ...
 def eval_precision(ai_actions, human_actions) -> float: ...
 def eval_wer(ai_transcript, human_transcript) -> float: ...
 ```
+
+---
+
+## Confidence Scoring
+
+AI extract action items kèm confidence score (0-1). Items có confidence < 0.7 được **flag** để user review trước khi push Jira.
+
+| Confidence Range | Behavior |
+|-----------------|----------|
+| ≥ 0.9 | Auto-approved (high confidence) |
+| 0.7 - 0.9 | Draft, recommend review |
+| < 0.7 | Flagged, require review before Jira push |
 
 ---
 
@@ -83,3 +115,31 @@ Dừng dự án hoặc thay đổi hướng tiếp cận khi:
 2. **Recall < 70%** sau khi đã optimize prompt 3 lần
 3. **User adoption < 30%** sau 1 tháng trial (khi có user thật)
 4. **API cost** vượt $100/tháng cho < 100 cuộc họp
+
+---
+
+## Logging & Monitoring
+
+Để track metrics, thêm logging trong `src/services/`:
+
+```python
+# Transcription
+logger.info(f"Transcription completed", extra={
+    "meeting_id": meeting_id,
+    "duration_seconds": elapsed,
+    "segments_count": len(segments),
+    "diarization_enabled": diarize,
+    "fallback_used": fallback
+})
+
+# Analysis
+logger.info(f"Analysis completed", extra={
+    "meeting_id": meeting_id,
+    "duration_seconds": elapsed,
+    "epics_count": len(result.epics),
+    "tasks_count": sum(len(e.tasks) for e in result.epics),
+    "avg_confidence": avg_confidence
+})
+```
+
+Tích hợp với logging aggregation (Datadog, Grafana, etc.) để dashboard hóa metrics.

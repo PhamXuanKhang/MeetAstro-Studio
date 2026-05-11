@@ -2,6 +2,7 @@
 
 **Nhóm:** A20-App-089
 **Ngày:** 12/04/2026
+**Cập nhật:** 11/05/2026
 
 ---
 
@@ -27,12 +28,55 @@
 
 | # | Câu hỏi | Trả lời |
 |---|---------|---------|
-| 1 | User correction đi vào đâu? | User chỉnh transcript (text area) trước khi analyze → transcript đã sửa được dùng làm input cho analyzer. Hiện chưa lưu diff giữa bản gốc và bản sửa. **[TBD]** Log corrections vào DB để fine-tune prompt sau. |
-| 2 | Product thu signal gì để biết tốt lên hay tệ đi? | **Trực tiếp:** Tỷ lệ user chỉnh transcript trước khi analyze (thấp = transcribe tốt). Tỷ lệ user nhấn "Push to Jira" sau khi analyze (cao = analysis chất lượng). **Gián tiếp:** Số lần user re-analyze cùng transcript (nhiều = chưa hài lòng). **[TBD]** Cần thêm analytics logging. |
+| 1 | User correction đi vào đâu? | User chỉnh transcript (text area) trước khi analyze → transcript đã sửa được dùng làm input cho analyzer. Review items có thể edit trực tiếp trong UI. |
+| 2 | Product thu signal gì để biết tốt lên hay tệ đi? | **Trực tiếp:** Tỷ lệ user chỉnh transcript trước khi analyze (thấp = transcribe tốt). Tỷ lệ user nhấn "Push to Jira" sau khi analyze (cao = analysis chất lượng). **Gián tiếp:** Số lần user re-analyze cùng transcript (nhiều = chưa hài lòng). |
 | 3 | Data thuộc loại nào? | ☑ User-specific (audio cuộc họp nội bộ) · ☑ Domain-specific (ngữ cảnh công ty, tên nhân sự) · ☐ Real-time · ☑ Human-judgment (user review/sửa analysis) · ☐ Khác |
 
 **Có marginal value không?**
 Có. Model GPT-4o biết extract action items tổng quát, nhưng **không biết** ngữ cảnh nội bộ công ty (tên nhân sự, quy trình riêng, thuật ngữ ngành). Transcript + corrections của user là data domain-specific mà không ai khác có. Tuy nhiên, hiện tại chưa có feedback loop để tận dụng data này — đây là hướng phát triển dài hạn.
+
+---
+
+## Current Status (11/05/2026)
+
+### ✅ Completed
+
+- Full pipeline: Audio upload → Transcribe → Analyze → Export
+- 14 unit test files with mocked external APIs
+- E2E test script (`test_e2e.sh`)
+- Flet desktop app with HTTP client
+- Electron app (React + TypeScript, in progress)
+- Jira integration (stub mode + real API support)
+- PostgreSQL async with Alembic migrations
+- Docker Compose deployment
+- GitHub Actions CI/CD (deploy)
+
+### ⬜ In Progress
+
+- Phase 3: Eval pipeline, prompt tuning
+- Electron app completion
+- CI/CD pipeline (lint + test)
+
+### ⬜ Backlog
+
+- Eval pipeline automation (ground truth samples)
+- Analytics dashboard
+- Feedback loop (log corrections → improve prompt)
+- Multi-provider support (Gemini, Claude)
+
+---
+
+## Metrics Tracking
+
+| Metric | Target | Current |
+|--------|--------|---------|
+| Action Item Recall | ≥ 85% | Not measured yet |
+| Action Item Precision | ≥ 75% | Not measured yet |
+| Transcription WER | ≤ 20% (Vietnamese) | Not measured yet |
+| Schema Validity | ≥ 95% | Not measured yet |
+| End-to-end Latency | ≤ 60s | Not measured yet |
+| Push-to-Jira Rate | > 50% | Not measured yet |
+| Re-analyze Rate | < 15% | Not measured yet |
 
 ---
 
