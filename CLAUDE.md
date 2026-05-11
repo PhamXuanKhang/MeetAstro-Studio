@@ -1,28 +1,26 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Overview
-Ứng dụng chuyển đổi audio trong cuộc họp thành biên bản hoàn chỉnh và action items có cấu trúc (Epic → Task → Subtask) để tích hợp tự động vào Jira. Kiến trúc client-server: backend deploy Docker, frontend đóng gói `.exe`.
+Ứng dụng chuyển đổi audio trong cuộc họp thành biên bản hoàn chỉnh và action items có cấu trúc (Epic → Task → Subtask) để tích hợp tự động vào Jira. Kiến trúc hiện tại: Electron desktop app + FastAPI backend + Celery worker + Redis + Supabase.
 
 ## Current Tech Stack
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy (async + asyncpg), Celery + Redis, Alembic, Pydantic / pydantic-settings.
-- **AI**: OpenAI API (GPT-4o + Whisper API + Diarization). Structured JSON output → Jira schema.
-- **Database**: PostgreSQL 16. Quota/plan system (UserPlan, UsageRecord, QuotaLimit models).
-- **Flet Frontend**: Python 3.9+, Flet desktop app (`frontend/`). HTTP-only client via `httpx`.
-- **Electron Frontend**: TypeScript + React + Vite + Electron (`electron-app/`). Axios API client, Zustand store, Supabase auth. Python sidecar for audio recording.
-- **Integrations**: Jira REST API v3, Supabase Auth (Electron only, backend enforcement WIP).
-- **Tooling**: `uv` package manager, Docker Compose, ffmpeg (audio normalization).
+- **Backend**: Python 3.11, FastAPI, Celery + Redis, Pydantic / pydantic-settings, Supabase Python client.
+- **AI**: OpenAI API (GPT-4o + Whisper API + optional WhisperLiveKit diarization). Structured JSON output → Jira schema.
+- **Database/Auth**: Supabase tables + Supabase Auth. Backend uses `SUPABASE_SERVICE_ROLE_KEY` through `src.db.supabase_client`.
+- **Frontend**: TypeScript + React + Vite + Electron (`electron-app/`). Axios API client, Zustand store, Supabase auth. Python sidecar for audio recording.
+- **Integrations**: Jira REST API v3.
+- **Tooling**: `uv` package manager, Docker Compose, ffmpeg for audio normalization.
 
 ## Commands
 ```bash
 # Package management (uv + pyproject.toml optional groups)
 uv venv
-source .venv/Scripts/activate         # Windows
-uv pip install -e ".[server]"         # Backend: FastAPI + Celery + PostgreSQL
-uv pip install -e ".[frontend]"       # Frontend: Flet + audio recording
+source .venv/Scripts/activate         # Windows bash-style shell
+uv pip install -e ".[server]"         # Backend: FastAPI + Celery + Supabase + Redis
 uv pip install -e ".[dev]"            # Dev tools: pytest + flake8 + mypy
-uv pip install -e ".[all]"            # All-in-one (local dev)
+uv pip install -e ".[all]"            # Backend + dev tools
 
 # Run server (dev)
 uvicorn src.api.main:app --reload --port 8000
@@ -30,84 +28,65 @@ uvicorn src.api.main:app --reload --port 8000
 # Run Celery worker (dev, requires Redis)
 celery -A src.workers.celery_app worker -Q default --loglevel=info
 
-# Run Flet desktop app
-python -m frontend.main
+# Electron frontend
+cd electron-app && npm install && npm run dev   # Dev mode
+cd electron-app && npm run build                # Production desktop build
+cd electron-app && npm run typecheck            # TypeScript check
 
-# Electron frontend (separate from Flet)
-cd electron-app && npm install && npm run dev   # Dev mode (Vite + Electron)
-cd electron-app && npm run build                # Production build (.exe via electron-builder)
-cd electron-app && npm run lint                  # ESLint
-cd electron-app && npm run typecheck             # TypeScript check
-
-# Docker (full backend stack: PostgreSQL + Redis + Alembic migrate + API + Worker)
-docker-compose up --build
-
-# Database migrations (Alembic)
-alembic upgrade head                          # Apply all pending migrations
-alembic revision --autogenerate -m "desc"     # Generate new migration
-alembic downgrade -1                          # Rollback last migration
+# Docker backend stack: Redis + API + Worker
+docker compose up --build
 
 # Tests / Lint / Typecheck
-pytest tests/ -v                              # All tests
-pytest tests/test_schema.py -v                # Single file
-pytest tests/test_schema.py::TestPriority -v  # Single class
-pytest tests/test_schema.py::TestPriority::test_values -v  # Single test
+pytest tests/ -v
 flake8 . --max-line-length=100
 mypy . --ignore-missing-imports
 ```
 
 ## Verification
-Sau mỗi thay đổi: `flake8 . --max-line-length=100 && mypy . --ignore-missing-imports && pytest tests/ -v`
+Sau mỗi thay đổi logic backend: `pytest tests/ -v`. Sau thay đổi deploy/package: verify theo task spec, tối thiểu `docker compose config` và import smoke nếu được yêu cầu.
 
 ## Architecture (Client-Server)
 
 ### Layered View
-- **Flet Desktop App**: `frontend/` — HTTP-only client (`HttpBackend` wraps `httpx.Client`, sync). Audio recording chạy local via `src.services.recording_service`. State: in-memory `AppState` dataclass.
-- **Electron Desktop App**: `electron-app/` — React + TypeScript + Vite. Axios API client mirrors `HttpBackend`. Zustand store mirrors `AppState`. Supabase email/password auth. Python sidecar cho audio recording via IPC.
-- **API Layer**: `src/api/` — FastAPI routers (meetings, transcriptions, analysis, reviews, jira, exports, settings). Health: `/api/v1/health`. Job polling: `/api/v1/jobs/{job_id}`. Rate limiting via `slowapi`. No auth middleware currently enforced.
-- **Worker Layer**: `src/workers/` — Celery tasks xử lý pipeline nặng (transcribe, analyze, jira push). `pipeline.py` orchestrates sequentially within one task. Beat schedule: cleanup mỗi 2h.
-- **Service Layer**: `src/services/` — orchestration logic (analysis, transcription, jira, validation, audio ingestion, summarization, cleanup).
-- **Audio Ingestion**: `src/services/audio_ingestion_service.py` — upload validation, ffmpeg normalization (→ WAV 16kHz mono), video-to-audio extraction. Supports mp3/wav/m4a/ogg + mp4/mkv/webm. Canonical storage under `AUDIO_STORAGE_BASE`.
-- **Provider Layer**: `src/providers/` — OpenAI Whisper, GPT-4o analyzer, diarize transcriber. Kế thừa ABC (`BaseAnalyzer`, `BaseTranscriber`).
-- **DB Layer**: `src/db/` — SQLAlchemy async models (Meeting, Transcript, AnalysisResult, ReviewItem, ProviderConfig, UserPlan, UsageRecord, QuotaLimit) + CRUD + Alembic migrations. Script location: `src/db/migrations/`.
+- **Electron Desktop App**: `electron-app/` — React + TypeScript + Vite. Uses Supabase email/password auth and Axios for FastAPI calls. Python sidecar records audio via IPC.
+- **API Layer**: `src/api/` — FastAPI routers (meetings, transcriptions, analysis, reviews, jira, exports, settings, stream). Health: `/api/v1/health`. Job polling: `/api/v1/jobs/{job_id}`. Rate limiting via `slowapi`.
+- **Worker Layer**: `src/workers/` — Celery tasks for transcribe, analyze, Jira push, and cleanup. Redis is broker/result backend.
+- **Service Layer**: `src/services/` — orchestration logic for analysis, transcription, Jira, validation, audio ingestion, summarization, cleanup.
+- **Audio Ingestion**: `src/services/audio_ingestion_service.py` — upload validation, ffmpeg normalization to WAV 16kHz mono, video-to-audio extraction.
+- **Provider Layer**: `src/providers/` — OpenAI Whisper/GPT-4o and WhisperLiveKit integrations. New providers must implement the corresponding ABC.
+- **DB Layer**: `src/db/` — Supabase client and CRUD helpers. Do not add SQLAlchemy/Alembic/PostgreSQL direct-access code.
 - **Integration Layer**: `src/modules/` — Jira client, audio recorder, exporter, credential vault.
 - **Data Contracts**: `src/schema.py` — Pydantic models: MeetingAnalysis, Epic, Task, Subtask, ReviewItem, Priority enum, ReviewStatus enum, MeetingStatus enum.
-- **DI Container**: `src/core/container.py` — Lazy initialization of providers. Falls back to `MockAnalyzer` when `OPENAI_API_KEY` empty. `JiraClient` auto-stubs when Jira credentials missing. Use `get_container()` globally, `Container(settings=mock)` for tests.
-- **Prompt Assets**: `src/prompts/` — prompt templates (vd: `extract_action_items.md`).
-- **Design System**: `DESIGN.md` — Notion-based design tokens (colors, typography, spacing, components). Tham chiếu khi build/style frontend components.
+- **DI Container**: `src/core/container.py` — Lazy initialization of providers. Falls back to `MockAnalyzer` when `OPENAI_API_KEY` is empty. `JiraClient` auto-stubs when Jira credentials are missing.
+- **Design System**: `DESIGN.md` — Notion-based design tokens for frontend components.
 
 ### Data Flow
 ```
-[Desktop App] record/upload audio
+[Electron App] record/upload audio
   → POST /meetings/{id}/audio → [FastAPI]
-    → Celery pipeline (src/workers/pipeline.py):
-      1. transcribe_task: Whisper API (+diarize) → Transcript → PostgreSQL
-      2. analyze_task: GPT-4o → AnalysisResult + ReviewItem[] (status=draft) → PostgreSQL
-  → Frontend poll /jobs/{job_id} → load review items
-  → User approve/edit/reject in review_view
-  → POST /meetings/{id}/jira/push → jira_push_task → push approved items → Jira
+    → Redis/Celery pipeline:
+      1. transcribe_task → transcript segments → Supabase
+      2. analyze_task → analysis result + action items → Supabase
+  → Electron polls /jobs/{job_id} and/or reads Supabase data
+  → User approve/edit/reject action items
+  → POST /meetings/{id}/jira/push → jira_push_task → Jira + Supabase sync status
 ```
 
 ### Non-Obvious Patterns
 
-**Dual Engine (API vs Worker)**: `src/db/session.py` maintains two separate SQLAlchemy engines. The API engine uses connection pooling (`init_engine()`). The Celery worker engine uses `NullPool` (`get_session_factory()`) because each Celery task runs in its own `asyncio.run()` — reusing pooled connections across event loops causes asyncpg errors.
+**Supabase-first DB access**: Backend database operations go through `src.db.supabase_client` and CRUD helpers. There is no local PostgreSQL service or Alembic migration flow in the active runtime.
 
-**Strategy Pattern for Providers**: `BaseAnalyzer` and `BaseTranscriber` are ABCs. New providers MUST implement the corresponding ABC. `Container` handles provider selection based on config.
+**Strategy Pattern for Providers**: `BaseAnalyzer` and `BaseTranscriber` are ABCs. New providers must implement the corresponding ABC. `Container` handles provider selection based on config.
 
-**Validation Pipeline**: AI extraction (GPT-4o) is cross-validated with rule-based regex (`extraction_service.py` + `validation_service.py`) → confidence score → flagged items highlighted in review.
+**Validation Pipeline**: AI extraction is cross-validated with rule-based regex (`extraction_service.py` + `validation_service.py`) → confidence score → flagged items highlighted in review.
 
-**Structured Output**: OpenAI JSON mode for action items extraction. Output maps to Jira schema: Epic → Task → Subtask with assignee, deadline, priority.
+**Structured Output**: OpenAI JSON mode maps action items to Jira schema: Epic → Task → Subtask with assignee, deadline, priority.
 
-**Two Frontends, One API**: Both Flet and Electron call the same FastAPI `/api/v1` endpoints. Flet uses sync `httpx`, Electron uses `axios`. Audio recording is local in both (Flet: Python in-process, Electron: Python sidecar via IPC/JSON-lines).
-
-**Supabase Auth (In-Progress)**: Electron has Supabase email/password auth + session tracking. DB model uses UUID `Meeting.user_id` (zero UUID fallback for local/dev, migration 0003). Backend does NOT currently enforce JWT auth — no middleware or `Authorization` header injection in either frontend's API client. Supabase env vars are in `.env` but not declared in `src/config.py`.
-
-**Quota System**: `UserPlan` / `UsageRecord` / `QuotaLimit` models support plan-based usage limits. Migration 0002.
+**Electron + FastAPI split**: Electron uses Supabase SDK for auth/data paths and FastAPI for upload, jobs, AI processing, streaming, and Jira push.
 
 ### CI/CD
-- `.github/workflows/deploy.yml`: On push to `main` → build Docker image → push to `ghcr.io` → trigger Coolify webhook deploy. No test/lint CI workflow — only deployment.
-- Docker Compose runs Alembic migration as a separate `migrate` service before API/Worker start.
-- Docker Compose is backend-only (Postgres, Redis, migrate, API, worker). Does NOT run Flet or Electron frontend.
+- `.github/workflows/deploy.yml`: mirrors source for deploy workflow.
+- Docker Compose is backend-only (Redis, API, worker). Electron is built separately as a desktop app.
 
 ## Action Items Schema (Jira integration target)
 - **Epic**: Chủ đề lớn / quyết định chính
@@ -125,9 +104,9 @@ Sau mỗi thay đổi: `flake8 . --max-line-length=100 && mypy . --ignore-missin
 ## Environment Variables
 Config loading qua `src/config.py` (`pydantic-settings`, `@lru_cache` singleton). Xem `.env.example` cho đầy đủ.
 
-**Electron-only env vars** (Vite, in `electron-app/.env`): `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+**Backend env vars**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `APP_SECRET_KEY`, Redis/Celery URLs, optional Jira env vars.
 
-**Supabase env vars** (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) are in `.env` but NOT yet declared in `src/config.py` — backend doesn't read them.
+**Electron-only env vars** (Vite, in `electron-app/.env`): `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
 
 ## Agent Behavior
 
@@ -147,12 +126,12 @@ Config loading qua `src/config.py` (`pydantic-settings`, `@lru_cache` singleton)
 - LUÔN chạy `pytest tests/ -v` sau khi sửa logic trong `providers/` hoặc `services/`.
 - LUÔN verify structured output match Jira schema (Epic/Task/Subtask) sau khi sửa prompts hoặc analyzer.
 - KHÔNG commit `.env`, API keys, hoặc credentials.
-- KHÔNG sửa files trong `.claude/` mà không hỏi trước.
+- KHÔNG sửa files trong `.claude/` ngoài các file spec/progress của task hiện tại.
 - Provider mới PHẢI kế thừa ABC + có test file riêng.
 - External API calls PHẢI có error handling + retry logic.
 - Prompt changes PHẢI test với ≥2 sample transcripts trước khi commit.
-- KHÔNG dùng Local Whisper — chỉ OpenAI Whisper API.
-- KHÔNG dùng SQLite — database duy nhất là PostgreSQL qua `src/db/`.
+- KHÔNG dùng Local Whisper — chỉ OpenAI Whisper API hoặc WhisperLiveKit khi được cấu hình.
+- KHÔNG dùng SQLite/PostgreSQL local — database runtime là Supabase qua `src/db/`.
 
 ## Recurring Mistakes
 <!-- Thêm lỗi mới vào đây mỗi khi AI mắc lỗi lặp. Format: -->

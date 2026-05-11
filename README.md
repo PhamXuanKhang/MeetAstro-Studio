@@ -5,131 +5,116 @@ Convert meeting audio into structured action items (Epic -> Task -> Subtask) and
 ## Overview
 
 AI Meeting Assistant automates meeting documentation by:
-1. **Recording** system audio + microphone (or uploading audio files)
-2. **Transcribing** via OpenAI Whisper API (with optional speaker diarization)
+1. **Recording** system audio + microphone or uploading audio/video files from the Electron app
+2. **Transcribing** via OpenAI Whisper API or optional WhisperLiveKit
 3. **Analyzing** via GPT-4o to extract Epic/Task/Subtask
-4. **Reviewing** with human-in-the-loop approval before export
-5. **Exporting** to Markdown/JSON/CSV or pushing directly to Jira
+4. **Reviewing** with human-in-the-loop approval
+5. **Pushing** approved items to Jira
 
-Architecture: **FastAPI backend** (Celery workers + PostgreSQL + Redis) + **Flet desktop app** (HTTP client).
+Architecture: **Electron desktop app** + **FastAPI backend** + **Celery worker** + **Redis** + **Supabase database/auth**.
 
 ## Project Structure
 
 ```
 A20-App-089/
-├── frontend/                   # Flet desktop app (HTTP client)
-│   ├── main.py                 # Entry point
-│   ├── app.py                  # App factory + routing
-│   ├── core/                   # HttpBackend, AppState
-│   ├── views/                  # UI pages
-│   └── components/             # Sidebar, Topbar
-├── src/                        # FastAPI backend
-│   ├── api/                    # Routers + schemas
-│   ├── workers/                # Celery tasks
-│   ├── services/               # Business logic
-│   ├── providers/              # OpenAI integrations
-│   ├── modules/                # Jira, Audio, Exporter
-│   ├── db/                     # SQLAlchemy + Alembic
-│   └── prompts/                # LLM prompt templates
-├── tests/                      # pytest test files
-├── docs/                       # Documentation
-│   ├── product/                # Canvas, Spec, Roadmap
-│   ├── technical/              # Architecture, API, Deployment
-│   └── evaluation/             # Metrics, Test plan
-├── docker-compose.yml          # PostgreSQL + Redis + API + Worker
-├── pyproject.toml              # Package config (uv)
-└── .env.example                # Environment template
+├── electron-app/                # Electron + React + TypeScript desktop app
+├── src/                         # FastAPI backend and worker code
+│   ├── api/                     # Routers + schemas
+│   ├── workers/                 # Celery tasks
+│   ├── services/                # Business logic
+│   ├── providers/               # OpenAI / transcription integrations
+│   ├── modules/                 # Jira, audio recorder, exporter
+│   ├── db/                      # Supabase client + CRUD helpers
+│   └── prompts/                 # LLM prompt templates
+├── tests/                       # pytest test files
+├── docs/                        # Documentation
+├── docker-compose.yml           # Redis + API + worker for backend deploy
+├── Dockerfile                   # Backend API/worker image
+├── pyproject.toml               # Python package config
+└── .env.example                 # Backend environment template
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- **Python 3.11+** (backend) / Python 3.9+ (frontend)
-- **Docker Desktop** running with the Linux engine enabled (for PostgreSQL + Redis + API + worker)
-- **Git**
-- **uv** (preferred) or **pip** (both read dependencies from `pyproject.toml`)
+- Python 3.11+ for backend
+- Node.js 20+ for Electron app
+- Docker Desktop with Linux engine enabled for backend deploy
+- Supabase project with app tables configured
+- `uv` or `pip`
 
-### 1. Clone and Setup
+### 1. Backend setup
 
 ```bash
-git clone https://github.com/a20-ai-thuc-chien/A20-App-089.git
-cd A20-App-089
-
-# Create virtual environment (Windows PowerShell)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# Install dependencies (all-in-one for local dev)
 python -m pip install -e ".[all]"
+```
 
-# Or, if uv is installed
+Or with `uv`:
+
+```bash
 uv venv
 .\.venv\Scripts\Activate.ps1
 uv pip install -e ".[all]"
 ```
 
-Dependencies are declared in `pyproject.toml`; this repo does not use a
-`requirements.txt` file.
-
-### 2. Configure Environment
+### 2. Configure backend environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and fill in:
-- `OPENAI_API_KEY` (required) - your OpenAI API key
-- `APP_SECRET_KEY` (required) - generate with:
-  ```python
-  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-  ```
-- `JIRA_*` variables (optional) - for Jira integration
+Fill in at least:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY`
+- `APP_SECRET_KEY`
 
-### 3. Start Backend (Docker)
+Optional:
+- `JIRA_*` variables for Jira integration
+- `WHISPER_LIVEKIT_URL` for self-hosted diarization/streaming
+
+### 3. Start backend with Docker
 
 ```bash
 docker compose up --build
 ```
 
 This starts:
-- **PostgreSQL** on `localhost:5432`
-- **Redis** on `localhost:6379`
-- **FastAPI** on `http://localhost:8000`
-- **Celery Worker** (background)
-- Auto-runs **Alembic migrations**
+- **Redis** on the internal Docker network
+- **FastAPI** on container port `8000`
+- **Celery Worker** using Redis broker/result backend
 
-If Docker fails with a named-pipe error such as `open //./pipe/dockerDesktopLinuxEngine`,
-start Docker Desktop, wait until the Linux engine is running, then retry:
+The API health endpoint is `/api/v1/health`.
+
+### 4. Start Electron app
 
 ```bash
-docker context ls
-docker --context desktop-linux ps
-docker compose up --build
+cd electron-app
+npm install
+npm run dev
 ```
 
-### 4. Start Desktop App
+For a production desktop build:
 
 ```bash
-python frontend/main.py
+cd electron-app
+npm run build
 ```
 
-The app connects to `http://localhost:8000` by default.
-
-## Alternative: Dev Mode (without Docker)
+## Local Backend Dev Mode
 
 ```bash
-# Start PostgreSQL + Redis only
-docker compose up postgres redis -d
+# Start Redis only
+ docker compose up redis -d
 
-# Run API (hot reload)
+# Run API with hot reload
 uvicorn src.api.main:app --reload --port 8000
 
-# Run Celery worker (separate terminal)
+# Run Celery worker in another terminal
 celery -A src.workers.celery_app worker -Q default --loglevel=info
-
-# Run desktop app (separate terminal)
-python frontend/main.py
 ```
 
 ## Commands
@@ -137,57 +122,39 @@ python frontend/main.py
 | Command | Description |
 |---------|-------------|
 | `uv pip install -e ".[server]"` | Install backend dependencies |
-| `uv pip install -e ".[frontend]"` | Install frontend dependencies |
-| `uv pip install -e ".[dev]"` | Install dev tools (pytest, flake8, mypy) |
-| `uv pip install -e ".[all]"` | Install everything |
+| `uv pip install -e ".[dev]"` | Install dev tools |
+| `uv pip install -e ".[all]"` | Install backend + dev dependencies |
 | `pytest tests/ -v` | Run tests |
-| `flake8 . --max-line-length=100` | Lint code |
-| `mypy . --ignore-missing-imports` | Type check |
+| `flake8 . --max-line-length=100` | Lint Python code |
+| `mypy . --ignore-missing-imports` | Type check Python code |
+| `cd electron-app && npm run typecheck` | Type check Electron app |
+| `cd electron-app && npm run build` | Build Electron desktop app |
+
+## Workflow
+
+```
+Electron app
+  -> Supabase SDK for auth and direct data views
+  -> FastAPI /api/v1 for upload, jobs, AI processing, Jira push
+      -> Redis queue
+      -> Celery worker
+          -> OpenAI / WhisperLiveKit / Jira
+          -> Supabase database
+```
 
 ## Documentation
 
 | Document | Purpose |
 |----------|---------|
 | [`docs/INDEX.md`](docs/INDEX.md) | Documentation index |
-| [`docs/technical/architecture.md`](docs/technical/architecture.md) | System architecture |
 | [`docs/technical/api-reference.md`](docs/technical/api-reference.md) | API endpoints & schemas |
 | [`docs/technical/supabase-schema.md`](docs/technical/supabase-schema.md) | Supabase Auth ownership + RLS |
-| [`docs/technical/deployment.md`](docs/technical/deployment.md) | Setup & deployment |
 | [`docs/product/spec.md`](docs/product/spec.md) | Product specification |
 | [`docs/product/roadmap.md`](docs/product/roadmap.md) | Roadmap & milestones |
-
-## Workflow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Desktop App (Flet)                          │
-│                                                                 │
-│  [Record/Upload] → [Transcribe] → [Analyze] → [Review] → [Push] │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ HTTP (httpx)
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   FastAPI + Celery Workers                      │
-│                                                                 │
-│  POST /audio → transcribe_task (Whisper API)                    │
-│            → analyze_task (GPT-4o JSON mode)                    │
-│            → create ReviewItems (draft)                         │
-│                                                                 │
-│  POST /jira/push → jira_push_task (approved items only)         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Weekly Journal
-
-Update [JOURNAL.md](./JOURNAL.md) at the end of each week with product learnings and decisions.
 
 ## Worklog
 
 Update [WORKLOG.md](./WORKLOG.md) whenever your team makes a technical decision or changes direction.
-
-## AI Logging
-
-Prompts and tool calls are logged automatically after you run `scripts/setup_hooks.sh`. See [AGENTS.md](./AGENTS.md).
 
 ## License
 
