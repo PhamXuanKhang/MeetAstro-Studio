@@ -20,5 +20,6 @@ jobs:
 
       - name: Force push to deploy repository
         run: |
+          git remote remove deploy 2>/dev/null || true
           git remote add deploy "https://x-access-token:${{ secrets.MIRROR_REPO_TOKEN }}@github.com/PhamXuanKhang/MeetAstro-Studio.git"
           git push --force deploy HEAD:main
