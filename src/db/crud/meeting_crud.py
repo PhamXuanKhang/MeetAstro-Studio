@@ -16,7 +16,7 @@ def create_meeting(
     *,
     title: str,
     audio_storage_path: Optional[str] = None,
-    user_id: str = "7f3572eb-aed9-4e7f-a4b1-41ecb03319e9",
+    user_id: str = "5c08ae85-ff0c-478a-b361-e0173644946d",
 ) -> dict[str, Any]:
     """Tạo meeting mới với trạng thái pending."""
     return sc.insert(sc.TABLE_MEETINGS, {
