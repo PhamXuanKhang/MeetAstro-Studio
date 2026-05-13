@@ -40,7 +40,10 @@ function createClient(): AxiosInstance {
     (res) => res,
     (err) => {
       const msg = err.response?.data?.detail || err.response?.data?.message || err.message
-      return Promise.reject(new Error(String(msg)))
+      if (err instanceof Error) {
+        err.message = String(msg)
+      }
+      return Promise.reject(err)
     }
   )
 

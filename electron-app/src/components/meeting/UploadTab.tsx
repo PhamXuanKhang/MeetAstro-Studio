@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-const AUDIO_EXTS = ['wav', 'mp3', 'm4a', 'ogg', 'flac']
+const AUDIO_EXTS = ['wav', 'mp3', 'm4a', 'ogg']
 const VIDEO_EXTS = ['mp4', 'mkv', 'webm']
 const ALL_EXTS = [...AUDIO_EXTS, ...VIDEO_EXTS]
 
@@ -64,7 +64,7 @@ export default function UploadTab({ audioPath, onAudioPicked, openFile, onToast 
       >
         📂 Nhấp để chọn file
         <div style={{ fontSize: 12, color: UI.steel, marginTop: 6 }}>
-          Audio: WAV, MP3, M4A, OGG, FLAC &nbsp;|&nbsp; Video: MP4, MKV, WEBM
+          Audio: WAV, MP3, M4A, OGG &nbsp;|&nbsp; Video: MP4, MKV, WEBM
         </div>
       </button>
 

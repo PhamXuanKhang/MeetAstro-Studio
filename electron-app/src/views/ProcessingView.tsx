@@ -1,165 +1,194 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
-import { pollJob } from '../api/jobs'
-import type { JobStatusResponse } from '../types/supabase-models'
+import { pollJobStatus } from '../api/meetings'
+import { subscribeMeetingStatus, unsubscribeChannel } from '../api/supabase/realtime'
+import type { JobStatusResponse, MeetingStatus } from '../types/supabase-models'
 
 const UI = {
   primary: '#5645d4',
   ink: '#1a1a1a',
   slate: '#5d5b54',
   steel: '#787671',
-  muted: '#bbb8b1',
   canvas: '#ffffff',
-  surface: '#f6f5f4',
   hairline: '#e5e3df',
   hairlineStrong: '#c8c4be',
   error: '#e03131',
   font: "'Notion Sans', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif",
 }
 
-const PROCESSING_META: Record<string, { label: string; icon: string; successRoute: string }> = {
-  transcribing: { label: 'Đang chuyển đổi âm thanh', icon: '🎙️', successRoute: 'review_transcript' },
-  finalizing_recording: { label: 'Đang xử lý bản ghi', icon: '🎙️', successRoute: 'review_transcript' },
-  analyzing: { label: 'Đang phân tích với GPT-4o', icon: '🤖', successRoute: 'results' },
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Đang chuẩn bị xử lý...',
+  transcribing: 'Đang chuyển âm thanh thành transcript...',
+  transcribed: 'Transcript đã sẵn sàng, đang chuẩn bị phân tích...',
+  analyzing: 'Đang phân tích và tạo action items...',
+  draft: 'Hoàn tất. Đang mở màn review...',
+  failed: 'Xử lý thất bại',
 }
 
-const INDETERMINATE_MSGS: Record<string, string[]> = {
-  transcribing: ['Đang upload...', 'Đang transcribe...', 'Xử lý âm thanh...', 'Sắp xong...'],
-  finalizing_recording: ['Đang upload bản ghi...', 'Đang transcribe...', 'Sắp xong...'],
-  analyzing: ['Đang phân tích...', 'Đang trích xuất action items...', 'Đang xây dựng cây Epic/Task...', 'Sắp xong...'],
+function fmtElapsed(s: number) {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`
+}
+
+function getProgressFloor(status: string): number {
+  if (status === 'analyzing') return 60
+  if (status === 'draft') return 100
+  return 25
+}
+
+function getProgressCeiling(status: string): number {
+  if (status === 'transcribing' || status === 'transcribed') return 60
+  if (status === 'analyzing') return 90
+  if (status === 'draft') return 100
+  return 25
 }
 
 export default function ProcessingView() {
   const {
-    currentJobId, currentMeetingId, processingKind,
-    setProcessingProgress, setProcessingMessage,
+    currentJobId,
+    currentMeetingId,
+    processingKind,
+    processingProgress,
+    setProcessingProgress,
+    setProcessingMessage,
+    setMeetingStatus,
     setRoute,
   } = useAppStore()
 
-  const [localProgress, setLocalProgress] = useState<number | null>(null)
-  const [localMessage, setLocalMessage] = useState('')
+  const [status, setStatus] = useState<MeetingStatus | 'pending'>('pending')
+  const [localProgress, setLocalProgress] = useState(processingProgress ?? 25)
   const [error, setError] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
-  const abortRef = useRef<AbortController | null>(null)
-  const indetermIdx = useRef(0)
-  const startTs = useRef(Date.now())
+  const routedRef = useRef(false)
 
-  const meta = processingKind ? PROCESSING_META[processingKind] : null
-  const indetermsForKind = processingKind ? INDETERMINATE_MSGS[processingKind] : []
+  const jobQuery = useQuery<JobStatusResponse, Error>({
+    queryKey: ['job-status', currentJobId],
+    queryFn: () => pollJobStatus(currentJobId!),
+    enabled: Boolean(currentJobId) && !routedRef.current,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state
+      return state === 'SUCCESS' || state === 'FAILURE' ? false : 2000
+    },
+  })
 
-  // Guard: redirect if missing state
   useEffect(() => {
     if (!currentJobId || !currentMeetingId || !processingKind) {
       setRoute('new_meeting')
     }
   }, [currentJobId, currentMeetingId, processingKind, setRoute])
 
-  // Elapsed timer (for indeterminate UX)
   useEffect(() => {
-    startTs.current = Date.now()
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startTs.current) / 1000)), 1000)
-    return () => clearInterval(t)
+    const timer = setInterval(() => setElapsed((s) => s + 1), 1000)
+    return () => clearInterval(timer)
   }, [])
 
-  // Indeterminate message cycling when no progress_pct
   useEffect(() => {
-    if (localProgress !== null) return
-    const t = setInterval(() => {
-      indetermIdx.current = (indetermIdx.current + 1) % indetermsForKind.length
-      setLocalMessage(indetermsForKind[indetermIdx.current] ?? '')
-    }, 3500)
-    setLocalMessage(indetermsForKind[0] ?? '')
-    return () => clearInterval(t)
-  }, [localProgress, processingKind]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!currentMeetingId) return
 
-  // Main polling effect
+    const channel = subscribeMeetingStatus(currentMeetingId, (update) => {
+      setStatus(update.status)
+      setMeetingStatus(update.status)
+      if (update.error_message) {
+        setError(update.error_message)
+      }
+      if (update.status === 'failed') {
+        setError(update.error_message || 'Pipeline xử lý thất bại.')
+      }
+    })
+
+    return () => { unsubscribeChannel(channel) }
+  }, [currentMeetingId, setMeetingStatus])
+
   useEffect(() => {
-    if (!currentJobId || !currentMeetingId || !processingKind) return
+    const job = jobQuery.data
+    if (!job) return
 
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    const onProgress = (job: JobStatusResponse) => {
-      if (job.progress_pct != null) {
-        setLocalProgress(job.progress_pct)
-        setProcessingProgress(job.progress_pct)
-      }
-      if (job.message) {
-        setLocalMessage(job.message)
-        setProcessingMessage(job.message)
-      }
+    if (job.state === 'FAILURE') {
+      setError(job.error || 'Pipeline xử lý thất bại.')
+      return
     }
 
-    const run = async () => {
-      try {
-        await pollJob(currentJobId, 600000, 2000, controller.signal, onProgress)
+    if (job.state === 'SUCCESS') {
+      setStatus('draft')
+    }
+  }, [jobQuery.data])
 
-        // Job complete — route to the appropriate view.
-        // The target view will fetch its own data from Supabase via React Query.
-        const successRoute = meta?.successRoute ?? 'results'
-        setRoute(successRoute)
-      } catch (e) {
-        if (controller.signal.aborted) return
-        setError(e instanceof Error ? e.message : String(e))
+  useEffect(() => {
+    if (jobQuery.error) {
+      setError(jobQuery.error.message)
+    }
+  }, [jobQuery.error])
+
+  useEffect(() => {
+    if (error) return
+
+    const floor = getProgressFloor(status)
+    const ceiling = getProgressCeiling(status)
+    setLocalProgress((prev) => Math.max(prev, floor))
+
+    if (status === 'draft') {
+      setLocalProgress(100)
+      setProcessingProgress(100)
+      setProcessingMessage(STATUS_LABELS.draft)
+      if (!routedRef.current) {
+        routedRef.current = true
+        window.setTimeout(() => setRoute('review'), 700)
       }
+      return
     }
 
-    run()
-    return () => controller.abort()
-  }, [currentJobId, currentMeetingId, processingKind]) // eslint-disable-line react-hooks/exhaustive-deps
+    const timer = window.setInterval(() => {
+      setLocalProgress((prev) => {
+        const next = prev < ceiling ? Math.min(ceiling, prev + 1) : prev
+        setProcessingProgress(next)
+        return next
+      })
+    }, status === 'pending' ? 2500 : 1200)
 
-  const fmtElapsed = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = s % 60
-    return m > 0 ? `${m}m ${sec}s` : `${sec}s`
-  }
+    return () => window.clearInterval(timer)
+  }, [error, status, setProcessingMessage, setProcessingProgress, setRoute])
+
+  useEffect(() => {
+    const message = STATUS_LABELS[status] ?? 'Đang xử lý...'
+    setProcessingMessage(message)
+  }, [status, setProcessingMessage])
 
   const handleRetry = () => setRoute('new_meeting')
   const handleGoHistory = () => setRoute('history')
 
   return (
-    <div style={{ maxWidth: 520, margin: '80px auto 0', padding: '0 24px', textAlign: 'center', fontFamily: UI.font, color: UI.ink }}>
+    <div style={{ maxWidth: 560, margin: '80px auto 0', padding: '0 24px', textAlign: 'center', fontFamily: UI.font, color: UI.ink }}>
       {!error ? (
         <>
-          <div style={{ fontSize: 56, marginBottom: 20 }}>{meta?.icon ?? '⏳'}</div>
+          <div style={{ fontSize: 52, marginBottom: 20 }}>⏳</div>
           <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, marginBottom: 8 }}>
-            {meta?.label ?? 'Đang xử lý...'}
+            {STATUS_LABELS[status] ?? 'Đang xử lý...'}
           </h2>
 
-          {/* Progress bar */}
           <div style={{ background: UI.hairline, borderRadius: 9999, height: 8, overflow: 'hidden', margin: '24px 0 12px' }}>
-            {localProgress !== null ? (
-              <div
-                style={{
-                  height: '100%', borderRadius: 99, background: UI.primary,
-                  width: `${localProgress}%`, transition: 'width 0.4s ease',
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  height: '100%', borderRadius: 99, background: UI.primary,
-                  width: '40%',
-                  animation: 'slide 1.6s ease-in-out infinite',
-                }}
-              />
-            )}
+            <div
+              style={{
+                height: '100%',
+                borderRadius: 99,
+                background: UI.primary,
+                width: `${Math.max(25, Math.min(100, localProgress))}%`,
+                transition: 'width 0.45s ease',
+              }}
+            />
           </div>
-          <style>{`@keyframes slide {
-            0%   { margin-left: -40%; width: 40%; }
-            50%  { margin-left: 30%; width: 40%; }
-            100% { margin-left: 100%; width: 40%; }
-          }`}</style>
 
           <p style={{ fontSize: 14, color: UI.slate, margin: '0 0 4px', lineHeight: 1.5 }}>
-            {localProgress !== null ? `${Math.round(localProgress)}%` : localMessage}
+            {Math.round(localProgress)}%
           </p>
-          <p style={{ fontSize: 12, color: UI.steel }}>Đã chờ {fmtElapsed(elapsed)}</p>
+          <p style={{ fontSize: 12, color: UI.steel }}>
+            Đã chờ {fmtElapsed(elapsed)}
+          </p>
         </>
       ) : (
         <>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>❌</div>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>✕</div>
           <h2 style={{ fontWeight: 600, fontSize: 18, color: UI.ink, marginBottom: 8 }}>Xử lý thất bại</h2>
           <p style={{ fontSize: 13, color: UI.slate, marginBottom: 24, wordBreak: 'break-word' }}>{error}</p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -170,7 +199,7 @@ export default function ProcessingView() {
                 background: UI.canvas, color: UI.ink, fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: UI.font,
               }}
             >
-              ← Tạo cuộc họp mới
+              Tạo cuộc họp mới
             </button>
             <button
               onClick={handleGoHistory}
