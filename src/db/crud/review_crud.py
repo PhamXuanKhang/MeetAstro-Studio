@@ -104,6 +104,25 @@ def set_review_status(item_id: str | uuid.UUID, *, status: str) -> dict[str, Any
     return sc.update_by_id(sc.TABLE_ACTION_ITEMS, str(item_id), {"review_status": status})
 
 
+def update_action_item_sync(
+    item_id: str | uuid.UUID,
+    *,
+    sync_status: str,
+    sync_error: Optional[str] = None,
+    jira_issue_key: Optional[str] = None,
+    jira_issue_url: Optional[str] = None,
+) -> dict[str, Any]:
+    """Update Jira sync metadata for one action item."""
+    data: dict[str, Any] = {"sync_status": sync_status}
+    if sync_error is not None:
+        data["sync_error"] = sync_error
+    if jira_issue_key is not None:
+        data["jira_issue_key"] = jira_issue_key
+    if jira_issue_url is not None:
+        data["jira_issue_url"] = jira_issue_url
+    return sc.update_by_id(sc.TABLE_ACTION_ITEMS, str(item_id), data)
+
+
 def approve_all_items(meeting_id: str | uuid.UUID) -> int:
     """Approve tất cả items chưa bị rejected. Trả về số items đã approve."""
     client = sc.get_supabase_client()

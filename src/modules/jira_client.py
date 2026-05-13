@@ -31,6 +31,7 @@ class JiraClient:
         email: Optional[str] = None,
         token: Optional[str] = None,
         project_key: Optional[str] = None,
+        allow_stub: bool = True,
     ) -> None:
         """
         Initialize Jira client.
@@ -49,12 +50,31 @@ class JiraClient:
         self._stub = not (self._base_url and self._email and self._token and self._project_key)
 
         if self._stub:
+            if not allow_stub:
+                missing = []
+                if not self._base_url:
+                    missing.append("base_url")
+                if not self._email:
+                    missing.append("email")
+                if not self._token:
+                    missing.append("token")
+                if not self._project_key:
+                    missing.append("project_key")
+                raise ValueError(
+                    "Jira credentials are not configured: "
+                    + ", ".join(missing)
+                )
             logger.warning("Jira credentials missing - running in STUB mode (no actual API calls).")
 
     @property
     def is_stub(self) -> bool:
         """Return True if client is in stub mode."""
         return self._stub
+
+    @property
+    def base_url(self) -> str:
+        """Return normalized Jira base URL."""
+        return self._base_url
 
     def _headers(self) -> dict:
         """Return HTTP headers for Jira API requests."""
