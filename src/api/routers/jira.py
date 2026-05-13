@@ -12,7 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from src.api.deps import get_supabase
 from src.api.schemas.task_schemas import JiraPushResponse, JobStatusResponse
 from src.db.crud.meeting_crud import get_meeting
+from src.db.crud.provider_crud import get_provider_config
 from src.db.crud.review_crud import get_review_summary
+from src.services.jira_service import normalize_jira_credentials
 from supabase import Client
 
 router = APIRouter(prefix="/meetings", tags=["jira"])
@@ -45,6 +47,13 @@ async def push_to_jira(
         raise HTTPException(
             status_code=400, detail="No items have been approved."
         )
+
+    try:
+        normalize_jira_credentials(
+            get_provider_config("jira", user_id=str(meeting.get("user_id")))
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     from src.workers.tasks.jira_push_task import push_to_jira as push_task
 

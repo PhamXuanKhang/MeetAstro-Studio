@@ -42,6 +42,7 @@ class MeetingStatus(str, Enum):
     DRAFT = "draft"
     APPROVED = "approved"
     PUSHED = "pushed"
+    PARTIAL_SUCCESS = "partial_success"
     FAILED = "failed"
 
 

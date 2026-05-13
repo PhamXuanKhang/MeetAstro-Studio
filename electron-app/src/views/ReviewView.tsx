@@ -8,6 +8,7 @@ import {
   useBulkApproveActionItems,
 } from '../hooks/supabase/useActionItems'
 import { pushToJira } from '../api/jira'
+import { useProviderConfigStatus } from '../hooks/useProviderSettings'
 import { subscribeActionItemSyncStatus, unsubscribeChannel } from '../api/supabase/realtime'
 import ConfidenceBadge from '../components/ConfidenceBadge'
 import type { ActionItem, ActionItemPriority } from '../types/supabase-models'
@@ -57,8 +58,10 @@ function SyncBadge({ status, error: syncError }: { status: string; error?: strin
 interface CardProps {
   item: ActionItem
   onToast: (msg: string, err?: boolean) => void
-  syncOverride?: { sync_status: string; sync_error: string | null }
+  syncOverride?: SyncOverride
 }
+
+type SyncOverride = Pick<ActionItem, 'sync_status' | 'sync_error' | 'jira_issue_key' | 'jira_issue_url'>
 
 const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverride }: CardProps) {
   const meetingId = item.meeting_id
@@ -78,6 +81,8 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
 
   const syncStatus = syncOverride?.sync_status ?? item.sync_status
   const syncError = syncOverride?.sync_error ?? item.sync_error
+  const jiraIssueKey = syncOverride?.jira_issue_key ?? item.jira_issue_key
+  const jiraIssueUrl = syncOverride?.jira_issue_url ?? item.jira_issue_url
 
   const handleSave = useCallback(() => {
     editItem(
@@ -132,6 +137,17 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
         <ConfidenceBadge confidence={item.confidence_score} />
         <StatusBadge status={item.review_status} />
         <SyncBadge status={syncStatus} error={syncError} />
+        {jiraIssueKey && (
+          <a
+            href={jiraIssueUrl || undefined}
+            onClick={(e) => {
+              if (!jiraIssueUrl) e.preventDefault()
+            }}
+            style={{ color: '#2563eb', fontSize: 11, fontWeight: 700, textDecoration: 'none' }}
+          >
+            {jiraIssueKey}
+          </a>
+        )}
         <div style={{ flex: 1 }} />
         {!isEditing && (
           <button
@@ -243,7 +259,7 @@ function ActionItemTreeRenderer({
 }: {
   node: ActionItemTreeNode
   onToast: (msg: string, err?: boolean) => void
-  syncOverrides: Record<string, { sync_status: string; sync_error: string | null }>
+  syncOverrides: Record<string, SyncOverride>
 }) {
   return (
     <div style={{ marginBottom: node.depth === 0 ? 16 : 8 }}>
@@ -295,17 +311,18 @@ function Toast({ msg, isError, onClose }: { msg: string; isError: boolean; onClo
 // ─── ReviewView Main ────────────────────────────────────
 
 export default function ReviewView({ onNavigate, setBusy }: Props) {
-  const { currentMeetingId, setMeetingStatus } = useAppStore()
+  const { currentMeetingId } = useAppStore()
 
   // React Query: action items from Supabase
-  const { data: items = [], isLoading } = useActionItemsList(currentMeetingId)
+  const { data: items = [], isLoading, refetch } = useActionItemsList(currentMeetingId)
+  const jiraStatus = useProviderConfigStatus('jira')
   const { mutate: bulkApprove, isPending: approvingAll } = useBulkApproveActionItems(currentMeetingId)
 
   const [toast, setToast] = useState<{ msg: string; isError: boolean } | null>(null)
   const [pushing, setPushing] = useState(false)
 
   // ─── Realtime: sync status overrides ──────────────────
-  const [syncOverrides, setSyncOverrides] = useState<Record<string, { sync_status: string; sync_error: string | null }>>({})
+  const [syncOverrides, setSyncOverrides] = useState<Record<string, SyncOverride>>({})
 
   useEffect(() => {
     if (!currentMeetingId) return
@@ -313,7 +330,12 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     const channel = subscribeActionItemSyncStatus(currentMeetingId, (update) => {
       setSyncOverrides((prev) => ({
         ...prev,
-        [update.id]: { sync_status: update.sync_status, sync_error: update.sync_error },
+        [update.id]: {
+          sync_status: update.sync_status,
+          sync_error: update.sync_error,
+          jira_issue_key: update.jira_issue_key,
+          jira_issue_url: update.jira_issue_url,
+        },
       }))
     })
 
@@ -325,14 +347,23 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   }, [])
 
   // Compute summary from items
+  const effectiveItems = useMemo(
+    () => items.map((item) => ({ ...item, ...syncOverrides[item.id] })),
+    [items, syncOverrides]
+  )
+
   const summary = useMemo(() => {
-    const total = items.length
-    const approved = items.filter((i) => i.review_status === 'approved').length
-    const rejected = items.filter((i) => i.review_status === 'rejected').length
-    const flagged = items.filter((i) => i.confidence_score < 0.6 && i.review_status === 'draft').length
-    const pending = items.filter((i) => i.review_status === 'draft' || i.review_status === 'edited').length
-    return { total, approved, rejected, flagged, pending }
-  }, [items])
+    const total = effectiveItems.length
+    const approved = effectiveItems.filter((i) => i.review_status === 'approved').length
+    const rejected = effectiveItems.filter((i) => i.review_status === 'rejected').length
+    const flagged = effectiveItems.filter((i) => i.confidence_score < 0.6 && i.review_status === 'draft').length
+    const pending = effectiveItems.filter((i) => i.review_status === 'draft' || i.review_status === 'edited').length
+    const syncing = effectiveItems.filter((i) => i.sync_status === 'syncing').length
+    const synced = effectiveItems.filter((i) => i.sync_status === 'synced').length
+    const failed = effectiveItems.filter((i) => i.sync_status === 'failed').length
+    const unsyncedApproved = effectiveItems.filter((i) => i.review_status === 'approved' && i.sync_status !== 'synced').length
+    return { total, approved, rejected, flagged, pending, syncing, synced, failed, unsyncedApproved }
+  }, [effectiveItems])
 
   const handleApproveAll = useCallback(() => {
     bulkApprove(undefined, {
@@ -347,15 +378,15 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     setBusy(true, 'Đang push lên Jira...')
     try {
       await pushToJira(currentMeetingId!)
-      setMeetingStatus('pushed')
-      showToast('Push lên Jira thành công! 🎉')
+      await refetch()
+      showToast('Đã hoàn tất push Jira. Kiểm tra trạng thái từng item.')
     } catch (e) {
       showToast(`Lỗi push Jira: ${e instanceof Error ? e.message : e}`, true)
     } finally {
       setPushing(false)
       setBusy(false)
     }
-  }, [currentMeetingId, setBusy, setMeetingStatus, showToast])
+  }, [currentMeetingId, refetch, setBusy, showToast])
 
   if (!currentMeetingId) {
     return (
@@ -365,7 +396,14 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     )
   }
 
-  const pushDisabled = summary.pending > 0 || summary.approved === 0
+  const pushBlockReason = useMemo(() => {
+    if (!jiraStatus.data?.is_configured) return 'Chưa cấu hình Jira. Hãy vào Settings > Jira để lưu Base URL, email, API token và project key.'
+    if (summary.pending > 0) return `Còn ${summary.pending} item cần approve hoặc reject trước khi push.`
+    if (summary.approved === 0) return 'Cần approve ít nhất 1 item để push lên Jira.'
+    if (summary.unsyncedApproved === 0) return 'Tất cả item đã approve đã được sync lên Jira.'
+    return null
+  }, [jiraStatus.data?.is_configured, summary.approved, summary.pending, summary.unsyncedApproved])
+  const pushDisabled = Boolean(pushBlockReason) || pushing || jiraStatus.isLoading
   const treeNodes = buildActionItemTree(items)
 
   return (
@@ -398,6 +436,26 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
         ⏳ Chờ: {summary.pending}
       </div>
 
+      <div style={{
+        background: pushBlockReason ? '#fff7ed' : '#f0fdf4',
+        border: `1px solid ${pushBlockReason ? '#fdba74' : '#bbf7d0'}`,
+        color: pushBlockReason ? '#9a3412' : '#166534',
+        borderRadius: 8,
+        padding: '10px 16px',
+        marginBottom: 12,
+        fontSize: 12,
+        lineHeight: 1.5,
+      }}>
+        <div>
+          Synced: {summary.synced} | Failed: {summary.failed} | Ready: {summary.unsyncedApproved}
+        </div>
+        <div>
+          {pushBlockReason
+            ? `Chua the push: ${pushBlockReason}`
+            : `San sang push ${summary.unsyncedApproved} item da approve len Jira.`}
+        </div>
+      </div>
+
       {/* Bulk actions */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <button
@@ -413,13 +471,13 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
         </button>
         <button
           onClick={handlePushJira}
-          disabled={pushDisabled || pushing}
+          disabled={pushDisabled}
           title={pushDisabled ? 'Approve hoặc reject tất cả items trước khi push' : ''}
           style={{
             padding: '9px 20px', background: '#2563eb', color: '#fff',
             border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13,
-            cursor: pushDisabled || pushing ? 'not-allowed' : 'pointer',
-            opacity: pushDisabled || pushing ? 0.5 : 1,
+            cursor: pushDisabled ? 'not-allowed' : 'pointer',
+            opacity: pushDisabled ? 0.5 : 1,
           }}
         >
           {pushing ? 'Đang push...' : '🚀 Push to Jira'}

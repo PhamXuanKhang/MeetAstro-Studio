@@ -16,6 +16,7 @@ export type MeetingStatus =
   | 'draft'
   | 'approved'
   | 'pushed'
+  | 'partial_success'
   | 'failed';
 
 export type StorageProvider = 'local';

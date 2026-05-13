@@ -60,7 +60,7 @@ export function subscribeTranscriptSegments(
 /** G2 – Subscribe to action item sync status changes. */
 export function subscribeActionItemSyncStatus(
   meetingId: string,
-  onUpdate: (item: Pick<ActionItem, 'id' | 'sync_status' | 'sync_error'>) => void
+  onUpdate: (item: Pick<ActionItem, 'id' | 'sync_status' | 'sync_error' | 'jira_issue_key' | 'jira_issue_url'>) => void
 ): RealtimeChannel {
   const client = ensureClient();
   return client
@@ -74,6 +74,8 @@ export function subscribeActionItemSyncStatus(
         id: r.id as string,
         sync_status: r.sync_status as ActionItem['sync_status'],
         sync_error: (r.sync_error as string) ?? null,
+        jira_issue_key: (r.jira_issue_key as string) ?? null,
+        jira_issue_url: (r.jira_issue_url as string) ?? null,
       });
     })
     .subscribe();

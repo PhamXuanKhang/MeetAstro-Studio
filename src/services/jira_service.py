@@ -22,11 +22,47 @@ class JiraPushResult:
     subtask_count: int = 0
 
 
+def normalize_jira_credentials(config: Optional[dict[str, str]]) -> dict[str, str]:
+    """Normalize Jira provider config keys and fail if required values are missing."""
+    config = config or {}
+    credentials = {
+        "base_url": (
+            config.get("base_url")
+            or config.get("jira_base_url")
+            or config.get("url")
+            or config.get("site_url")
+            or ""
+        ),
+        "email": config.get("email") or config.get("jira_email") or "",
+        "token": (
+            config.get("token")
+            or config.get("api_key")
+            or config.get("api_token")
+            or config.get("jira_api_token")
+            or ""
+        ),
+        "project_key": (
+            config.get("project_key")
+            or config.get("projectKey")
+            or config.get("jira_project_key")
+            or ""
+        ),
+    }
+    credentials = {key: value.strip() for key, value in credentials.items()}
+    missing = [key for key, value in credentials.items() if not value]
+    if missing:
+        raise ValueError(
+            "Jira credentials are not configured: " + ", ".join(missing)
+        )
+    return credentials
+
+
 def push_analysis_to_jira(
     analysis: MeetingAnalysis,
     *,
     credentials: Optional[dict[str, str]] = None,
     client: Optional[JiraClient] = None,
+    allow_stub: bool = True,
 ) -> JiraPushResult:
     """
     Push entire Epic -> Task -> Subtask hierarchy from MeetingAnalysis to Jira.
@@ -49,14 +85,16 @@ def push_analysis_to_jira(
 
     if client is None:
         if credentials:
+            credentials = normalize_jira_credentials(credentials)
             client = JiraClient(
-                base_url=credentials.get("base_url") or credentials.get("jira_base_url") or None,
-                email=credentials.get("email") or credentials.get("jira_email") or None,
-                token=credentials.get("token") or credentials.get("api_key") or credentials.get("jira_api_token") or None,
-                project_key=credentials.get("project_key") or credentials.get("jira_project_key") or None,
+                base_url=credentials["base_url"],
+                email=credentials["email"],
+                token=credentials["token"],
+                project_key=credentials["project_key"],
+                allow_stub=allow_stub,
             )
         else:
-            client = JiraClient()
+            client = JiraClient(allow_stub=allow_stub)
 
     result = JiraPushResult(is_stub=client.is_stub)
 
