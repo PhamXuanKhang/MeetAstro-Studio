@@ -11,7 +11,7 @@ import queue
 import threading
 import time
 import wave
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -31,6 +31,7 @@ class AudioRecorder:
         mic_gain: Optional[float] = None,
         sys_gain: Optional[float] = None,
         output_dir: Optional[str] = None,
+        on_chunk: Optional[Callable[[bytes], None]] = None,
     ) -> None:
         """
         Initialize audio recorder.
@@ -42,6 +43,7 @@ class AudioRecorder:
             mic_gain: Microphone gain multiplier. If None, loads from settings.
             sys_gain: System audio gain multiplier. If None, loads from settings.
             output_dir: Output directory for recordings. If None, loads from settings.
+            on_chunk: Optional callback receiving each mixed PCM chunk.
         """
         settings = get_settings()
         self._sample_rate = sample_rate if sample_rate is not None else settings.audio_sample_rate
@@ -50,6 +52,7 @@ class AudioRecorder:
         self._mic_gain = mic_gain if mic_gain is not None else settings.audio_mic_gain
         self._sys_gain = sys_gain if sys_gain is not None else settings.audio_sys_gain
         self._output_dir = output_dir if output_dir is not None else settings.audio_output_dir
+        self._on_chunk = on_chunk
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -222,9 +225,17 @@ class AudioRecorder:
                     sys_scaled = sys_f.astype(np.int32)
                     mic_scaled = mic_f.astype(np.int32)
                     mixed = np.clip(sys_scaled + mic_scaled, -32768, 32767).astype(np.int16)
-                    wf.writeframes(mixed.tobytes())
+                    pcm_chunk = mixed.tobytes()
+                    wf.writeframes(pcm_chunk)
                 else:
-                    wf.writeframes(chunk)
+                    pcm_chunk = chunk
+                    wf.writeframes(pcm_chunk)
+
+                if self._on_chunk is not None:
+                    try:
+                        self._on_chunk(pcm_chunk)
+                    except Exception as exc:
+                        logger.warning("Audio chunk callback error: %s", exc)
 
                 with self._lock:
                     self._total_frames += len(chunk) // (sampwidth * self._channels)

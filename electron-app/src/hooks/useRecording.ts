@@ -1,7 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
+interface RecordingStartResult {
+  outputPath: string | null
+  streaming: boolean
+  streamError?: string
+}
+
 type ElectronAPI = {
-  startRecording: (config: Record<string, unknown>) => Promise<{ status: string; output_path?: string; error?: string }>
+  startRecording: (config: Record<string, unknown>) => Promise<{ status: string; output_path?: string; error?: string; streaming?: boolean; stream_error?: string }>
   stopRecording: () => Promise<{ status: string; output_path?: string; error?: string }>
   getRecordingStatus: () => Promise<{ isRecording: boolean; outputPath: string | null }>
 }
@@ -15,7 +21,7 @@ interface UseRecordingResult {
   outputPath: string | null
   error: string | null
   elapsedSeconds: number
-  startRecording: (config?: Record<string, unknown>) => Promise<string | null>
+  startRecording: (config?: Record<string, unknown>) => Promise<RecordingStartResult | null>
   stopRecording: () => Promise<string | null>
 }
 
@@ -43,7 +49,7 @@ export function useRecording(): UseRecordingResult {
   }, [])
 
   const startRecording = useCallback(
-    async (config: Record<string, unknown> = {}): Promise<string | null> => {
+    async (config: Record<string, unknown> = {}): Promise<RecordingStartResult | null> => {
       setError(null)
       setOutputPath(null)
       setElapsedSeconds(0)
@@ -75,7 +81,11 @@ export function useRecording(): UseRecordingResult {
         setElapsedSeconds((s) => s + 1)
       }, 1000)
 
-      return result.output_path ?? null
+      return {
+        outputPath: result.output_path ?? null,
+        streaming: Boolean(result.streaming),
+        streamError: result.stream_error,
+      }
     },
     []
   )

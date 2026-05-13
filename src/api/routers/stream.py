@@ -1,17 +1,23 @@
 """
-Router: /api/v1/stream - Realtime audio streaming via WhisperLiveKit.
+Router: realtime audio streaming via WhisperLiveKit.
 
-Endpoints are designed for the Electron Python sidecar:
-  POST /stream/{meeting_id}/start   - Create session, connect to WhisperLiveKit WS
-  POST /stream/{meeting_id}/chunk   - Forward raw PCM audio chunk (binary)
-  POST /stream/{meeting_id}/stop   - Signal EOF, close session
-  GET  /stream/{meeting_id}/events - SSE stream of partial transcript results
+Canonical endpoints:
+  POST /meetings/{meeting_id}/recording/start
+  POST /meetings/{meeting_id}/recording/chunk
+  POST /meetings/{meeting_id}/recording/stop
+  GET  /meetings/{meeting_id}/recording/events
+
+Hidden legacy aliases:
+  POST /stream/{meeting_id}/start
+  POST /stream/{meeting_id}/chunk
+  POST /stream/{meeting_id}/stop
+  GET  /stream/{meeting_id}/events
 """
 import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from src.config import get_logger
@@ -20,7 +26,9 @@ from src.services.stream_session_manager import StreamSession, get_stream_manage
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/stream", tags=["streaming"])
+MAX_RECORDING_CHUNK_BYTES = 512 * 1024
+
+router = APIRouter(tags=["streaming"])
 
 
 def _parse_server_time(t: str) -> float:
@@ -67,7 +75,8 @@ class _SSEPoller:
                 return [], True
 
 
-@router.post("/{meeting_id}/start")
+@router.post("/meetings/{meeting_id}/recording/start")
+@router.post("/stream/{meeting_id}/start", include_in_schema=False)
 async def start_stream(meeting_id: uuid.UUID) -> dict:
     """Initialize a realtime streaming session for a meeting."""
     meeting = get_meeting(str(meeting_id))
@@ -83,13 +92,14 @@ async def start_stream(meeting_id: uuid.UUID) -> dict:
         logger.debug("[%s] Received %d lines from WhisperLiveKit.", meeting_id, len(lines))
 
     await manager.create_session(str(meeting_id), on_partial=_on_partial)
-    update_meeting_status(str(meeting_id), status="recording")
+    update_meeting_status(str(meeting_id), status="transcribing")
 
     logger.info("[%s] Streaming session started.", meeting_id)
     return {"session_id": str(meeting_id), "status": "active"}
 
 
-@router.post("/{meeting_id}/chunk")
+@router.post("/meetings/{meeting_id}/recording/chunk")
+@router.post("/stream/{meeting_id}/chunk", include_in_schema=False)
 async def send_audio_chunk(
     meeting_id: uuid.UUID,
     chunk: UploadFile = File(...),
@@ -102,10 +112,12 @@ async def send_audio_chunk(
         raise HTTPException(
             status_code=404,
             detail=f"No active stream session for meeting {meeting_id}. "
-                   "Call POST /stream/{id}/start first.",
+                   "Call POST /meetings/{id}/recording/start first.",
         )
 
-    data = await chunk.read()
+    data = await chunk.read(MAX_RECORDING_CHUNK_BYTES + 1)
+    if len(data) > MAX_RECORDING_CHUNK_BYTES:
+        raise HTTPException(status_code=413, detail="Audio chunk too large.")
     if not data:
         return {"received": 0}
 
@@ -117,7 +129,8 @@ async def send_audio_chunk(
     return {"received": len(data)}
 
 
-@router.post("/{meeting_id}/stop")
+@router.post("/meetings/{meeting_id}/recording/stop")
+@router.post("/stream/{meeting_id}/stop", include_in_schema=False)
 async def stop_stream(meeting_id: uuid.UUID) -> dict:
     """Signal end-of-stream and close the session."""
     manager = get_stream_manager()
@@ -141,7 +154,8 @@ async def stop_stream(meeting_id: uuid.UUID) -> dict:
     }
 
 
-@router.get("/{meeting_id}/events")
+@router.get("/meetings/{meeting_id}/recording/events")
+@router.get("/stream/{meeting_id}/events", include_in_schema=False)
 async def stream_events(meeting_id: uuid.UUID) -> StreamingResponse:
     """SSE stream of partial transcript results."""
     manager = get_stream_manager()
@@ -151,7 +165,7 @@ async def stream_events(meeting_id: uuid.UUID) -> StreamingResponse:
         raise HTTPException(
             status_code=404,
             detail=f"No active stream session for meeting {meeting_id}. "
-                   "Call POST /stream/{id}/start first.",
+                   "Call POST /meetings/{id}/recording/start first.",
         )
 
     poller = _SSEPoller(session)
