@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useAppStore } from '../store/appStore'
-import { createMeeting, uploadMeetingMedia } from '../api/meetings'
+import { buildUploadFormData, uploadMeetingMedia } from '../api/meetings'
+import { createMeeting as createSupabaseMeeting } from '../api/supabase/meetings.api'
 import { useFileDialog } from '../hooks/useFileDialog'
 import UploadTab from '../components/meeting/UploadTab'
 
@@ -30,6 +31,7 @@ export default function NewMeetingView() {
     audioPath, setAudioPath,
     currentMeetingId, setCurrentMeetingId,
     setCurrentJobId, setProcessingKind,
+    setProcessingProgress,
     setCurrentMeetingTitle, resetMeetingState,
     selectedLanguage, selectedDiarize,
     setSelectedLanguage, setSelectedDiarize,
@@ -41,6 +43,7 @@ export default function NewMeetingView() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const { openFile } = useFileDialog()
 
@@ -60,7 +63,7 @@ export default function NewMeetingView() {
   const ensureMeetingId = useCallback(async (): Promise<string> => {
     if (currentMeetingId) return currentMeetingId
     const meetingTitle = title.trim() || `Meeting ${new Date().toLocaleString('vi-VN')}`
-    const meeting = await createMeeting(meetingTitle)
+    const meeting = await createSupabaseMeeting({ title: meetingTitle })
     setCurrentMeetingId(meeting.id)
     setCurrentMeetingTitle(meeting.title)
     return meeting.id
@@ -72,6 +75,7 @@ export default function NewMeetingView() {
 
     setError(null)
     setBusy(true)
+    setUploadProgress(0)
     try {
       const meetingId = await ensureMeetingId()
 
@@ -82,23 +86,32 @@ export default function NewMeetingView() {
         throw new Error('Electron file bridge chưa sẵn sàng. Ứng dụng cần chạy trong Electron.')
       }
       const fileBytes = await electronAPI.readFileBytes(audioPath)
-
-      const resp = await uploadMeetingMedia({
-        meetingId,
+      const formData = buildUploadFormData({
         filePath: audioPath,
         fileBytes,
         diarize: selectedDiarize,
         language: selectedLanguage,
       })
 
+      const resp = await uploadMeetingMedia({
+        meetingId,
+        formData,
+        onUploadProgress: (pct) => {
+          setUploadProgress(Math.min(25, Math.round(pct * 0.25)))
+        },
+      })
+
+      setUploadProgress(25)
       setCurrentJobId(resp.job_id)
       setProcessingKind('transcribing')
+      setProcessingProgress(25)
       setRoute('processing')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setBusy(false)
+      setUploadProgress(null)
     }
-  }, [audioPath, selectedDiarize, selectedLanguage, ensureMeetingId, setCurrentJobId, setProcessingKind, setRoute])
+  }, [audioPath, selectedDiarize, selectedLanguage, ensureMeetingId, setCurrentJobId, setProcessingKind, setProcessingProgress, setRoute])
 
   // Record tab: create meeting then navigate to LiveRecordingScreen
   const handleStartRecording = useCallback(async () => {
@@ -106,7 +119,7 @@ export default function NewMeetingView() {
     setBusy(true)
     try {
       const meetingTitle = title.trim() || `Meeting ${new Date().toLocaleString('vi-VN')}`
-      const meeting = await createMeeting(meetingTitle)
+      const meeting = await createSupabaseMeeting({ title: meetingTitle })
       setCurrentMeetingId(meeting.id)
       setCurrentMeetingTitle(meeting.title)
       setRoute('live_recording')
@@ -221,6 +234,24 @@ export default function NewMeetingView() {
               </div>
 
               <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+                {busy && uploadProgress !== null && (
+                  <div style={{ flex: 1, marginRight: 16, alignSelf: 'center' }}>
+                    <div style={{ height: 8, borderRadius: 999, background: UI.hairline, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${uploadProgress}%`,
+                          borderRadius: 999,
+                          background: UI.primary,
+                          transition: 'width 0.2s ease',
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: UI.steel }}>
+                      Upload {uploadProgress}%
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={handleStartUpload}
                   disabled={!audioPath || busy}

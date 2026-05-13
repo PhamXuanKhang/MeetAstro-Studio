@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useRecording } from '../hooks/useRecording'
-import { uploadMeetingMedia } from '../api/meetings'
+import { buildUploadFormData, uploadMeetingMedia } from '../api/meetings'
 
 const UI = {
   primary: '#5645d4',
@@ -73,12 +73,15 @@ export default function LiveRecordingView() {
       if (!electronAPI?.readFileBytes) throw new Error('Electron file bridge chưa sẵn sàng.')
 
       const fileBytes = await electronAPI.readFileBytes(outputPath)
-      const resp = await uploadMeetingMedia({
-        meetingId: currentMeetingId!,
+      const formData = buildUploadFormData({
         filePath: outputPath,
         fileBytes,
         diarize: selectedDiarize,
         language: selectedLanguage,
+      })
+      const resp = await uploadMeetingMedia({
+        meetingId: currentMeetingId!,
+        formData,
       })
 
       setCurrentJobId(resp.job_id)
