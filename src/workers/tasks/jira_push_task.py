@@ -9,7 +9,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.config import get_logger
-from src.db.crud.meeting_crud import update_meeting_status
+from src.db.crud.meeting_crud import get_meeting, update_meeting_status
+from src.db.crud.provider_crud import get_provider_config
 from src.db.crud.review_crud import list_review_items
 from src.services.jira_service import push_analysis_to_jira
 from src.workers.celery_app import celery_app
@@ -31,6 +32,28 @@ def push_to_jira(self, meeting_id: str) -> dict:
     """Push approved items to Jira and update meeting status."""
     logger.info("[jira_push_task] Starting Jira push for meeting %s", meeting_id)
 
+    # Lấy user_id từ meeting record để query đúng provider_configs của user đó
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        raise ValueError(f"Meeting {meeting_id} not found.")
+    user_id = meeting.get("user_id")
+    if not user_id:
+        raise ValueError(f"Meeting {meeting_id} has no user_id.")
+
+    # Đọc Jira credentials từ provider_configs (đã Fernet-decrypt tự động bên trong)
+    jira_config = get_provider_config("jira", user_id=user_id)
+    credentials: dict[str, str] = {}
+    if jira_config:
+        credentials = {
+            "base_url": jira_config.get("base_url") or jira_config.get("jira_base_url") or "",
+            "email": jira_config.get("email") or jira_config.get("jira_email") or "",
+            "token": jira_config.get("api_key") or jira_config.get("jira_api_token") or "",
+            "project_key": jira_config.get("project_key") or jira_config.get("jira_project_key") or "",
+        }
+        logger.info("[jira_push_task] Jira credentials loaded from provider_configs for user %s", user_id)
+    else:
+        logger.warning("[jira_push_task] No Jira config found in provider_configs for user %s — stub mode", user_id)
+
     items = list_review_items(meeting_id, status="approved")
     if not items:
         raise ValueError("No approved items to push.")
@@ -38,7 +61,7 @@ def push_to_jira(self, meeting_id: str) -> dict:
     meeting_analysis = _reconstruct_analysis(items)
 
     try:
-        push_result = push_analysis_to_jira(meeting_analysis)
+        push_result = push_analysis_to_jira(meeting_analysis, credentials=credentials)
     except Exception as exc:
         update_meeting_status(meeting_id, status="failed", error_message=str(exc))
         raise self.retry(exc=exc)
@@ -46,10 +69,11 @@ def push_to_jira(self, meeting_id: str) -> dict:
     update_meeting_status(meeting_id, status="pushed")
 
     logger.info(
-        "[jira_push_task] Complete: epic_keys=%s tasks=%d subtasks=%d",
+        "[jira_push_task] Complete: epic_keys=%s tasks=%d subtasks=%d stub=%s",
         push_result.epic_keys,
         push_result.task_count,
         push_result.subtask_count,
+        push_result.is_stub,
     )
     return {
         "epic_keys": push_result.epic_keys,
