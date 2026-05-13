@@ -24,6 +24,8 @@ class JiraPushResult:
 
 def push_analysis_to_jira(
     analysis: MeetingAnalysis,
+    *,
+    credentials: Optional[dict[str, str]] = None,
     client: Optional[JiraClient] = None,
 ) -> JiraPushResult:
     """
@@ -31,7 +33,9 @@ def push_analysis_to_jira(
 
     Args:
         analysis: MeetingAnalysis containing epics to push.
-        client: Optional JiraClient instance. If None, creates new one.
+        credentials: Jira credentials dict with keys: base_url, email, token, project_key.
+                     Loaded from provider_configs in jira_push_task via Fernet decrypt.
+        client: Optional JiraClient instance. If None, created from credentials.
 
     Returns:
         JiraPushResult with counts and keys.
@@ -43,12 +47,22 @@ def push_analysis_to_jira(
     if not analysis.epics:
         raise ValueError("No epics to push to Jira.")
 
-    jira_client = client or JiraClient()
-    result = JiraPushResult(is_stub=jira_client.is_stub)
+    if client is None:
+        if credentials:
+            client = JiraClient(
+                base_url=credentials.get("base_url") or credentials.get("jira_base_url") or None,
+                email=credentials.get("email") or credentials.get("jira_email") or None,
+                token=credentials.get("token") or credentials.get("api_key") or credentials.get("jira_api_token") or None,
+                project_key=credentials.get("project_key") or credentials.get("jira_project_key") or None,
+            )
+        else:
+            client = JiraClient()
+
+    result = JiraPushResult(is_stub=client.is_stub)
 
     for epic in analysis.epics:
         try:
-            epic_key = jira_client.create_epic(epic)
+            epic_key = client.create_epic(epic)
         except Exception as exc:
             raise RuntimeError(f"Failed to create Epic ('{epic.summary}'): {exc}") from exc
 
@@ -57,7 +71,7 @@ def push_analysis_to_jira(
 
         for task in epic.tasks:
             try:
-                task_key = jira_client.create_task(task, epic_key)
+                task_key = client.create_task(task, epic_key)
             except Exception as exc:
                 raise RuntimeError(f"Failed to create Task ('{task.summary}'): {exc}") from exc
 
@@ -65,7 +79,7 @@ def push_analysis_to_jira(
 
             for subtask in task.subtasks:
                 try:
-                    jira_client.create_subtask(subtask, task_key)
+                    client.create_subtask(subtask, task_key)
                 except Exception as exc:
                     raise RuntimeError(
                         f"Failed to create Subtask ('{subtask.summary}'): {exc}"
