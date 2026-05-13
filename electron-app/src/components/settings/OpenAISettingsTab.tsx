@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
-import { deleteProviderConfig, listProviderConfigs, setProviderConfig } from '../../api/settings'
+import { useCallback, useState } from 'react'
+import { useDeleteProviderConfig, useProviderConfigStatus, useSaveProviderConfig } from '../../hooks/useProviderSettings'
 import { alertError, alertSuccess, alertWarning, buttonDanger, buttonDisabled, buttonPrimary, buttonSecondary, colors, inputStyle } from '../../styles/designTokens'
 
 const MODELS = [
-  { value: 'gpt-4o', label: 'GPT-4o (khuyến nghị)' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini (nhanh hơn)' },
+  { value: 'gpt-4o', label: 'GPT-4o' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
   { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
 ]
 
@@ -18,28 +18,14 @@ const EMPTY: OpenAIConfig = { apiKey: '', model: 'gpt-4o' }
 export default function OpenAISettingsTab() {
   const [config, setConfig] = useState<OpenAIConfig>(EMPTY)
   const [showKey, setShowKey] = useState(false)
-  const [configured, setConfigured] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    let alive = true
-    setLoading(true)
-    listProviderConfigs()
-      .then((providers) => {
-        if (alive) setConfigured(providers.includes('openai'))
-      })
-      .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : 'Không tải được trạng thái OpenAI.')
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
+  const statusQuery = useProviderConfigStatus('openai')
+  const saveMutation = useSaveProviderConfig('openai')
+  const deleteMutation = useDeleteProviderConfig('openai')
+  const configured = Boolean(statusQuery.data?.is_configured)
+  const loading = statusQuery.isLoading || saveMutation.isPending || deleteMutation.isPending
 
   const handleSave = useCallback(async () => {
     setError(null)
@@ -49,49 +35,47 @@ export default function OpenAISettingsTab() {
       return
     }
 
-    setLoading(true)
     try {
-      await setProviderConfig('openai', { apiKey: config.apiKey, model: config.model })
-      setConfigured(true)
+      await saveMutation.mutateAsync({ apiKey: config.apiKey, model: config.model })
       setConfig(EMPTY)
       setSaved(true)
       window.setTimeout(() => setSaved(false), 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không lưu được OpenAI settings.')
-    } finally {
-      setLoading(false)
     }
-  }, [config])
+  }, [config, saveMutation])
 
   const handleDelete = useCallback(async () => {
     setError(null)
     setSaved(false)
-    setLoading(true)
     try {
-      await deleteProviderConfig('openai')
-      setConfigured(false)
+      await deleteMutation.mutateAsync()
       setConfig(EMPTY)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không xóa được OpenAI settings.')
-    } finally {
-      setLoading(false)
     }
-  }, [])
+  }, [deleteMutation])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ marginBottom: 4 }}>
         <span style={{ fontSize: 13, color: configured ? colors.success : '#94a3b8', fontWeight: 600 }}>
-          {configured ? 'API key đã cấu hình trên server' : 'Chưa cấu hình API key'}
+          {configured ? 'Đã kết nối' : 'Chưa cấu hình API key'}
         </span>
+        {configured && statusQuery.data?.masked_key && (
+          <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>
+            {statusQuery.data.masked_key}
+          </span>
+        )}
       </div>
 
+      {statusQuery.error && <div style={alertError}>{statusQuery.error.message}</div>}
       {error && <div style={alertError}>{error}</div>}
       {saved && <div style={alertSuccess}>Đã lưu cấu hình OpenAI.</div>}
 
       <div style={{ position: 'relative' }}>
         <input
-          placeholder={configured ? 'OpenAI API Key mới (để trống nếu không lưu lại)' : 'OpenAI API Key (sk-...)'}
+          placeholder={configured ? 'OpenAI API Key mới' : 'OpenAI API Key (sk-...)'}
           type={showKey ? 'text' : 'password'}
           value={config.apiKey}
           onChange={(e) => setConfig((prev) => ({ ...prev, apiKey: e.target.value }))}
@@ -114,7 +98,7 @@ export default function OpenAISettingsTab() {
         </select>
       </div>
 
-      <div style={alertWarning}>API key được lưu encrypted trên server. Backend hiện chưa có endpoint validate key, nên nút kiểm tra đang bị tắt.</div>
+      <div style={alertWarning}>API key được lưu encrypted trên server. Form không hiển thị lại key gốc sau khi lưu.</div>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
         <button onClick={handleSave} disabled={loading} style={{ ...buttonPrimary, ...(loading ? buttonDisabled : {}) }}>
