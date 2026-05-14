@@ -58,7 +58,7 @@ class StreamClient:
         self._thread: threading.Thread | None = None
         self._pending = bytearray()
         self._pending_lock = threading.Lock()
-        self._flush_bytes = 32000
+        self._flush_bytes = 16000
         self._produced_chunks = 0
         self._produced_bytes = 0
         self._posted_chunks = 0
