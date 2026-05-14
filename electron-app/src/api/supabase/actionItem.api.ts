@@ -66,6 +66,7 @@ export async function bulkApproveActionItems(
       .update({ review_status: 'approved', is_selected: true })
       .eq('meeting_id', meetingId)
       .in('review_status', ['draft', 'edited'])
+      .neq('sync_status', 'synced')
       .select('id');
 
     if (error) throw error;
@@ -171,7 +172,7 @@ export async function rejectActionItem(
 
 /**
  * Tạo action item thủ công (do user nhập, không phải AI extract).
- * Mặc định confidence_score = 1.0, review_status = 'edited'.
+ * Mặc định confidence_score = 1.0, review_status = 'approved'.
  */
 export async function addManualActionItem(
   payload: AddManualActionItemPayload
@@ -191,8 +192,8 @@ export async function addManualActionItem(
         priority: payload.priority ?? 'medium',
         context: payload.context ?? 'Manual item',
         confidence_score: payload.confidence_score ?? 1.0,
-        review_status: payload.review_status ?? 'edited',
-        is_selected: payload.is_selected ?? false,
+        review_status: payload.review_status ?? 'approved',
+        is_selected: payload.is_selected ?? true,
         sync_status: payload.sync_status ?? 'pending',
       })
       .select('id, title')

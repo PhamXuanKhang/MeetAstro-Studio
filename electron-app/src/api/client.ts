@@ -1,11 +1,12 @@
 import axios, { AxiosInstance } from 'axios'
 import { useAuthStore } from '../store/authStore'
+import { API_BASE_URL, normalizeApiBaseUrl } from '../config/api'
 
-let _baseURL = 'http://localhost:8000'
+let _baseURL = API_BASE_URL
 
 // Allow updating the base URL at runtime (from Settings or electron IPC)
 export function setApiBaseUrl(url: string) {
-  _baseURL = url.replace(/\/$/, '')
+  _baseURL = normalizeApiBaseUrl(url)
   _client = createClient()
 }
 

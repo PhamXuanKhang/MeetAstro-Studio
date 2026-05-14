@@ -6,12 +6,13 @@ import {
   useApproveActionItem,
   useRejectActionItem,
   useBulkApproveActionItems,
+  useAddManualActionItem,
 } from '../hooks/supabase/useActionItems'
 import { pushToJira } from '../api/jira'
 import { useProviderConfigStatus } from '../hooks/useProviderSettings'
 import { subscribeActionItemSyncStatus, unsubscribeChannel } from '../api/supabase/realtime'
 import ConfidenceBadge from '../components/ConfidenceBadge'
-import type { ActionItem, ActionItemPriority } from '../types/supabase-models'
+import type { ActionItem, ActionItemPriority, ActionItemType } from '../types/supabase-models'
 import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
 
 interface Props {
@@ -83,8 +84,10 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
   const syncError = syncOverride?.sync_error ?? item.sync_error
   const jiraIssueKey = syncOverride?.jira_issue_key ?? item.jira_issue_key
   const jiraIssueUrl = syncOverride?.jira_issue_url ?? item.jira_issue_url
+  const isSynced = syncStatus === 'synced'
 
   const handleSave = useCallback(() => {
+    if (isSynced) return
     editItem(
       {
         action_item_id: item.id,
@@ -98,19 +101,21 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
         onError: (e) => onToast(`Lỗi lưu: ${e.message}`, true),
       }
     )
-  }, [item.id, editTitle, editAssignee, editDeadline, editPriority, editItem, onToast])
+  }, [isSynced, item.id, editTitle, editAssignee, editDeadline, editPriority, editItem, onToast])
 
   const handleApprove = useCallback(() => {
+    if (isSynced) return
     approve(item.id, {
       onError: (e) => onToast(`Lỗi approve: ${e.message}`, true),
     })
-  }, [item.id, approve, onToast])
+  }, [isSynced, item.id, approve, onToast])
 
   const handleReject = useCallback(() => {
+    if (isSynced) return
     reject(item.id, {
       onError: (e) => onToast(`Lỗi reject: ${e.message}`, true),
     })
-  }, [item.id, reject, onToast])
+  }, [isSynced, item.id, reject, onToast])
 
   const actioning = isApproving || isRejecting
 
@@ -152,7 +157,17 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
         {!isEditing && (
           <button
             onClick={() => setIsEditing(true)}
-            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 12 }}
+            disabled={isSynced}
+            title={isSynced ? 'Item đã synced lên Jira nên không thể chỉnh sửa.' : undefined}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              cursor: isSynced ? 'not-allowed' : 'pointer',
+              fontSize: 12,
+              opacity: isSynced ? 0.45 : 1,
+            }}
           >
             ✎ Sửa
           </button>
@@ -204,7 +219,7 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || isSynced}
               style={{ padding: '6px 16px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: isSaving ? 0.7 : 1 }}
             >
               {isSaving ? 'Đang lưu...' : '💾 Lưu'}
@@ -223,24 +238,24 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <button
           onClick={handleApprove}
-          disabled={item.review_status === 'approved' || actioning}
+          disabled={isSynced || item.review_status === 'approved' || actioning}
           style={{
             padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
             background: item.review_status === 'approved' ? '#dcfce7' : '#f0fdf4',
             color: '#166534', fontSize: 12, fontWeight: 600,
-            opacity: item.review_status === 'approved' || actioning ? 0.6 : 1,
+            opacity: isSynced || item.review_status === 'approved' || actioning ? 0.6 : 1,
           }}
         >
           ✓ Approve
         </button>
         <button
           onClick={handleReject}
-          disabled={item.review_status === 'rejected' || actioning}
+          disabled={isSynced || item.review_status === 'rejected' || actioning}
           style={{
             padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
             background: item.review_status === 'rejected' ? '#fee2e2' : '#fff1f2',
             color: '#991b1b', fontSize: 12, fontWeight: 600,
-            opacity: item.review_status === 'rejected' || actioning ? 0.6 : 1,
+            opacity: isSynced || item.review_status === 'rejected' || actioning ? 0.6 : 1,
           }}
         >
           ✗ Reject
@@ -291,6 +306,162 @@ function ActionItemTreeRenderer({
   )
 }
 
+// ─── Add Manual Item Modal ─────────────────────────────
+
+type ManualItemType = Extract<ActionItemType, 'task' | 'subtask'>
+
+interface AddManualItemDraft {
+  item_type: ManualItemType
+  parent_id: string | null
+  title: string
+  description: string
+  assignee: string | null
+}
+
+function AddManualItemModal({
+  tasks,
+  isSaving,
+  onClose,
+  onSubmit,
+}: {
+  tasks: ActionItem[]
+  isSaving: boolean
+  onClose: () => void
+  onSubmit: (draft: AddManualItemDraft) => void
+}) {
+  const [itemType, setItemType] = useState<ManualItemType>('task')
+  const [parentId, setParentId] = useState('')
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [assignee, setAssignee] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (itemType === 'subtask' && !parentId && tasks.length > 0) {
+      setParentId(tasks[0].id)
+    }
+    if (itemType === 'task') {
+      setParentId('')
+    }
+  }, [itemType, parentId, tasks])
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '9px 10px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 6,
+    fontSize: 13,
+    outline: 'none',
+    background: '#fff',
+  }
+
+  const handleSubmit = () => {
+    const cleanTitle = title.trim()
+    if (!cleanTitle) {
+      setError('Title là bắt buộc.')
+      return
+    }
+    if (itemType === 'subtask' && !parentId) {
+      setError('Subtask cần chọn parent task.')
+      return
+    }
+
+    onSubmit({
+      item_type: itemType,
+      parent_id: itemType === 'subtask' ? parentId : null,
+      title: cleanTitle,
+      description: description.trim(),
+      assignee: assignee.trim() || null,
+    })
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 998,
+        background: 'rgba(15,23,42,0.35)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div style={{ width: '100%', maxWidth: 520, background: '#fff', borderRadius: 10, padding: 18, boxShadow: '0 16px 48px rgba(15,23,42,0.22)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Add action item</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Manual items are approved by default and ready to push.</div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={isSaving}
+            style={{ border: 'none', background: '#f8fafc', borderRadius: 6, padding: '5px 9px', cursor: isSaving ? 'not-allowed' : 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: itemType === 'subtask' ? '140px 1fr' : '1fr', gap: 10 }}>
+            <select value={itemType} onChange={(e) => setItemType(e.target.value as ManualItemType)} style={inputStyle}>
+              <option value="task">Task</option>
+              <option value="subtask">Subtask</option>
+            </select>
+            {itemType === 'subtask' && (
+              <select value={parentId} onChange={(e) => setParentId(e.target.value)} style={inputStyle} disabled={tasks.length === 0}>
+                {tasks.length === 0 ? (
+                  <option value="">No task available</option>
+                ) : (
+                  tasks.map((task) => (
+                    <option key={task.id} value={task.id}>
+                      {task.jira_issue_key ? `${task.title} (${task.jira_issue_key})` : task.title}
+                    </option>
+                  ))
+                )}
+              </select>
+            )}
+          </div>
+
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" style={inputStyle} />
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Description"
+            rows={4}
+            style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.45 }}
+          />
+          <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="Assignee" style={inputStyle} />
+
+          {error && (
+            <div style={{ padding: '8px 10px', borderRadius: 6, background: '#fee2e2', color: '#991b1b', fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+          <button
+            onClick={onClose}
+            disabled={isSaving}
+            style={{ padding: '8px 16px', borderRadius: 7, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: isSaving ? 'not-allowed' : 'pointer', fontWeight: 600 }}
+          >
+            Hủy
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSaving || (itemType === 'subtask' && tasks.length === 0)}
+            style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', cursor: isSaving ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: isSaving || (itemType === 'subtask' && tasks.length === 0) ? 0.6 : 1 }}
+          >
+            {isSaving ? 'Đang thêm...' : '+ Add'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Toast ──────────────────────────────────────────────
 
 function Toast({ msg, isError, onClose }: { msg: string; isError: boolean; onClose: () => void }) {
@@ -317,9 +488,11 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   const { data: items = [], isLoading, refetch } = useActionItemsList(currentMeetingId)
   const jiraStatus = useProviderConfigStatus('jira')
   const { mutate: bulkApprove, isPending: approvingAll } = useBulkApproveActionItems(currentMeetingId)
+  const { mutate: addManualItem, isPending: addingManualItem } = useAddManualActionItem(currentMeetingId)
 
   const [toast, setToast] = useState<{ msg: string; isError: boolean } | null>(null)
   const [pushing, setPushing] = useState(false)
+  const [showAddItemModal, setShowAddItemModal] = useState(false)
 
   // ─── Realtime: sync status overrides ──────────────────
   const [syncOverrides, setSyncOverrides] = useState<Record<string, SyncOverride>>({})
@@ -361,8 +534,9 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     const syncing = effectiveItems.filter((i) => i.sync_status === 'syncing').length
     const synced = effectiveItems.filter((i) => i.sync_status === 'synced').length
     const failed = effectiveItems.filter((i) => i.sync_status === 'failed').length
-    const unsyncedApproved = effectiveItems.filter((i) => i.review_status === 'approved' && i.sync_status !== 'synced').length
-    return { total, approved, rejected, flagged, pending, syncing, synced, failed, unsyncedApproved }
+    const ready = effectiveItems.filter((i) => i.review_status === 'approved' && i.sync_status === 'pending').length
+    const pushableApproved = effectiveItems.filter((i) => i.review_status === 'approved' && i.sync_status !== 'synced' && i.sync_status !== 'syncing').length
+    return { total, approved, rejected, flagged, pending, syncing, synced, failed, ready, pushableApproved }
   }, [effectiveItems])
 
   const handleApproveAll = useCallback(() => {
@@ -388,6 +562,48 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     }
   }, [currentMeetingId, refetch, setBusy, showToast])
 
+  const handleAddManualItem = useCallback((draft: AddManualItemDraft) => {
+    if (!currentMeetingId) return
+
+    addManualItem(
+      {
+        meeting_id: currentMeetingId,
+        parent_id: draft.parent_id,
+        item_type: draft.item_type,
+        title: draft.title,
+        description: draft.description,
+        assignee: draft.assignee,
+        priority: 'medium',
+        context: 'Manual item',
+        confidence_score: 1.0,
+        review_status: 'approved',
+        is_selected: true,
+        sync_status: 'pending',
+      },
+      {
+        onSuccess: () => {
+          setShowAddItemModal(false)
+          showToast('Đã thêm action item.')
+        },
+        onError: (e) => showToast(`Lỗi thêm item: ${e.message}`, true),
+      }
+    )
+  }, [addManualItem, currentMeetingId, showToast])
+
+  const pushBlockReason = useMemo(() => {
+    if (!jiraStatus.data?.is_configured) return 'Chưa cấu hình Jira. Hãy vào Settings > Jira để lưu Base URL, email, API token và project key.'
+    if (summary.pending > 0) return `Còn ${summary.pending} item cần approve hoặc reject trước khi push.`
+    if (summary.approved === 0) return 'Cần approve ít nhất 1 item để push lên Jira.'
+    if (summary.pushableApproved === 0) return 'Tất cả item đã approve đã được sync lên Jira.'
+    return null
+  }, [jiraStatus.data?.is_configured, summary.approved, summary.pending, summary.pushableApproved])
+  const pushDisabled = Boolean(pushBlockReason) || pushing || jiraStatus.isLoading
+  const treeNodes = buildActionItemTree(items)
+  const parentTaskOptions = useMemo(
+    () => effectiveItems.filter((item) => item.item_type === 'task'),
+    [effectiveItems]
+  )
+
   if (!currentMeetingId) {
     return (
       <div style={{ padding: 24, color: '#94a3b8' }}>
@@ -396,19 +612,17 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     )
   }
 
-  const pushBlockReason = useMemo(() => {
-    if (!jiraStatus.data?.is_configured) return 'Chưa cấu hình Jira. Hãy vào Settings > Jira để lưu Base URL, email, API token và project key.'
-    if (summary.pending > 0) return `Còn ${summary.pending} item cần approve hoặc reject trước khi push.`
-    if (summary.approved === 0) return 'Cần approve ít nhất 1 item để push lên Jira.'
-    if (summary.unsyncedApproved === 0) return 'Tất cả item đã approve đã được sync lên Jira.'
-    return null
-  }, [jiraStatus.data?.is_configured, summary.approved, summary.pending, summary.unsyncedApproved])
-  const pushDisabled = Boolean(pushBlockReason) || pushing || jiraStatus.isLoading
-  const treeNodes = buildActionItemTree(items)
-
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       {toast && <Toast msg={toast.msg} isError={toast.isError} onClose={() => setToast(null)} />}
+      {showAddItemModal && (
+        <AddManualItemModal
+          tasks={parentTaskOptions}
+          isSaving={addingManualItem}
+          onClose={() => setShowAddItemModal(false)}
+          onSubmit={handleAddManualItem}
+        />
+      )}
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -447,17 +661,32 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
         lineHeight: 1.5,
       }}>
         <div>
-          Synced: {summary.synced} | Failed: {summary.failed} | Ready: {summary.unsyncedApproved}
+          Synced: {summary.synced} | Ready: {summary.ready} | Failed: {summary.failed}
         </div>
         <div>
           {pushBlockReason
             ? `Chua the push: ${pushBlockReason}`
-            : `San sang push ${summary.unsyncedApproved} item da approve len Jira.`}
+            : `San sang push/retry ${summary.pushableApproved} item da approve len Jira.`}
         </div>
       </div>
 
       {/* Bulk actions */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <button
+          onClick={() => setShowAddItemModal(true)}
+          style={{
+            padding: '9px 20px',
+            background: '#fff',
+            color: '#0f172a',
+            border: '1px solid #cbd5e1',
+            borderRadius: 8,
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+        >
+          + Add Task
+        </button>
         <button
           onClick={handleApproveAll}
           disabled={approvingAll}
@@ -472,7 +701,7 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
         <button
           onClick={handlePushJira}
           disabled={pushDisabled}
-          title={pushDisabled ? 'Approve hoặc reject tất cả items trước khi push' : ''}
+          title={pushBlockReason || undefined}
           style={{
             padding: '9px 20px', background: '#2563eb', color: '#fff',
             border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13,
