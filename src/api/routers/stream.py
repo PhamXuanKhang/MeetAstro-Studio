@@ -1,17 +1,23 @@
 """
-Router: /api/v1/stream - Realtime audio streaming via WhisperLiveKit.
+Router: realtime audio streaming via WhisperLiveKit.
 
-Endpoints are designed for the Electron Python sidecar:
-  POST /stream/{meeting_id}/start   - Create session, connect to WhisperLiveKit WS
-  POST /stream/{meeting_id}/chunk   - Forward raw PCM audio chunk (binary)
-  POST /stream/{meeting_id}/stop   - Signal EOF, close session
-  GET  /stream/{meeting_id}/events - SSE stream of partial transcript results
+Canonical endpoints:
+  POST /meetings/{meeting_id}/recording/start
+  POST /meetings/{meeting_id}/recording/chunk
+  POST /meetings/{meeting_id}/recording/stop
+  GET  /meetings/{meeting_id}/recording/events
+
+Hidden legacy aliases:
+  POST /stream/{meeting_id}/start
+  POST /stream/{meeting_id}/chunk
+  POST /stream/{meeting_id}/stop
+  GET  /stream/{meeting_id}/events
 """
 import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from src.config import get_logger
@@ -20,7 +26,11 @@ from src.services.stream_session_manager import StreamSession, get_stream_manage
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/stream", tags=["streaming"])
+MAX_RECORDING_CHUNK_BYTES = 512 * 1024
+_chunk_debug_counts: dict[str, int] = {}
+_chunk_debug_bytes: dict[str, int] = {}
+
+router = APIRouter(tags=["streaming"])
 
 
 def _parse_server_time(t: str) -> float:
@@ -29,21 +39,32 @@ def _parse_server_time(t: str) -> float:
     return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
 
 
-def _build_segments(lines: list[dict]) -> list[dict]:
+def _build_segments(lines: list[dict]) -> tuple[list[dict], dict]:
     """Parse raw server lines into frontend-friendly segment dicts."""
     result = []
+    stats = {"empty_text": 0, "parse_error": 0, "non_dict": 0}
     for line in lines:
+        if not isinstance(line, dict):
+            stats["non_dict"] += 1
+            continue
         speaker_raw = line.get("speaker")
-        if speaker_raw == -2:
-            continue
-        text = line.get("text", "").strip()
+        text = str(line.get("text", "")).strip()
         if not text:
+            stats["empty_text"] += 1
             continue
-        start = _parse_server_time(str(line.get("start", "00:00:00.000")))
-        end = _parse_server_time(str(line.get("end", "00:00:00.000")))
-        speaker = speaker_raw if isinstance(speaker_raw, str) else f"Speaker {speaker_raw}"
+        try:
+            start = _parse_server_time(str(line.get("start", "00:00:00.000")))
+            end = _parse_server_time(str(line.get("end", "00:00:00.000")))
+        except Exception:
+            stats["parse_error"] += 1
+            start = 0.0
+            end = 0.0
+        if speaker_raw == -2 or speaker_raw is None:
+            speaker = "Speaker ?"
+        else:
+            speaker = speaker_raw if isinstance(speaker_raw, str) else f"Speaker {speaker_raw}"
         result.append({"speaker": speaker, "start": start, "end": end, "text": text})
-    return result
+    return result, stats
 
 
 class _SSEPoller:
@@ -51,7 +72,7 @@ class _SSEPoller:
 
     def __init__(self, session: StreamSession) -> None:
         self._session = session
-        self._last_len = 0
+        self._last_snapshot = ""
 
     async def __anext__(self) -> tuple[list[dict], bool]:
         """Return (segments, done). Blocks until new lines arrive or session closes."""
@@ -59,15 +80,34 @@ class _SSEPoller:
             if not self._session.is_connected:
                 return [], True
             lines = self._session.partial_lines
-            if len(lines) > self._last_len:
-                self._last_len = len(lines)
-                return _build_segments(lines), False
+            buffer_text = self._session.buffer_transcription
+            snapshot = json.dumps(
+                {"lines": lines, "buffer_transcription": buffer_text},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            if snapshot and snapshot != self._last_snapshot:
+                self._last_snapshot = snapshot
+                segments, stats = _build_segments(lines)
+                if not segments and buffer_text:
+                    segments = [{"speaker": "Speaker ?", "start": 0.0, "end": 0.0, "text": buffer_text}]
+                logger.info(
+                    "[%s] SSE partial snapshot changed: raw_lines=%d buffer_len=%d segments=%d stats=%s raw=%s.",
+                    self._session.meeting_id,
+                    len(lines),
+                    len(buffer_text),
+                    len(segments),
+                    stats,
+                    snapshot[:2000],
+                )
+                return segments, False
             await asyncio.sleep(0.25)
             if not self._session.is_connected:
                 return [], True
 
 
-@router.post("/{meeting_id}/start")
+@router.post("/meetings/{meeting_id}/recording/start")
+@router.post("/stream/{meeting_id}/start", include_in_schema=False)
 async def start_stream(meeting_id: uuid.UUID) -> dict:
     """Initialize a realtime streaming session for a meeting."""
     meeting = get_meeting(str(meeting_id))
@@ -83,13 +123,14 @@ async def start_stream(meeting_id: uuid.UUID) -> dict:
         logger.debug("[%s] Received %d lines from WhisperLiveKit.", meeting_id, len(lines))
 
     await manager.create_session(str(meeting_id), on_partial=_on_partial)
-    update_meeting_status(str(meeting_id), status="recording")
+    update_meeting_status(str(meeting_id), status="transcribing")
 
     logger.info("[%s] Streaming session started.", meeting_id)
     return {"session_id": str(meeting_id), "status": "active"}
 
 
-@router.post("/{meeting_id}/chunk")
+@router.post("/meetings/{meeting_id}/recording/chunk")
+@router.post("/stream/{meeting_id}/chunk", include_in_schema=False)
 async def send_audio_chunk(
     meeting_id: uuid.UUID,
     chunk: UploadFile = File(...),
@@ -102,12 +143,27 @@ async def send_audio_chunk(
         raise HTTPException(
             status_code=404,
             detail=f"No active stream session for meeting {meeting_id}. "
-                   "Call POST /stream/{id}/start first.",
+                   "Call POST /meetings/{id}/recording/start first.",
         )
 
-    data = await chunk.read()
+    data = await chunk.read(MAX_RECORDING_CHUNK_BYTES + 1)
+    if len(data) > MAX_RECORDING_CHUNK_BYTES:
+        raise HTTPException(status_code=413, detail="Audio chunk too large.")
     if not data:
         return {"received": 0}
+
+    key = str(meeting_id)
+    _chunk_debug_counts[key] = _chunk_debug_counts.get(key, 0) + 1
+    _chunk_debug_bytes[key] = _chunk_debug_bytes.get(key, 0) + len(data)
+    chunk_count = _chunk_debug_counts[key]
+    if chunk_count == 1 or chunk_count % 25 == 0:
+        logger.info(
+            "[%s] HTTP chunk received #%d bytes=%d total_bytes=%d.",
+            meeting_id,
+            chunk_count,
+            len(data),
+            _chunk_debug_bytes[key],
+        )
 
     try:
         await session.send_audio_chunk(data)
@@ -117,7 +173,8 @@ async def send_audio_chunk(
     return {"received": len(data)}
 
 
-@router.post("/{meeting_id}/stop")
+@router.post("/meetings/{meeting_id}/recording/stop")
+@router.post("/stream/{meeting_id}/stop", include_in_schema=False)
 async def stop_stream(meeting_id: uuid.UUID) -> dict:
     """Signal end-of-stream and close the session."""
     manager = get_stream_manager()
@@ -141,9 +198,11 @@ async def stop_stream(meeting_id: uuid.UUID) -> dict:
     }
 
 
-@router.get("/{meeting_id}/events")
+@router.get("/meetings/{meeting_id}/recording/events")
+@router.get("/stream/{meeting_id}/events", include_in_schema=False)
 async def stream_events(meeting_id: uuid.UUID) -> StreamingResponse:
     """SSE stream of partial transcript results."""
+    logger.info("[%s] SSE client connecting.", meeting_id)
     manager = get_stream_manager()
     session = await manager.get_session(str(meeting_id))
 
@@ -151,7 +210,7 @@ async def stream_events(meeting_id: uuid.UUID) -> StreamingResponse:
         raise HTTPException(
             status_code=404,
             detail=f"No active stream session for meeting {meeting_id}. "
-                   "Call POST /stream/{id}/start first.",
+                   "Call POST /meetings/{id}/recording/start first.",
         )
 
     poller = _SSEPoller(session)
@@ -168,6 +227,7 @@ async def stream_events(meeting_id: uuid.UUID) -> StreamingResponse:
                         payload = json.dumps({"segments": segments, "done": False})
                         yield f"event: partial\ndata: {payload}\n\n"
                 except asyncio.CancelledError:
+                    logger.info("[%s] SSE client disconnected.", meeting_id)
                     break
                 except Exception as exc:
                     logger.error("[%s] SSE generator error: %s", meeting_id, exc)
