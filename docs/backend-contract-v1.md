@@ -245,16 +245,37 @@ Response:
 }
 ```
 
-## B1 - Save Jira Credentials
+## B1 - Save Provider Credentials
 
-Routing: FastAPI (VPS). `PUT /api/v1/settings/providers/jira`
-UI must not write plaintext keys directly to Supabase.
+Routing: FastAPI (VPS). `POST /api/v1/settings/providers/{provider_name}`
 
-Request:
+Current implementation uses a generic provider endpoint for Jira, OpenAI, and future providers. UI must not write plaintext keys directly to Supabase.
+
+Backend storage:
+- Supabase table: `provider_configs`
+- Columns used by backend: `user_id`, `provider_name`, `api_key`, `config_data`
+- `api_key` is Fernet-encrypted before insert/update.
+- `config_data` stores non-secret provider metadata.
+- Saving an existing `{user_id, provider_name}` updates the existing provider row.
+
+Supported request shape used by current UI:
 ```json
 {
-  "provider_name": "jira",
-  "api_key": "jira-api-token",
+  "user_id": "uuid",
+  "config": {
+    "token": "jira-api-token",
+    "url": "https://company.atlassian.net",
+    "email": "user@example.com",
+    "projectKey": "DEV"
+  }
+}
+```
+
+Also accepted by backend for contract-friendly callers:
+```json
+{
+  "user_id": "uuid",
+  "api_key": "provider-api-key",
   "config_data": {
     "site_url": "https://company.atlassian.net",
     "email": "user@example.com",
@@ -268,58 +289,63 @@ Response:
 {
   "provider_name": "jira",
   "is_configured": true,
-  "api_key_preview": "...abcd"
+  "masked_key": "...abcd"
 }
 ```
 
-## B2 - Test Jira Connection
+Notes:
+- `is_configured=true` means an encrypted provider row exists in Supabase.
+- It does not mean the key has been validated against Jira/OpenAI.
+- `masked_key` may be `null` when no key exists or when the key cannot be decrypted for preview. The plaintext key is never returned.
 
-Routing: FastAPI (VPS). `POST /api/v1/settings/providers/jira/test`
+## B2 - View Provider Config Status
 
-Request:
+Routing: FastAPI (VPS). `GET /api/v1/settings/providers/{provider_name}?user_id={uuid}`
+
+Response when configured:
 ```json
 {
   "provider_name": "jira",
-  "api_key": "optional-unsaved-token",
-  "config_data": {
-    "site_url": "https://company.atlassian.net",
-    "email": "user@example.com"
-  }
+  "is_configured": true,
+  "masked_key": "...abcd"
 }
 ```
 
+Response when not configured:
+```json
+{
+  "provider_name": "jira",
+  "is_configured": false,
+  "masked_key": null
+}
+```
+
+## B3 - Delete Provider Config
+
+Routing: FastAPI (VPS). `DELETE /api/v1/settings/providers/{provider_name}?user_id={uuid}`
+
 Response:
+```json
+{
+  "message": "Provider 'jira' deleted."
+}
+```
+
+## B4 - Test Provider Connection
+
+Routing: Future / not implemented in current backend.
+
+Current UI should treat provider status as "saved" rather than "validated". A future endpoint can be added per provider:
+- Jira: `POST /api/v1/settings/providers/jira/test`
+- OpenAI: `POST /api/v1/settings/providers/openai/test`
+
+Expected future response shape:
 ```json
 {
   "success": true,
-  "jira_display_name": "Nguyen Van A",
-  "jira_account_id": "712020:abc"
-}
-```
-
-## B4 - Save OpenAI API Key
-
-Routing: FastAPI (VPS). `PUT /api/v1/settings/providers/openai`
-UI must not write plaintext keys directly to Supabase.
-
-Request:
-```json
-{
-  "provider_name": "openai",
-  "api_key": "sk-proj-...",
-  "config_data": {
-    "default_model": "gpt-4o",
-    "transcription_language": "vi"
-  }
-}
-```
-
-Response:
-```json
-{
-  "provider_name": "openai",
-  "is_configured": true,
-  "api_key_preview": "...wxyz"
+  "provider_name": "jira",
+  "display_name": "Nguyen Van A",
+  "error": null
 }
 ```
 

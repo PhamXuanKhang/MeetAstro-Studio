@@ -2,145 +2,329 @@
 Celery task: push approved action items to Jira.
 
 Input:  meeting_id (str)
-Output: {"epic_keys": list, "task_count": int, "subtask_count": int, "is_stub": bool}
+Output: item-level push summary.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 from src.config import get_logger
-from src.db.crud.meeting_crud import update_meeting_status
-from src.db.crud.review_crud import list_review_items
-from src.services.jira_service import push_analysis_to_jira
+from src.db.crud.meeting_crud import get_meeting, update_meeting_status
+from src.db.crud.provider_crud import get_provider_config
+from src.db.crud.review_crud import list_review_items, update_action_item_sync
+from src.modules.jira_client import JiraClient
+from src.schema import Epic, Priority, Subtask, Task
+from src.services.jira_service import normalize_jira_credentials
 from src.workers.celery_app import celery_app
 
-if TYPE_CHECKING:
-    from src.schema import MeetingAnalysis
-
 logger = get_logger(__name__)
+
+FALLBACK_EPIC_SUMMARY = "Action Items"
 
 
 @celery_app.task(
     name="push_to_jira",
     bind=True,
-    max_retries=2,
-    default_retry_delay=10,
+    max_retries=0,
     queue="default",
 )
 def push_to_jira(self, meeting_id: str) -> dict:
-    """Push approved items to Jira and update meeting status."""
+    """Push unsynced approved items to Jira with best-effort item status updates."""
     logger.info("[jira_push_task] Starting Jira push for meeting %s", meeting_id)
 
-    items = list_review_items(meeting_id, status="approved")
-    if not items:
-        raise ValueError("No approved items to push.")
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        raise ValueError(f"Meeting {meeting_id} not found.")
 
-    meeting_analysis = _reconstruct_analysis(items)
+    user_id = meeting.get("user_id")
+    if not user_id:
+        update_meeting_status(
+            meeting_id, status="failed", error_message="Meeting has no user_id."
+        )
+        raise ValueError(f"Meeting {meeting_id} has no user_id.")
 
     try:
-        push_result = push_analysis_to_jira(meeting_analysis)
+        jira_config = get_provider_config("jira", user_id=user_id)
+        credentials = normalize_jira_credentials(jira_config)
+        client = JiraClient(
+            base_url=credentials["base_url"],
+            email=credentials["email"],
+            token=credentials["token"],
+            project_key=credentials["project_key"],
+            allow_stub=False,
+        )
     except Exception as exc:
-        update_meeting_status(meeting_id, status="failed", error_message=str(exc))
-        raise self.retry(exc=exc)
+        message = str(exc)
+        update_meeting_status(meeting_id, status="failed", error_message=message)
+        raise ValueError(message) from exc
 
-    update_meeting_status(meeting_id, status="pushed")
+    all_items = list_review_items(meeting_id)
+    approved_items = [
+        item for item in all_items if item.get("review_status") == "approved"
+    ]
+    pushable_items = [
+        item for item in approved_items if item.get("sync_status") != "synced"
+    ]
+    skipped_synced = len(approved_items) - len(pushable_items)
+
+    if not approved_items:
+        update_meeting_status(
+            meeting_id, status="failed", error_message="No approved items to push."
+        )
+        raise ValueError("No approved items to push.")
+
+    if not pushable_items:
+        update_meeting_status(meeting_id, status="pushed")
+        return {
+            "epic_keys": [],
+            "task_count": 0,
+            "subtask_count": 0,
+            "synced_count": 0,
+            "failed_count": 0,
+            "skipped_synced_count": skipped_synced,
+            "is_stub": False,
+        }
+
+    context = _PushContext(client=client, base_url=credentials["base_url"], items=all_items)
+    for item in pushable_items:
+        if item.get("item_type") == "epic":
+            context.ensure_epic(item)
+        elif item.get("item_type") == "task":
+            context.ensure_task(item)
+        elif item.get("item_type") == "subtask":
+            context.ensure_subtask(item)
+        else:
+            context.fail_item(item, f"Unsupported item_type: {item.get('item_type')}")
+
+    if context.synced_count > 0 and context.failed_count == 0:
+        final_status = "pushed"
+    elif context.synced_count > 0:
+        final_status = "partial_success"
+    else:
+        final_status = "failed"
+
+    error_message = None
+    if final_status == "failed":
+        error_message = "All Jira pushes failed. Check item sync_error values."
+    elif final_status == "partial_success":
+        error_message = "Some Jira items failed. Check item sync_error values."
+
+    update_meeting_status(meeting_id, status=final_status, error_message=error_message)
 
     logger.info(
-        "[jira_push_task] Complete: epic_keys=%s tasks=%d subtasks=%d",
-        push_result.epic_keys,
-        push_result.task_count,
-        push_result.subtask_count,
+        "[jira_push_task] Complete: synced=%d failed=%d skipped=%d status=%s",
+        context.synced_count,
+        context.failed_count,
+        skipped_synced,
+        final_status,
     )
     return {
-        "epic_keys": push_result.epic_keys,
-        "task_count": push_result.task_count,
-        "subtask_count": push_result.subtask_count,
-        "is_stub": push_result.is_stub,
+        "epic_keys": context.epic_keys,
+        "task_count": context.task_count,
+        "subtask_count": context.subtask_count,
+        "synced_count": context.synced_count,
+        "failed_count": context.failed_count,
+        "skipped_synced_count": skipped_synced,
+        "is_stub": False,
     }
 
 
-def _reconstruct_analysis(approved_items: list[dict]) -> "MeetingAnalysis":  # noqa: F821
-    """
-    Reconstruct MeetingAnalysis from flat list of approved action_items.
+class _PushContext:
+    """Stateful best-effort Jira pusher for one meeting."""
 
-    action_items has no `item_index` column, so we rebuild hierarchy using
-    `parent_id` and `item_type`:
-      - Epic items (item_type=epic, parent_id=None)
-      - Task items (item_type=task, parent_id=None → top-level task)
-      - Subtask items (item_type=subtask, parent_id → belongs to parent task)
+    def __init__(self, *, client: JiraClient, base_url: str, items: list[dict[str, Any]]) -> None:
+        self.client = client
+        self.base_url = base_url.rstrip("/")
+        self.items_by_id = {str(item["id"]): item for item in items}
+        self.created_keys: dict[str, str] = {}
+        self.fallback_epic_key: str | None = None
+        self.failed_ids: set[str] = set()
+        self.epic_keys: list[str] = []
+        self.task_count = 0
+        self.subtask_count = 0
+        self.synced_count = 0
+        self.failed_count = 0
 
-    Edits are stored directly in title/assignee/deadline/priority (no edited_* fields).
-    """
-    from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
+    def issue_url(self, issue_key: str) -> str:
+        return f"{self.base_url}/browse/{issue_key}"
 
-    # Separate by item_type
-    epics_raw = [i for i in approved_items if i.get("item_type") == "epic"]
-    tasks_raw = [i for i in approved_items if i.get("item_type") == "task"]
-    subtasks_raw = [i for i in approved_items if i.get("item_type") == "subtask"]
+    def existing_key(self, item: dict[str, Any]) -> str | None:
+        if item.get("sync_status") == "synced" and item.get("jira_issue_key"):
+            return str(item["jira_issue_key"])
+        return self.created_keys.get(str(item["id"]))
 
-    # Build subtask list per task_id
-    subtasks_by_task: dict[str, list[Subtask]] = {}
-    for sub in subtasks_raw:
-        parent_id = sub.get("parent_id")
+    def mark_syncing(self, item: dict[str, Any]) -> None:
+        update_action_item_sync(str(item["id"]), sync_status="syncing", sync_error="")
+        item["sync_status"] = "syncing"
+        item["sync_error"] = ""
+
+    def mark_synced(self, item: dict[str, Any], issue_key: str) -> None:
+        update_action_item_sync(
+            str(item["id"]),
+            sync_status="synced",
+            sync_error="",
+            jira_issue_key=issue_key,
+            jira_issue_url=self.issue_url(issue_key),
+        )
+        item["sync_status"] = "synced"
+        item["sync_error"] = ""
+        item["jira_issue_key"] = issue_key
+        item["jira_issue_url"] = self.issue_url(issue_key)
+        self.created_keys[str(item["id"])] = issue_key
+        self.synced_count += 1
+
+    def fail_item(self, item: dict[str, Any], message: str) -> None:
+        logger.warning("[jira_push_task] Item %s failed: %s", item.get("id"), message)
+        item_id = str(item["id"])
+        update_action_item_sync(
+            item_id,
+            sync_status="failed",
+            sync_error=message,
+        )
+        item["sync_status"] = "failed"
+        item["sync_error"] = message
+        if item_id not in self.failed_ids:
+            self.failed_ids.add(item_id)
+            self.failed_count += 1
+
+    def ensure_epic(self, item: dict[str, Any]) -> str | None:
+        existing = self.existing_key(item)
+        if existing:
+            return existing
+        if item.get("review_status") != "approved":
+            return None
+        if item.get("sync_status") == "synced":
+            return None
+
+        try:
+            self.mark_syncing(item)
+            epic = Epic(
+                summary=item.get("title") or "",
+                description=item.get("description") or "",
+            )
+            issue_key = self.client.create_epic(epic)
+            self.mark_synced(item, issue_key)
+            self.epic_keys.append(issue_key)
+            return issue_key
+        except Exception as exc:
+            self.fail_item(item, str(exc))
+            return None
+
+    def ensure_fallback_epic(self) -> str:
+        if self.fallback_epic_key:
+            return self.fallback_epic_key
+        epic = Epic(
+            summary=FALLBACK_EPIC_SUMMARY,
+            description="Approved action items without a pushable parent epic.",
+        )
+        self.fallback_epic_key = self.client.create_epic(epic)
+        self.epic_keys.append(self.fallback_epic_key)
+        return self.fallback_epic_key
+
+    def parent_epic_key_for_task(self, item: dict[str, Any]) -> str | None:
+        parent_id = item.get("parent_id")
         if not parent_id:
-            continue
-        priority_str = sub.get("priority") or "Medium"
-        valid_priorities = [p.value for p in Priority]
-        priority = (
-            Priority(priority_str)
-            if priority_str in valid_priorities
-            else Priority.MEDIUM
-        )
-        subtask = Subtask(
-            summary=sub.get("title") or "",
-            assignee=sub.get("assignee"),
-            deadline=sub.get("deadline"),
-            priority=priority,
-            context=sub.get("description") or "",
-        )
-        subtasks_by_task.setdefault(parent_id, []).append(subtask)
+            return self.ensure_fallback_epic()
 
-    # Build task list per epic_id; orphan_tasks are top-level tasks with no parent epic
-    tasks_by_epic: dict[str, list[Task]] = {}
-    orphan_tasks: list[Task] = []
-    for task in tasks_raw:
-        parent_id = task.get("parent_id")
-        priority_str = task.get("priority") or "Medium"
-        valid_priorities = [p.value for p in Priority]
-        priority = (
-            Priority(priority_str)
-            if priority_str in valid_priorities
-            else Priority.MEDIUM
-        )
-        t = Task(
-            summary=task.get("title") or "",
-            assignee=task.get("assignee"),
-            deadline=task.get("deadline"),
-            priority=priority,
-            context=task.get("description") or "",
-            subtasks=subtasks_by_task.get(task["id"], []),
-        )
-        if parent_id:
-            tasks_by_epic.setdefault(parent_id, []).append(t)
-        else:
-            orphan_tasks.append(t)
+        parent = self.items_by_id.get(str(parent_id))
+        if not parent or parent.get("item_type") != "epic":
+            return self.ensure_fallback_epic()
 
-    # Build epics
-    epics = []
-    for epic in epics_raw:
-        epic_tasks = tasks_by_epic.get(epic["id"], [])
-        epics.append(Epic(
-            summary=epic.get("title") or "",
-            description=epic.get("description") or "",
-            tasks=epic_tasks,
-        ))
+        existing = self.existing_key(parent)
+        if existing:
+            return existing
 
-    # Include any top-level tasks that have no parent epic
-    for orphan_task in orphan_tasks:
-        epics.append(Epic(
-            summary="Action Items",
-            description="Top-level action items without a parent epic",
-            tasks=[orphan_task],
-        ))
+        if parent.get("review_status") == "approved" and parent.get("sync_status") != "synced":
+            return self.ensure_epic(parent)
 
-    return MeetingAnalysis(epics=epics)
+        return self.ensure_fallback_epic()
+
+    def ensure_task(self, item: dict[str, Any]) -> str | None:
+        existing = self.existing_key(item)
+        if existing:
+            return existing
+        if item.get("review_status") != "approved":
+            return None
+        if item.get("sync_status") == "synced":
+            return None
+
+        try:
+            epic_key = self.parent_epic_key_for_task(item)
+            if not epic_key:
+                self.fail_item(item, "Cannot resolve parent Epic for task.")
+                return None
+            self.mark_syncing(item)
+            task = Task(
+                summary=item.get("title") or "",
+                assignee=item.get("assignee"),
+                deadline=item.get("deadline"),
+                priority=_priority(item.get("priority")),
+                context=item.get("description") or "",
+                subtasks=[],
+            )
+            issue_key = self.client.create_task(task, epic_key)
+            self.mark_synced(item, issue_key)
+            self.task_count += 1
+            return issue_key
+        except Exception as exc:
+            self.fail_item(item, str(exc))
+            return None
+
+    def parent_task_key_for_subtask(self, item: dict[str, Any]) -> str | None:
+        parent_id = item.get("parent_id")
+        if not parent_id:
+            return None
+
+        parent = self.items_by_id.get(str(parent_id))
+        if not parent or parent.get("item_type") != "task":
+            return None
+
+        existing = self.existing_key(parent)
+        if existing:
+            return existing
+
+        if parent.get("review_status") == "approved" and parent.get("sync_status") != "synced":
+            return self.ensure_task(parent)
+        return None
+
+    def ensure_subtask(self, item: dict[str, Any]) -> str | None:
+        existing = self.existing_key(item)
+        if existing:
+            return existing
+        if item.get("review_status") != "approved":
+            return None
+        if item.get("sync_status") == "synced":
+            return None
+
+        task_key = self.parent_task_key_for_subtask(item)
+        if not task_key:
+            self.fail_item(item, "Cannot resolve parent Task for subtask.")
+            return None
+
+        try:
+            self.mark_syncing(item)
+            subtask = Subtask(
+                summary=item.get("title") or "",
+                assignee=item.get("assignee"),
+                deadline=item.get("deadline"),
+                priority=_priority(item.get("priority")),
+                context=item.get("description") or "",
+            )
+            issue_key = self.client.create_subtask(subtask, task_key)
+            self.mark_synced(item, issue_key)
+            self.subtask_count += 1
+            return issue_key
+        except Exception as exc:
+            self.fail_item(item, str(exc))
+            return None
+
+
+def _priority(value: Any) -> Priority:
+    """Coerce stored priority strings to schema Priority enum."""
+    if value in {priority.value for priority in Priority}:
+        return Priority(value)
+    normalized = str(value or "").strip().lower()
+    for priority in Priority:
+        if priority.value.lower() == normalized:
+            return priority
+    return Priority.MEDIUM

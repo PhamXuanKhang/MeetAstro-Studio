@@ -44,3 +44,6 @@ electron-app/scripts/mock-data.sql
 test_jira_push.sh
 result_3bda1f8b-0c03-4ed3-9166-0f93a7d0377c.json
 result_8f8acc13-5e73-46da-9187-e90c8fd2f1ba.json
+stream-flow-analysis.md
+result_06685f3a-a239-4826-b99b-d67e0306a95f.json
+result_e9cb6c61-8e0d-4c94-99aa-62a45da9a152.json

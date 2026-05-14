@@ -9,6 +9,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { useAuthStore } from '../../store/authStore';
 import type {
   Meeting,
   CreateMeetingPayload,
@@ -29,6 +30,20 @@ function ensureClient() {
   return supabase;
 }
 
+function requireCurrentUserId(): string {
+  const userId = useAuthStore.getState().user?.userId;
+  if (!userId) throw new Error('Ban can dang nhap truoc khi tao meeting.');
+  return userId;
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    return String((err as { message?: unknown }).message);
+  }
+  return String(err);
+}
+
 // ─── C1 – Create Meeting ────────────────────────────────
 
 /**
@@ -38,9 +53,11 @@ function ensureClient() {
 export async function createMeeting(payload: CreateMeetingPayload): Promise<Meeting> {
   try {
     const client = ensureClient();
+    const userId = requireCurrentUserId();
     const { data, error } = await client
       .from('meetings')
       .insert({
+        user_id: userId,
         title: payload.title,
         status: payload.status ?? 'pending',
         storage_provider: payload.storage_provider ?? 'local',
@@ -53,7 +70,7 @@ export async function createMeeting(payload: CreateMeetingPayload): Promise<Meet
     if (error) throw error;
     return data as Meeting;
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     throw new Error(`[C1] Tạo meeting thất bại: ${message}`);
   }
 }
