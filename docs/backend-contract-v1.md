@@ -38,7 +38,7 @@ Meeting:
 }
 ```
 
-Status enum (8 states): `pending` → `transcribing` → `transcribed` → `analyzing` → `draft` → `approved` → `pushed` | `failed`
+Status enum: `pending` -> `transcribing` -> `transcribed` -> `analyzing` -> `draft` -> `approved` -> `pushed` | `partial_success` | `failed`
 
 Transcript segment:
 ```json
@@ -908,9 +908,23 @@ Response:
 
 Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/jira/push`
 
-Partial push được phép — chỉ push items có `is_selected=true` và `review_status="approved"`. Items còn `review_status="draft"` không bị block nhưng bị bỏ qua; response trả về `unreviewed_count` để UI hiển thị warning.
+Current implementation queues a Celery job and pushes only approved action items that are not already synced.
 
-Phase 1: không set Jira assignee field. Assignee chỉ ghi vào description/context của issue.
+Preconditions:
+- Jira provider config must exist for the meeting owner. Missing or incomplete config returns `400`.
+- Main path does not use Jira stub mode.
+- All reviewable items must be finalized before push. If any item is still pending review, the endpoint returns `409`.
+- At least one approved unsynced item must exist. Items with `sync_status="synced"` are skipped to avoid duplicate Jira issues.
+
+Push behavior:
+- Jira hierarchy is preserved: Epic -> Task -> Subtask.
+- Processing is best-effort per item. A failed item does not roll back successful items.
+- Each item is updated in Supabase as it moves through `syncing`, `synced`, or `failed`.
+- Successful items store `jira_issue_key` and `jira_issue_url`.
+- Failed items store `sync_error`.
+- Final meeting status is `pushed`, `partial_success`, or `failed`.
+
+Phase 1: does not set Jira assignee field. Assignee is written into issue description/context only.
 
 Request:
 ```json
@@ -925,13 +939,31 @@ Response:
   "meeting_id": "uuid",
   "job_id": "celery-task-id",
   "status": "queued",
-  "unreviewed_count": 3
+  "is_stub": false,
+  "epic_keys": [],
+  "task_count": 0,
+  "subtask_count": 0,
+  "message": "Jira push job queued"
+}
+```
+
+Job result shape from `GET /api/v1/jobs/{job_id}`:
+```json
+{
+  "meeting_id": "uuid",
+  "epic_keys": ["DEV-123"],
+  "task_count": 3,
+  "subtask_count": 2,
+  "synced_count": 6,
+  "failed_count": 1,
+  "skipped_synced_count": 4,
+  "is_stub": false
 }
 ```
 
 ## G2 - View Push Status
 
-Routing: Supabase Realtime on `action_items`.
+Routing: Supabase Realtime on `action_items`, with Supabase SDK fallback/refetch.
 
 Request:
 ```json
@@ -947,7 +979,9 @@ Response:
     {
       "id": "uuid",
       "sync_status": "synced",
-      "sync_error": null
+      "sync_error": null,
+      "jira_issue_key": "DEV-123",
+      "jira_issue_url": "https://company.atlassian.net/browse/DEV-123"
     }
   ]
 }
@@ -955,13 +989,14 @@ Response:
 
 ## G3 - Retry Failed Push
 
-Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/jira/retry`
+Routing: FastAPI (VPS). Reuse `POST /api/v1/meetings/{meeting_id}/jira/push`.
+
+There is no separate retry endpoint in the current implementation. Re-push uses the same endpoint and skips every item already marked `sync_status="synced"`. Approved items with `sync_status="failed"` or `sync_status="pending"` can be attempted again after the underlying cause is fixed.
 
 Request:
 ```json
 {
-  "meeting_id": "uuid",
-  "action_item_ids": ["uuid"]
+  "meeting_id": "uuid"
 }
 ```
 
@@ -970,7 +1005,9 @@ Response:
 {
   "meeting_id": "uuid",
   "job_id": "celery-task-id",
-  "status": "queued"
+  "status": "queued",
+  "is_stub": false,
+  "message": "Jira push job queued"
 }
 ```
 

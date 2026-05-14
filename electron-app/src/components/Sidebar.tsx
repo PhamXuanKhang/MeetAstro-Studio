@@ -1,4 +1,5 @@
 import { useAuthStore } from '../store/authStore'
+import { API_BASE_URL } from '../config/api'
 
 const NAV_ITEMS = [
   { route: 'home', label: 'Dashboard', icon: '🏠' },
@@ -14,7 +15,7 @@ interface Props {
 
 export default function Sidebar({ currentRoute, onNavigate }: Props) {
   const { user, logout } = useAuthStore()
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  const baseUrl = API_BASE_URL
 
   const initials = user?.name
     ? user.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()

@@ -12,9 +12,11 @@ import {
   approveActionItem,
   rejectActionItem,
   bulkApproveActionItems,
+  addManualActionItem,
 } from '../../api/supabase/actionItem.api'
 import type {
   ActionItem,
+  AddManualActionItemPayload,
   EditActionItemPayload,
 } from '../../types/supabase-models'
 
@@ -108,6 +110,24 @@ export function useBulkApproveActionItems(meetingId: string | null) {
 
   return useMutation({
     mutationFn: () => bulkApproveActionItems(meetingId!),
+    onSuccess: () => {
+      if (meetingId) {
+        queryClient.invalidateQueries({ queryKey: actionItemKeys.list(meetingId) })
+      }
+    },
+  })
+}
+
+// ─── useAddManualActionItem ─────────────────────────────
+
+/**
+ * Mutation thêm action item thủ công.
+ */
+export function useAddManualActionItem(meetingId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (payload: AddManualActionItemPayload) => addManualActionItem(payload),
     onSuccess: () => {
       if (meetingId) {
         queryClient.invalidateQueries({ queryKey: actionItemKeys.list(meetingId) })

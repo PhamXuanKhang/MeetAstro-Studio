@@ -242,7 +242,7 @@ ipcMain.handle('file:readBytes', async (_event, filePath: string) => {
 
 // IPC: Config
 ipcMain.handle('config:getApiUrl', () => {
-  return process.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  return import.meta.env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || ''
 })
 
 // IPC: PIP mini-window
