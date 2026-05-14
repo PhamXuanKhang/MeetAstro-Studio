@@ -134,6 +134,22 @@ class ReviewItemPatch(BaseModel):
     edited_priority: Optional[str] = None
 
 
+class ReviewItemCreate(BaseModel):
+    """Payload tạo action item thủ công từ Review UI."""
+    parent_id: Optional[UUID] = None
+    item_type: str = "task"
+    title: str
+    description: Optional[str] = None
+    assignee: Optional[str] = None
+    deadline: Optional[str] = None
+    priority: Optional[str] = "medium"
+    context: Optional[str] = "Manual item"
+    confidence_score: float = 1.0
+    review_status: str = "approved"
+    is_selected: bool = True
+    sync_status: str = "pending"
+
+
 class ReviewSummaryResponse(BaseModel):
     total: int
     approved: int

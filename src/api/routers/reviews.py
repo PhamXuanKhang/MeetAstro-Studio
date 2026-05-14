@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.deps import get_supabase
 from src.api.schemas.review_schemas import (
+    ReviewItemCreate,
     ReviewItemPatch,
     ReviewItemResponse,
     ReviewSummaryResponse,
@@ -23,6 +24,7 @@ from src.api.schemas.review_schemas import (
 from src.db.crud.meeting_crud import get_meeting
 from src.db.crud.review_crud import (
     approve_all_items,
+    create_manual_action_item,
     get_review_item,
     get_review_summary,
     list_review_items,
@@ -56,6 +58,30 @@ async def list_review_items_endpoint(
     _assert_meeting_exists(meeting_id)
     items = list_review_items(str(meeting_id), status=status, flagged_only=flagged_only)
     return [ReviewItemResponse.from_action_item(i) for i in items]
+
+
+@router.post("/{meeting_id}/review", response_model=ReviewItemResponse)
+async def create_review_item_endpoint(
+    meeting_id: uuid.UUID,
+    payload: ReviewItemCreate,
+    supabase: Annotated[Client, Depends(get_supabase)],
+) -> ReviewItemResponse:
+    """Create a manual task/subtask from Review UI."""
+    _assert_meeting_exists(meeting_id)
+
+    if payload.item_type not in {"task", "subtask"}:
+        raise HTTPException(status_code=400, detail="Only task and subtask can be created manually.")
+
+    if payload.item_type == "subtask":
+        if not payload.parent_id:
+            raise HTTPException(status_code=400, detail="Subtask requires parent_id.")
+        parent = _get_item_or_404(payload.parent_id, meeting_id)
+        if parent.get("item_type") != "task":
+            raise HTTPException(status_code=400, detail="Subtask parent must be a task.")
+
+    data = payload.model_dump()
+    created = create_manual_action_item(str(meeting_id), data)
+    return ReviewItemResponse.from_action_item(created)
 
 
 @router.get("/{meeting_id}/review/{item_id}", response_model=ReviewItemResponse)
