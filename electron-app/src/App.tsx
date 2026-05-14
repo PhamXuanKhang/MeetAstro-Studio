@@ -27,7 +27,7 @@ const ROUTE_TITLES: Record<string, string> = {
   new_meeting: 'Cuộc họp mới',
   live_recording: 'Đang ghi âm',
   processing: 'Đang xử lý',
-  review_transcript: 'Review Transcript',
+  review_transcript: 'Transcript',
   results: 'Kết quả phân tích',
   review: 'Review & Push Jira',
   history: 'Lịch sử',

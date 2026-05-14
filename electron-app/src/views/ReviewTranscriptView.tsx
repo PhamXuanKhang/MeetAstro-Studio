@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useTranscriptSegments, useEditTranscriptSegment, useRenameSpeaker } from '../hooks/supabase/useTranscript'
 import { startAnalysis } from '../api/meetings'
@@ -19,6 +19,8 @@ const UI = {
   lavender: '#e6e0f5',
   peach: '#ffe8d4',
   warning: '#dd5b00',
+  dangerBg: '#fee2e2',
+  danger: '#991b1b',
   font: "'Notion Sans', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif",
 }
 
@@ -71,9 +73,11 @@ export default function ReviewTranscriptView() {
   const [error, setError] = useState<string | null>(null)
 
   // Guard: redirect if missing state
-  if (!currentMeetingId && !loadingSegs) {
-    setRoute('new_meeting')
-  }
+  useEffect(() => {
+    if (!currentMeetingId && !loadingSegs) {
+      setRoute('new_meeting')
+    }
+  }, [currentMeetingId, loadingSegs, setRoute])
 
   // Unique speaker names
   const speakers = useMemo(
@@ -121,8 +125,13 @@ export default function ReviewTranscriptView() {
   }, [renamingFrom, renameValue, currentMeetingId, renameSpk])
 
   // startAnalysis giữ nguyên FastAPI (trigger Celery job)
-  const handleAnalyze = useCallback(async () => {
+  const handleReAnalyze = useCallback(async () => {
     if (!currentMeetingId || segments.length === 0) return
+    const confirmed = window.confirm(
+      'Phân tích lại sẽ thay thế toàn bộ action items cũ của meeting này, bao gồm cả item đã synced lên Jira. Bạn vẫn muốn tiếp tục?'
+    )
+    if (!confirmed) return
+
     setAnalyzing(true)
     setError(null)
     try {
@@ -188,24 +197,38 @@ export default function ReviewTranscriptView() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, margin: '0 0 4px' }}>Review Transcript</h2>
+          <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, margin: '0 0 4px' }}>Transcript</h2>
           <p style={{ color: UI.slate, fontSize: 14, lineHeight: 1.5, margin: 0 }}>
-            Kiểm tra và chỉnh sửa transcript trước khi phân tích.
+            Kiểm tra, chỉnh sửa transcript và phân tích lại khi cần.
           </p>
         </div>
 
-        <button
-          onClick={handleAnalyze}
-          disabled={analyzing || segments.length === 0}
-          style={{
-            ...btnBase,
-            background: analyzing || segments.length === 0 ? UI.hairline : UI.primary,
-            color: '#fff', fontSize: 14, padding: '11px 26px',
-            cursor: analyzing || segments.length === 0 ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {analyzing ? '⏳ Đang khởi chạy...' : '✨ Phân tích'}
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setRoute('results')}
+            style={{ ...btnBase, background: UI.canvas, color: UI.ink, border: `1px solid ${UI.hairlineStrong}` }}
+          >
+            ← Results
+          </button>
+          <button
+            onClick={() => setRoute('review')}
+            style={{ ...btnBase, background: '#2563eb', color: '#fff' }}
+          >
+            Review & Push Jira
+          </button>
+          <button
+            onClick={handleReAnalyze}
+            disabled={analyzing || segments.length === 0}
+            style={{
+              ...btnBase,
+              background: analyzing || segments.length === 0 ? UI.hairline : UI.primary,
+              color: '#fff', fontSize: 14, padding: '11px 22px',
+              cursor: analyzing || segments.length === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {analyzing ? 'Đang khởi chạy...' : 'Re-analyze'}
+          </button>
+        </div>
       </div>
 
       {(error || fetchError) && (
@@ -213,6 +236,10 @@ export default function ReviewTranscriptView() {
           {error || fetchError?.message}
         </div>
       )}
+
+      <div style={{ marginBottom: 16, padding: '10px 16px', background: UI.dangerBg, borderRadius: 8, color: UI.danger, fontSize: 13, lineHeight: 1.5 }}>
+        Re-analyze sẽ tạo lại kết quả phân tích và thay thế toàn bộ action items cũ, bao gồm cả các item đã synced lên Jira.
+      </div>
 
       {/* Speaker legend */}
       {speakers.length > 0 && (
@@ -299,7 +326,7 @@ export default function ReviewTranscriptView() {
       {/* Sticky bottom Analyze CTA */}
       <div style={{ marginTop: 32, textAlign: 'right' }}>
         <button
-          onClick={handleAnalyze}
+          onClick={handleReAnalyze}
           disabled={analyzing || segments.length === 0}
           style={{
             ...btnBase,
@@ -308,7 +335,7 @@ export default function ReviewTranscriptView() {
             cursor: analyzing || segments.length === 0 ? 'not-allowed' : 'pointer',
           }}
         >
-          {analyzing ? '⏳ Đang khởi chạy phân tích...' : '✨ Phân tích bằng GPT-4o →'}
+          {analyzing ? 'Đang khởi chạy phân tích lại...' : 'Re-analyze'}
         </button>
       </div>
     </div>
