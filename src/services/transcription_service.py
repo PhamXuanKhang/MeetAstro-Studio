@@ -14,13 +14,20 @@ from src.providers.openai_transcriber import OpenAITranscriber
 logger = get_logger(__name__)
 
 
+def _normalize_language(language: Optional[str]) -> Optional[str]:
+    if language is None:
+        return None
+    cleaned = language.strip()
+    return cleaned or None
+
+
 def transcribe(audio_path: str, language: Optional[str] = None) -> str:
     """
     Transcribe audio file to text via OpenAI Whisper API.
 
     Args:
         audio_path: Path to the audio file.
-        language: Language code. If None, uses default from settings.
+        language: Language code. If None, the provider auto-detects.
 
     Returns:
         Transcribed text.
@@ -28,8 +35,7 @@ def transcribe(audio_path: str, language: Optional[str] = None) -> str:
     Raises:
         RuntimeError: If transcription fails.
     """
-    settings = get_settings()
-    actual_language = language if language is not None else settings.default_transcription_language
+    actual_language = _normalize_language(language)
     try:
         return OpenAITranscriber().transcribe(audio_path, language=actual_language)
     except Exception as exc:
@@ -49,13 +55,13 @@ def transcribe_diarized(audio_path: str, language: Optional[str] = None) -> str:
 
     Args:
         audio_path: Path to the audio file.
-        language: Language code. If None, uses default from settings.
+        language: Language code. If None, the provider auto-detects.
 
     Returns:
         Transcribed text with speaker labels.
     """
     settings = get_settings()
-    actual_language = language if language is not None else settings.default_transcription_language
+    actual_language = _normalize_language(language)
 
     # Try WhisperLiveKit first if configured
     if settings.whisper_livekit_url:
@@ -116,7 +122,7 @@ def transcribe_diarized_stream(
         audio_path: Path to the audio file.
         on_partial: Callback invoked each time the server sends updated lines.
                     Receives the full accumulated list of raw server lines.
-        language: Language code. If None, uses default from settings.
+        language: Language code. If None, the provider auto-detects.
 
     Returns:
         The final list of raw server lines after server signals completion.

@@ -39,7 +39,7 @@ async def start_transcription(
     meeting_id: uuid.UUID,
     supabase: Annotated[Client, Depends(get_supabase)],
     diarize: bool = False,
-    language: str = "en",
+    language: str = "",
 ) -> JobStatusResponse:
     """Start transcription job for meeting with existing audio_storage_path."""
     meeting = get_meeting(str(meeting_id))
@@ -52,8 +52,12 @@ async def start_transcription(
 
     from src.workers.tasks.transcribe_task import transcribe_audio
 
+    language_code = language.strip() or None
     task = transcribe_audio.delay(
-        str(meeting_id), meeting["audio_storage_path"], diarize=diarize, language=language
+        str(meeting_id),
+        meeting["audio_storage_path"],
+        diarize=diarize,
+        language=language_code,
     )
     update_meeting_status(str(meeting_id), status="transcribing")
     return JobStatusResponse(job_id=task.id, state="PENDING")
@@ -64,7 +68,7 @@ async def stream_transcribe(
     meeting_id: uuid.UUID,
     supabase: Annotated[Client, Depends(get_supabase)],
     diarize: bool = False,
-    language: str = "en",
+    language: str = "",
 ) -> StreamingResponse:
     """
     Stream partial transcription results via Server-Sent Events (SSE).

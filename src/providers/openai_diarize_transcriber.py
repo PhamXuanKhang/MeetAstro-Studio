@@ -27,6 +27,13 @@ _RETRY_BASE_DELAY = 2.0
 _DIARIZE_MODEL = "gpt-4o-transcribe-diarize"
 
 
+def _normalize_language(language: Optional[str]) -> Optional[str]:
+    if language is None:
+        return None
+    cleaned = language.strip()
+    return cleaned or None
+
+
 class DiarizedSegment(TypedDict):
     """A conversation segment from diarization results."""
 
@@ -66,7 +73,7 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
 
         Args:
             audio_path: Path to the audio file.
-            language: Language code. If None, uses default from settings.
+            language: Language code. If None, OpenAI auto-detects.
 
         Returns:
             Transcribed text with speaker labels.
@@ -87,7 +94,7 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
 
         Args:
             audio_path: Path to the audio file.
-            language: Language code. If None, uses default from settings.
+            language: Language code. If None, OpenAI auto-detects.
 
         Returns:
             List of diarized segments.
@@ -96,9 +103,7 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
             FileNotFoundError: If audio file does not exist.
             RuntimeError: If API call fails.
         """
-        settings = get_settings()
-        default_lang = settings.default_transcription_language
-        actual_language = language if language is not None else default_lang
+        actual_language = _normalize_language(language)
 
         last_error: Exception = RuntimeError("Unknown error")
 
@@ -111,13 +116,15 @@ class OpenAIDiarizeTranscriber(BaseTranscriber):
                     _MAX_RETRIES,
                 )
                 with open(audio_path, "rb") as audio_file:
-                    response = self._client.audio.transcriptions.create(
-                        model=_DIARIZE_MODEL,
-                        file=audio_file,
-                        language=actual_language,
-                        response_format="diarized_json",
-                        chunking_strategy="auto",
-                    )
+                    request_kwargs = {
+                        "model": _DIARIZE_MODEL,
+                        "file": audio_file,
+                        "response_format": "diarized_json",
+                        "chunking_strategy": "auto",
+                    }
+                    if actual_language:
+                        request_kwargs["language"] = actual_language
+                    response = self._client.audio.transcriptions.create(**request_kwargs)
 
                 segments = self._parse_response(response)
                 logger.info(

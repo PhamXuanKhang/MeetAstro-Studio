@@ -1,8 +1,10 @@
 """
 Pipeline: chain transcribe -> analyze.
 
-Call: run_pipeline.delay(meeting_id, audio_path, diarize=False, language="en")
+Call: run_pipeline.delay(meeting_id, audio_path, diarize=False, language=None)
 """
+from typing import Optional
+
 from src.workers.celery_app import celery_app
 from src.workers.tasks.analyze_task import analyze_transcript
 from src.workers.tasks.transcribe_task import transcribe_audio
@@ -14,7 +16,7 @@ def run_pipeline(
     audio_path: str,
     *,
     diarize: bool = False,
-    language: str = "en",
+    language: Optional[str] = None,
 ) -> dict:
     """
     Chay pipeline tuan tu: transcribe -> analyze.

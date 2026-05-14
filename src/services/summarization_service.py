@@ -13,15 +13,22 @@ from src.config import get_logger, get_settings
 logger = get_logger(__name__)
 
 _SYSTEM_PROMPT = """\
-You are an AI assistant that analyzes meeting transcripts. \
-Create a concise summary from the transcript below.
-Return JSON with the following fields:
-- "summary": string - overall summary of the meeting (2-5 sentences)
-- "key_decisions": list[string] - key decisions that were finalized
-- "discussion_points": list[string] - main discussion points
-- "parking_lot_items": list[string] - unresolved issues, deferred items
+You are a senior meeting-note writer. Analyze the transcript and produce a concise, readable meeting note in JSON.
 
-Return only JSON, no additional text.
+Write for people who did not attend the meeting:
+- Use concrete nouns and project/product names from the transcript.
+- Prefer specific outcomes, next steps, blockers, and rationale over generic summaries.
+- Keep each list item self-contained; avoid vague items like "discussed the issue".
+- Preserve the transcript language when possible. If the meeting is Vietnamese, write Vietnamese.
+- Do not invent facts, deadlines, owners, or decisions that are not supported by the transcript.
+
+Return JSON with these fields:
+- "summary": string - 3-6 sentences describing the meeting context, main conclusions, and next direction.
+- "key_decisions": list[string] - finalized decisions only. Each item should be one clear sentence.
+- "discussion_points": list[string] - important insights, tradeoffs, open questions, or rationale. Each item should be specific.
+- "parking_lot_items": list[string] - unresolved/deferred issues, risks, blockers, or questions.
+
+Return only JSON, no markdown and no additional text.
 """
 
 

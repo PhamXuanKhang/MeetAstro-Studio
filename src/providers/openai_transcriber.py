@@ -13,6 +13,13 @@ _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 2.0
 
 
+def _normalize_language(language: Optional[str]) -> Optional[str]:
+    if language is None:
+        return None
+    cleaned = language.strip()
+    return cleaned or None
+
+
 class OpenAITranscriber(BaseTranscriber):
     """Uses OpenAI Whisper API to transcribe audio files."""
 
@@ -35,7 +42,7 @@ class OpenAITranscriber(BaseTranscriber):
 
         Args:
             audio_path: Path to the audio file.
-            language: Language code (e.g., 'en', 'vi'). If None, uses default from settings.
+            language: Language code (e.g., 'en', 'vi'). If None, OpenAI auto-detects.
 
         Returns:
             Transcribed text.
@@ -44,9 +51,7 @@ class OpenAITranscriber(BaseTranscriber):
             FileNotFoundError: If audio file does not exist.
             RuntimeError: If all retry attempts fail.
         """
-        settings = get_settings()
-        default_lang = settings.default_transcription_language
-        actual_language = language if language is not None else default_lang
+        actual_language = _normalize_language(language)
 
         last_error: Exception = RuntimeError("Unknown error")
 
@@ -57,11 +62,13 @@ class OpenAITranscriber(BaseTranscriber):
                     attempt, _MAX_RETRIES
                 )
                 with open(audio_path, "rb") as audio_file:
-                    response = self._client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=audio_file,
-                        language=actual_language,
-                    )
+                    request_kwargs = {
+                        "model": "whisper-1",
+                        "file": audio_file,
+                    }
+                    if actual_language:
+                        request_kwargs["language"] = actual_language
+                    response = self._client.audio.transcriptions.create(**request_kwargs)
                 transcript = response.text.strip()
                 logger.info("Transcription successful: %d characters.", len(transcript))
                 return transcript
