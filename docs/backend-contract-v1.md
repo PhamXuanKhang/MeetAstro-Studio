@@ -873,12 +873,13 @@ Response:
 
 ## F8 - Add Manual Action Item
 
-Routing: Supabase SDK.
+Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/review`
+
+Manual creation uses FastAPI service-role access because direct Supabase SDK insert can be blocked by RLS. UI only allows `task` and `subtask`; `subtask` requires `parent_id` of an existing task in the same meeting.
 
 Request:
 ```json
 {
-  "meeting_id": "uuid",
   "parent_id": null,
   "item_type": "task",
   "title": "Manual task",
@@ -888,8 +889,8 @@ Request:
   "priority": "medium",
   "context": "Manual item",
   "confidence_score": 1.0,
-  "review_status": "edited",
-  "is_selected": false,
+  "review_status": "approved",
+  "is_selected": true,
   "sync_status": "pending"
 }
 ```
@@ -897,10 +898,20 @@ Request:
 Response:
 ```json
 {
-  "action_item": {
-    "id": "uuid",
-    "title": "Manual task"
-  }
+  "id": "uuid",
+  "meeting_id": "uuid",
+  "parent_id": null,
+  "item_type": "task",
+  "summary": "Manual task",
+  "description": "Added by user.",
+  "assignee": null,
+  "deadline": null,
+  "priority": "medium",
+  "confidence_score": 1.0,
+  "review_status": "approved",
+  "sync_status": "pending",
+  "jira_issue_key": null,
+  "jira_issue_url": null
 }
 ```
 

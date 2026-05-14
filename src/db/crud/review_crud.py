@@ -66,6 +66,28 @@ def get_review_item(item_id: str | uuid.UUID) -> Optional[dict[str, Any]]:
     return sc.fetch_one(sc.TABLE_ACTION_ITEMS, {"id": str(item_id)})
 
 
+def create_manual_action_item(meeting_id: str | uuid.UUID, data: dict[str, Any]) -> dict[str, Any]:
+    """Tạo action item thủ công từ Review UI."""
+    payload = {
+        "meeting_id": str(meeting_id),
+        "parent_id": str(data["parent_id"]) if data.get("parent_id") else None,
+        "item_type": data.get("item_type", "task"),
+        "title": data.get("title"),
+        "description": data.get("description") or "",
+        "assignee": data.get("assignee") or None,
+        "deadline": _sanitize_for_db(data.get("deadline")),
+        "priority": data.get("priority") or "medium",
+        "context": data.get("context") or "Manual item",
+        "confidence_score": data.get("confidence_score", 1.0),
+        "review_status": data.get("review_status", "approved"),
+        "is_selected": data.get("is_selected", True),
+        "sync_status": data.get("sync_status", "pending"),
+    }
+    client = sc.get_supabase_client()
+    result = client.table(sc.TABLE_ACTION_ITEMS).insert(payload).execute()
+    return result.data[0] if result.data else payload
+
+
 def _sanitize_for_db(value: str | None) -> str | None:
     """Convert 'null' string to None to prevent PostgreSQL date parsing errors."""
     if value is None or value == "" or value.lower() == "null":
