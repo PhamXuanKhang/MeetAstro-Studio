@@ -62,7 +62,7 @@ const initialState: AppState = {
   processingMessage: '',
   recordingPath: null,
   miniPopupOpen: false,
-  selectedLanguage: 'vi',
+  selectedLanguage: '',
   selectedDiarize: true,
 }
 

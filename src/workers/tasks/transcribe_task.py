@@ -1,9 +1,11 @@
 """
 Celery task: transcribe audio file and save transcript segments to database.
 
-Input:  meeting_id (str), audio_path (str), diarize (bool), language (str)
+Input:  meeting_id (str), audio_path (str), diarize (bool), language (str | None)
 Output: {"segment_count": int, "char_count": int}
 """
+from typing import Optional
+
 from src.config import get_logger
 from src.db.crud.meeting_crud import (
     create_transcript_segments,
@@ -28,7 +30,7 @@ def transcribe_audio(
     audio_path: str,
     *,
     diarize: bool = False,
-    language: str = "en",
+    language: Optional[str] = None,
     cleanup_audio: bool = True,
 ) -> dict:
     """
@@ -38,7 +40,7 @@ def transcribe_audio(
         meeting_id: UUID of the meeting.
         audio_path: Path to the audio file.
         diarize: Whether to perform speaker diarization.
-        language: Language code for transcription.
+        language: Language code for transcription. If None, provider auto-detects.
         cleanup_audio: Whether to delete audio file after successful transcription.
 
     Returns:

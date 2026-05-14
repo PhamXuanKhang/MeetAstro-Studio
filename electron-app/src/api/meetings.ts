@@ -39,7 +39,7 @@ export function buildUploadFormData(opts: {
   diarize?: boolean
   language?: string
 }): FormData {
-  const { filePath, fileBytes, diarize = true, language = 'vi' } = opts
+  const { filePath, fileBytes, diarize = true, language = '' } = opts
 
   const fileName = filePath.split(/[\\/]/).pop() ?? 'audio'
   const ext = fileName.split('.').pop()?.toLowerCase() ?? 'wav'
@@ -61,7 +61,7 @@ export function buildUploadFormData(opts: {
   form.append('file', blob, fileName)
   form.append('client_path', fileUri)
   form.append('diarize', String(diarize))
-  form.append('language', language)
+  form.append('language', language.trim())
   return form
 }
 

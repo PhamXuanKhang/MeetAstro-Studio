@@ -225,9 +225,9 @@ export default function NewMeetingView() {
                       onChange={(e) => setSelectedLanguage(e.target.value)}
                       style={{ padding: '4px 8px', borderRadius: 8, border: `1px solid ${UI.hairlineStrong}`, fontSize: 12, background: UI.canvas, color: UI.ink }}
                     >
-                      <option value="vi">Tiếng Việt</option>
-                      <option value="en">English</option>
                       <option value="">Auto-detect</option>
+                      <option value="en">English</option>
+                      <option value="vi">Tiếng Việt</option>
                     </select>
                   </label>
                 </div>
@@ -287,9 +287,9 @@ export default function NewMeetingView() {
                   onChange={(e) => setSelectedLanguage(e.target.value)}
                   style={{ padding: '4px 8px', borderRadius: 8, border: `1px solid ${UI.hairlineStrong}`, fontSize: 12, background: UI.canvas, color: UI.ink }}
                 >
-                  <option value="vi">Tiếng Việt</option>
-                  <option value="en">English</option>
                   <option value="">Auto-detect</option>
+                  <option value="en">English</option>
+                  <option value="vi">Tiếng Việt</option>
                 </select>
                 <span>Ngôn ngữ transcription</span>
               </label>

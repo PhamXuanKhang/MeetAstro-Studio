@@ -1102,7 +1102,9 @@ Response:
 
 ## H5 - Delete Meeting
 
-Routing: Supabase SDK.
+Routing: FastAPI (VPS). `DELETE /api/v1/meetings/{meeting_id}`
+
+Current UI calls FastAPI for deletion because direct Supabase SDK delete can be blocked by RLS. Backend uses service-role access and relies on DB cascade/foreign keys for related `transcript_segments`, `analysis_results`, and `action_items`.
 
 Request:
 ```json
@@ -1112,9 +1114,5 @@ Request:
 ```
 
 Response:
-```json
-{
-  "deleted": true
-}
-```
+`204 No Content`
 

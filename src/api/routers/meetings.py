@@ -110,7 +110,7 @@ async def upload_audio_endpoint(
         description="file:// URI of the original audio on the user's machine",
     ),
     diarize: bool = Form(default=False),
-    language: str = Form(default="en"),
+    language: str = Form(default=""),
 ) -> AudioUploadResponse:
     """
     Upload audio/video file, normalize to WAV 16kHz mono, and queue pipeline.
@@ -172,8 +172,9 @@ async def upload_audio_endpoint(
     # Queue pipeline (VPS temp path used for Whisper processing)
     from src.workers.pipeline import run_pipeline
 
+    language_code = language.strip() or None
     task = run_pipeline.delay(
-        str(meeting_id), vps_temp_path, diarize=diarize, language=language
+        str(meeting_id), vps_temp_path, diarize=diarize, language=language_code
     )
 
     update_meeting_status(
