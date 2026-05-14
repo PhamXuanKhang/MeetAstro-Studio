@@ -8,7 +8,7 @@ interface RecordingStartResult {
 
 type ElectronAPI = {
   startRecording: (config: Record<string, unknown>) => Promise<{ status: string; output_path?: string; error?: string; streaming?: boolean; stream_error?: string }>
-  stopRecording: () => Promise<{ status: string; output_path?: string; error?: string }>
+  stopRecording: () => Promise<{ status: string; output_path?: string; error?: string; stream_error?: string | null }>
   getRecordingStatus: () => Promise<{ isRecording: boolean; outputPath: string | null }>
 }
 

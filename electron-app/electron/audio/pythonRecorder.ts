@@ -79,6 +79,12 @@ export class PythonRecorder {
 
   private send(payload: Record<string, unknown>): Promise<RecorderResponse> {
     return new Promise((resolve, reject) => {
+      const action = String(payload.action ?? 'unknown')
+      if (this.pendingResolve) {
+        reject(new Error('Python recorder is busy'))
+        return
+      }
+
       if (!this.process || !this.process.stdin) {
         // Try to respawn once
         this.spawnProcess()
@@ -88,13 +94,16 @@ export class PythonRecorder {
         }
       }
 
+      console.info(`[PythonRecorder] sending ${action}`)
       const timeout = setTimeout(() => {
         this.pendingResolve = null
+        console.error(`[PythonRecorder] ${action} timed out`)
         reject(new Error('Python recorder timeout'))
-      }, 10000)
+      }, 30000)
 
       this.pendingResolve = (v) => {
         clearTimeout(timeout)
+        console.info(`[PythonRecorder] ${action} response: ${v.status}`)
         resolve(v)
       }
 

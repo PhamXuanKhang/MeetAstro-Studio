@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useRecording } from '../hooks/useRecording'
 
@@ -25,6 +25,10 @@ function fmtTime(s: number): string {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
+function cleanTranscriptText(text: string): string {
+  return text.replace(/<\|\d+(?:\.\d+)?\|>/g, '').replace(/\s+/g, ' ').trim()
+}
+
 interface LiveSegment {
   speaker: string
   start: number
@@ -44,6 +48,8 @@ export default function LiveRecordingView() {
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([])
   const [streamDone, setStreamDone] = useState(false)
   const [streamStarted, setStreamStarted] = useState(false)
+  const startRequestedRef = useRef(false)
+  const transcriptRef = useRef<HTMLDivElement | null>(null)
 
   // Guard
   useEffect(() => {
@@ -52,7 +58,8 @@ export default function LiveRecordingView() {
 
   // Auto-start recording when screen mounts
   useEffect(() => {
-    if (!currentMeetingId) return
+    if (!currentMeetingId || startRequestedRef.current) return
+    startRequestedRef.current = true
     ;(async () => {
       const apiBaseUrl = await window.electronAPI?.getApiUrl?.()
       const result = await startRecording({
@@ -64,8 +71,9 @@ export default function LiveRecordingView() {
       if (result?.streamError) {
         setError('Không thể mở live transcript. File WAV local vẫn được ghi để fallback.')
       }
-    })().catch(() => {
-      setError('Không thể bắt đầu ghi âm. Kiểm tra quyền microphone.')
+    })().catch((e) => {
+      const message = e instanceof Error ? e.message : String(e)
+      setError(`Không thể bắt đầu ghi âm: ${message}`)
     })
     return () => {
       // Unmount without explicit Stop: leave recording running (user may navigate back)
@@ -85,19 +93,30 @@ export default function LiveRecordingView() {
       const apiBaseUrl = await window.electronAPI?.getApiUrl?.()
       if (!apiBaseUrl || cancelled) return
       events = new EventSource(`${apiBaseUrl.replace(/\/$/, '')}/api/v1/meetings/${currentMeetingId}/recording/events`)
+      events.onopen = () => {
+        console.info('[LiveRecording] SSE opened')
+      }
       events.addEventListener('partial', (event) => {
         try {
+          console.info('[LiveRecording] SSE partial raw:', (event as MessageEvent).data)
           const payload = JSON.parse((event as MessageEvent).data) as { segments?: LiveSegment[] }
-          setLiveSegments(payload.segments ?? [])
-        } catch {
+          const segments = (payload.segments ?? [])
+            .map((segment) => ({ ...segment, text: cleanTranscriptText(segment.text) }))
+            .filter((segment) => segment.text)
+          console.info('[LiveRecording] SSE partial segments:', segments.length)
+          setLiveSegments(segments)
+        } catch (e) {
+          console.error('[LiveRecording] SSE partial parse failed:', e)
           setError('Live transcript payload không hợp lệ.')
         }
       })
       events.addEventListener('done', () => {
+        console.info('[LiveRecording] SSE done')
         setStreamDone(true)
         events?.close()
       })
-      events.addEventListener('error', () => {
+      events.addEventListener('error', (event) => {
+        console.error('[LiveRecording] SSE error:', event)
         setError('Kết nối live transcript bị gián đoạn. File WAV local vẫn được giữ để fallback.')
         events?.close()
       })
@@ -110,6 +129,11 @@ export default function LiveRecordingView() {
   }, [currentMeetingId, streamStarted])
 
   const latestTranscriptLine = liveSegments.at(-1)?.text
+
+  useEffect(() => {
+    if (!transcriptRef.current) return
+    transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
+  }, [liveSegments])
 
   const handleStop = useCallback(async () => {
     if (stopping) return
@@ -203,8 +227,8 @@ export default function LiveRecordingView() {
           Live Transcript
         </div>
         {liveSegments.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 220, overflowY: 'auto' }}>
-            {liveSegments.slice(-8).map((segment, idx) => (
+          <div ref={transcriptRef} style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 220, overflowY: 'auto' }}>
+            {liveSegments.map((segment, idx) => (
               <div key={`${segment.start}-${segment.end}-${idx}`} style={{ fontSize: 14, lineHeight: 1.5, color: UI.charcoal }}>
                 <span style={{ color: UI.primary, fontWeight: 600 }}>{segment.speaker}: </span>
                 <span>{segment.text}</span>

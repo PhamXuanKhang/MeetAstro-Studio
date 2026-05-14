@@ -42,12 +42,17 @@ class StreamSession:
         self._on_partial = on_partial
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._partial_lines: list[dict] = []
+        self._buffer_transcription = ""
         self._connected = False
         self._send_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=200)
         self._running = False
         self._recv_task: Optional[asyncio.Task[None]] = None
         self._send_task: Optional[asyncio.Task[None]] = None
         self._ws_close_code: Optional[int] = None
+        self._queued_chunks = 0
+        self._sent_chunks = 0
+        self._sent_bytes = 0
+        self._recv_messages = 0
 
     async def connect(self) -> None:
         """Establish WebSocket connection to WhisperLiveKit and start send/receive tasks."""
@@ -76,6 +81,15 @@ class StreamSession:
 
         try:
             self._send_queue.put_nowait(chunk)
+            self._queued_chunks += 1
+            if self._queued_chunks == 1 or self._queued_chunks % 25 == 0:
+                logger.info(
+                    "[%s] Queued audio chunk #%d (%d bytes, queue=%d).",
+                    self.meeting_id,
+                    self._queued_chunks,
+                    len(chunk),
+                    self._send_queue.qsize(),
+                )
         except asyncio.QueueFull:
             logger.warning(
                 "[%s] Send queue full (len=%d) — dropping oldest chunk.",
@@ -111,8 +125,20 @@ class StreamSession:
                 break
 
             try:
-                if self._ws is not None and self._ws.open:
-                    await self._ws.send(chunk)
+                if self._ws is None:
+                    break
+                await self._ws.send(chunk)
+                self._sent_chunks += 1
+                self._sent_bytes += len(chunk)
+                if self._sent_chunks == 1 or self._sent_chunks % 25 == 0 or chunk == b"":
+                    logger.info(
+                        "[%s] Sent WS chunk #%d (%d bytes, total=%d, queue=%d).",
+                        self.meeting_id,
+                        self._sent_chunks,
+                        len(chunk),
+                        self._sent_bytes,
+                        self._send_queue.qsize(),
+                    )
             except Exception as exc:
                 logger.error("[%s] Error sending chunk: %s", self.meeting_id, exc)
                 break
@@ -131,6 +157,11 @@ class StreamSession:
                 logger.error("[%s] WebSocket recv error: %s", self.meeting_id, exc)
                 break
 
+            if isinstance(msg, bytes):
+                logger.info("[%s] Raw WS bytes message len=%d sample=%s.", self.meeting_id, len(msg), msg[:200])
+            else:
+                logger.info("[%s] Raw WS text message len=%d sample=%s.", self.meeting_id, len(msg), msg[:2000])
+
             try:
                 data = json.loads(msg)
             except json.JSONDecodeError:
@@ -142,11 +173,24 @@ class StreamSession:
                 continue
 
             msg_type = data.get("type")
+            self._recv_messages += 1
+            if self._recv_messages == 1 or self._recv_messages % 10 == 0 or "lines" in data:
+                logger.info(
+                    "[%s] Received WS message #%d type=%s lines=%d buffer_len=%d.",
+                    self.meeting_id,
+                    self._recv_messages,
+                    msg_type,
+                    len(data.get("lines", [])) if isinstance(data.get("lines"), list) else 0,
+                    len(str(data.get("buffer_transcription", ""))),
+                )
 
             if msg_type == "ready_to_stop":
                 logger.info("[%s] WhisperLiveKit signaled ready_to_stop.", self.meeting_id)
                 self._running = False
                 break
+
+            if "buffer_transcription" in data:
+                self._buffer_transcription = str(data.get("buffer_transcription") or "").strip()
 
             if "lines" in data:
                 self._partial_lines = data["lines"]
@@ -169,11 +213,13 @@ class StreamSession:
                 except asyncio.CancelledError:
                     pass
 
-        if self._ws is not None and self._ws.open:
+        if self._ws is not None:
             try:
                 await self._ws.close()
             except Exception:
                 pass
+            finally:
+                self._ws = None
 
         self._connected = False
         logger.info("[%s] Session closed.", self.meeting_id)
@@ -182,6 +228,11 @@ class StreamSession:
     def partial_lines(self) -> list[dict]:
         """Return accumulated partial transcript lines."""
         return self._partial_lines
+
+    @property
+    def buffer_transcription(self) -> str:
+        """Return the latest uncommitted WhisperLiveKit transcription buffer."""
+        return self._buffer_transcription
 
     @property
     def is_connected(self) -> bool:
