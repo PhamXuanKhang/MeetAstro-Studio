@@ -35,9 +35,14 @@ function speakerColor(name: string): string {
   return SPEAKER_COLORS[Math.abs(hash) % SPEAKER_COLORS.length]
 }
 
-function fmtTime(s: number): string {
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
+function displaySpeaker(speaker: string | null): string {
+  return speaker?.trim() || 'Transcript'
+}
+
+function fmtTime(s: number | null): string {
+  const safeSeconds = Number.isFinite(s) ? Number(s) : 0
+  const m = Math.floor(safeSeconds / 60)
+  const sec = Math.floor(safeSeconds % 60)
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
@@ -81,7 +86,7 @@ export default function ReviewTranscriptView() {
 
   // Unique speaker names
   const speakers = useMemo(
-    () => Array.from(new Set(segments.map((s) => s.speaker))),
+    () => Array.from(new Set(segments.map((s) => s.speaker).filter((speaker): speaker is string => !!speaker?.trim()))),
     [segments]
   )
 
@@ -269,8 +274,9 @@ export default function ReviewTranscriptView() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {segments.map((seg) => {
-            const color = speakerColor(seg.speaker)
-            const editVal = editState[seg.id] ?? seg.content
+            const speakerName = displaySpeaker(seg.speaker)
+            const color = speakerColor(speakerName)
+            const editVal = editState[seg.id] ?? seg.content ?? ''
             const isSaving = savingSegId === seg.id && isSavingSegment
             return (
               <div
@@ -283,15 +289,16 @@ export default function ReviewTranscriptView() {
                 {/* Left: speaker + time */}
                 <div style={{ minWidth: 90, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <button
-                    onClick={() => handleOpenRename(seg.speaker)}
-                    title="Đổi tên người nói"
+                    onClick={() => { if (seg.speaker) handleOpenRename(seg.speaker) }}
+                    title={seg.speaker ? 'Đổi tên người nói' : 'Transcript không có speaker diarization'}
                     style={{
                       padding: '2px 8px', borderRadius: 99, border: 'none',
-                      background: color + '22', color, fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                      background: color + '22', color, fontWeight: 700, fontSize: 11,
+                      cursor: seg.speaker ? 'pointer' : 'default',
                       textAlign: 'left',
                     }}
                   >
-                    {seg.speaker}
+                    {speakerName}
                   </button>
                   <span style={{ fontSize: 11, color: UI.steel, fontVariantNumeric: 'tabular-nums' }}>
                     {fmtTime(seg.start_time)} – {fmtTime(seg.end_time)}

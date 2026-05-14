@@ -6,12 +6,14 @@ transcribe_diarized(): Whisper API with speaker diarization, fallback to transcr
                        Automatically uses WhisperLiveKit when WHISPER_LIVEKIT_URL is set,
                        otherwise falls back to OpenAI gpt-4o-transcribe-diarize.
 """
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from src.config import get_logger, get_settings
 from src.providers.openai_transcriber import OpenAITranscriber
 
 logger = get_logger(__name__)
+
+TranscriptSegment = dict[str, Any]
 
 
 def _normalize_language(language: Optional[str]) -> Optional[str]:
@@ -105,6 +107,59 @@ def transcribe_diarized(audio_path: str, language: Optional[str] = None) -> str:
     except Exception as exc:
         logger.warning("OpenAI diarization failed (%s) - falling back to plain Whisper...", exc)
     return transcribe(audio_path, language=actual_language)
+
+
+def transcribe_diarized_segments(
+    audio_path: str,
+    language: Optional[str] = None,
+) -> list[TranscriptSegment]:
+    """
+    Transcribe audio with diarization and return structured segments.
+
+    This keeps speaker/timestamp data from WhisperLiveKit or OpenAI diarized_json
+    intact so callers can save transcript_segments directly.
+    """
+    settings = get_settings()
+    actual_language = _normalize_language(language)
+
+    if settings.whisper_livekit_url:
+        try:
+            from src.providers.whisper_livekit_transcriber import (
+                WhisperLiveKitDiarizeTranscriber,
+            )
+            logger.info(
+                "Using WhisperLiveKit structured diarization: %s",
+                settings.whisper_livekit_url,
+            )
+            segments = WhisperLiveKitDiarizeTranscriber().transcribe_to_segments(
+                audio_path, language=actual_language
+            )
+            if segments:
+                return [dict(seg) for seg in segments]
+            logger.warning(
+                "WhisperLiveKit returned no structured segments - falling back to OpenAI..."
+            )
+        except Exception as exc:
+            logger.warning(
+                "WhisperLiveKit structured diarization failed (%s) - falling back to OpenAI...",
+                exc,
+            )
+    else:
+        logger.info("WHISPER_LIVEKIT_URL not set; using OpenAI structured diarization.")
+
+    try:
+        from src.providers.openai_diarize_transcriber import OpenAIDiarizeTranscriber
+        logger.info("Starting structured diarization with gpt-4o-transcribe-diarize...")
+        segments = OpenAIDiarizeTranscriber().transcribe_to_segments(
+            audio_path, language=actual_language
+        )
+        if segments:
+            return [dict(seg) for seg in segments]
+        logger.warning("OpenAI diarization returned no structured segments.")
+    except Exception as exc:
+        logger.warning("OpenAI structured diarization failed (%s).", exc)
+
+    return []
 
 
 def transcribe_diarized_stream(

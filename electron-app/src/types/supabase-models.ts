@@ -49,7 +49,7 @@ export interface Meeting {
 export interface TranscriptSegment {
   id: string;
   meeting_id: string;
-  speaker: string;
+  speaker: string | null;
   start_time: number;
   end_time: number;
   content: string;
