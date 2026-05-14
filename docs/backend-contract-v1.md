@@ -619,6 +619,8 @@ Response:
 
 Routing: Supabase SDK.
 
+Current UI exposes this as a post-processing Transcript screen opened from Results. Upload batch processing already runs transcription and analysis before this screen is shown.
+
 Request:
 ```json
 {
@@ -711,6 +713,8 @@ Response:
 ## E1 - Trigger Analysis
 
 Routing: FastAPI (VPS). `POST /api/v1/meetings/{meeting_id}/analyze`
+
+Used by the Transcript screen as `Re-analyze` after the user edits transcript content or speaker labels. Current backend behavior replaces the meeting's action items on successful re-analysis: all existing `action_items` for the meeting are deleted, including items that were already synced to Jira, then a fresh set is inserted. UI must show a warning before calling this endpoint.
 
 Request:
 ```json

@@ -22,7 +22,7 @@ const STATUS_LABELS: Record<string, string> = {
   transcribing: 'Đang chuyển âm thanh thành transcript...',
   transcribed: 'Transcript đã sẵn sàng, đang chuẩn bị phân tích...',
   analyzing: 'Đang phân tích và tạo action items...',
-  draft: 'Hoàn tất. Đang mở màn review...',
+  draft: 'Hoàn tất. Đang mở kết quả phân tích...',
   failed: 'Xử lý thất bại',
 }
 
@@ -134,7 +134,7 @@ export default function ProcessingView() {
       setProcessingMessage(STATUS_LABELS.draft)
       if (!routedRef.current) {
         routedRef.current = true
-        window.setTimeout(() => setRoute('review'), 700)
+        window.setTimeout(() => setRoute('results'), 700)
       }
       return
     }

@@ -89,15 +89,26 @@ export default function ResultsView({ onNavigate }: Props) {
           </p>
         </div>
         {canReview && (
-          <button
-            onClick={() => onNavigate!('review')}
-            style={{
-              padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none',
-              borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer',
-            }}
-          >
-            📋 Review &amp; Push to Jira
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => onNavigate!('review_transcript')}
+              style={{
+                padding: '10px 20px', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1',
+                borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              Transcript
+            </button>
+            <button
+              onClick={() => onNavigate!('review')}
+              style={{
+                padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none',
+                borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              📋 Review &amp; Push to Jira
+            </button>
+          </div>
         )}
       </div>
 
