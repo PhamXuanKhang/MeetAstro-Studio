@@ -9,6 +9,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { getClient } from '../client';
 import { useAuthStore } from '../../store/authStore';
 import type {
   Meeting,
@@ -183,18 +184,12 @@ export async function getMeetingDetail(meetingId: string): Promise<MeetingDetail
 // ─── H5 – Delete Meeting ────────────────────────────────
 
 /**
- * Xoá meeting theo ID. RLS đảm bảo chỉ owner mới xoá được.
- * Cascade delete sẽ do DB đảm nhận (transcript_segments, analysis_results, action_items).
+ * Xoá meeting theo ID qua FastAPI service-role.
+ * Cascade delete sẽ do DB/backend đảm nhận (transcript_segments, analysis_results, action_items).
  */
 export async function deleteMeeting(meetingId: string): Promise<{ deleted: boolean }> {
   try {
-    const client = ensureClient();
-    const { error } = await client
-      .from('meetings')
-      .delete()
-      .eq('id', meetingId);
-
-    if (error) throw error;
+    await getClient().delete(`/meetings/${meetingId}`);
     return { deleted: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

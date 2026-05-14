@@ -23,6 +23,7 @@ function fmtDt(iso: string): string {
 export default function HistoryView({ onOpenResults }: Props) {
   const searchQuery = useAppStore((s) => s.searchQuery)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // React Query: auto fetch + cache
   const { data, isLoading, error } = useMeetingsList({ limit: 100 })
@@ -40,8 +41,10 @@ export default function HistoryView({ onOpenResults }: Props) {
   const handleDelete = useCallback((e: React.MouseEvent, meetingId: string) => {
     e.stopPropagation() // Ngăn click mở meeting
     if (!confirm('Bạn có chắc muốn xoá cuộc họp này?')) return
+    setDeleteError(null)
     setDeletingId(meetingId)
     remove(meetingId, {
+      onError: (err) => setDeleteError(err.message),
       onSettled: () => setDeletingId(null),
     })
   }, [remove])
@@ -61,6 +64,11 @@ export default function HistoryView({ onOpenResults }: Props) {
       {error && (
         <div style={{ marginBottom: 16, padding: 12, background: '#fee2e2', borderRadius: 8, color: '#991b1b', fontSize: 13 }}>
           {error.message}
+        </div>
+      )}
+      {deleteError && (
+        <div style={{ marginBottom: 16, padding: 12, background: '#fee2e2', borderRadius: 8, color: '#991b1b', fontSize: 13 }}>
+          {deleteError}
         </div>
       )}
       <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
