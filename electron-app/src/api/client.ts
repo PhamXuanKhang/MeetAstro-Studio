@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
 import { useAuthStore } from '../store/authStore'
 
-let _baseURL = 'http://localhost:8000'
+let _baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 // Allow updating the base URL at runtime (from Settings or electron IPC)
 export function setApiBaseUrl(url: string) {
