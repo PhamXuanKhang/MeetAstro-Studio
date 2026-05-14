@@ -8,6 +8,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { getClient } from '../client';
 import type {
   ActionItem,
   EditActionItemPayload,
@@ -178,30 +179,13 @@ export async function addManualActionItem(
   payload: AddManualActionItemPayload
 ): Promise<{ action_item: Pick<ActionItem, 'id' | 'title'> }> {
   try {
-    const client = ensureClient();
-    const { data, error } = await client
-      .from('action_items')
-      .insert({
-        meeting_id: payload.meeting_id,
-        parent_id: payload.parent_id ?? null,
-        item_type: payload.item_type,
-        title: payload.title,
-        description: payload.description ?? '',
-        assignee: payload.assignee ?? null,
-        deadline: payload.deadline ?? null,
-        priority: payload.priority ?? 'medium',
-        context: payload.context ?? 'Manual item',
-        confidence_score: payload.confidence_score ?? 1.0,
-        review_status: payload.review_status ?? 'approved',
-        is_selected: payload.is_selected ?? true,
-        sync_status: payload.sync_status ?? 'pending',
-      })
-      .select('id, title')
-      .single();
+    const { meeting_id, ...body } = payload;
+    const { data } = await getClient().post<{ id: string; summary: string }>(
+      `/meetings/${meeting_id}/review`,
+      body
+    );
 
-    if (error) throw error;
-
-    return { action_item: data as Pick<ActionItem, 'id' | 'title'> };
+    return { action_item: { id: data.id, title: data.summary } };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[F8] Thêm action item thủ công thất bại: ${message}`);
