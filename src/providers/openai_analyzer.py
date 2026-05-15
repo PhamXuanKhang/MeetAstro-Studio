@@ -1,5 +1,6 @@
 """OpenAI GPT-4o analyzer for extracting action items from transcripts."""
 import json
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -15,11 +16,27 @@ logger = get_logger(__name__)
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "extract_action_items.md"
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 2.0
+_VIETNAMESE_RE = re.compile(
+    r"[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩị"
+    r"óòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]",
+    re.IGNORECASE,
+)
 
 
 def _load_system_prompt() -> str:
     """Load the system prompt from file."""
     return _PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _detect_primary_language(text: str) -> str:
+    """Small guardrail for English/Vietnamese meetings."""
+    sample = text[:5000]
+    if _VIETNAMESE_RE.search(sample):
+        return "Vietnamese"
+    ascii_letters = sum(1 for char in sample if char.isascii() and char.isalpha())
+    if ascii_letters > 50:
+        return "English"
+    return "the source language"
 
 
 class OpenAIAnalyzer(BaseAnalyzer):
@@ -64,12 +81,19 @@ class OpenAIAnalyzer(BaseAnalyzer):
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
                 logger.info("Analyzing transcript (attempt %d/%d)...", attempt, _MAX_RETRIES)
+                language = _detect_primary_language(transcript)
+                user_content = (
+                    f"Detected primary content language: {language}.\n"
+                    "You must write all user-facing JSON text fields in this language. "
+                    "Ignore application UI language, field names, and instructions when choosing output language.\n\n"
+                    f"{transcript}"
+                )
                 response = self._client.chat.completions.create(
                     model=self._model,
                     response_format={"type": "json_object"},
                     messages=[
                         {"role": "system", "content": self._system_prompt},
-                        {"role": "user", "content": transcript},
+                        {"role": "user", "content": user_content},
                     ],
                     temperature=0.2,
                 )

@@ -1,6 +1,8 @@
 ﻿import { useAppStore } from '../store/appStore'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAnalysisResult } from '../api/supabase/analysis.api'
+import { refreshActionItemsFromNote, updateMeetingNote } from '../api/meetings'
 import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
 import type { ActionItem } from '../types/supabase-models'
 import { Badge, Button, Card, EmptyState, Icon } from '../components/ui'
@@ -48,6 +50,24 @@ function paragraphLines(text: string | null | undefined): string[] {
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
+}
+
+function joinLines(items: string[]): string {
+  return items.join('\n')
+}
+
+function splitLines(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .map((line) => line.trim().replace(/^[-*]\s*/, ''))
+    .filter(Boolean)
+}
+
+interface NoteDraft {
+  summary_text: string
+  discussion_points: string
+  key_decisions: string
+  parking_lot: string
 }
 
 function priorityGroup(priority: string): PriorityGroup {
@@ -226,8 +246,23 @@ function ActionGroup({
 }
 
 export default function ResultsView({ onNavigate }: Props) {
-  const { currentMeetingTitle, currentMeetingId } = useAppStore()
+  const {
+    currentMeetingTitle,
+    currentMeetingId,
+    setCurrentJobId,
+    setProcessingKind,
+    setRoute,
+  } = useAppStore()
+  const queryClient = useQueryClient()
   const canReview = !!onNavigate && !!currentMeetingId
+  const [isEditingNote, setIsEditingNote] = useState(false)
+  const [noteDraft, setNoteDraft] = useState<NoteDraft>({
+    summary_text: '',
+    discussion_points: '',
+    key_decisions: '',
+    parking_lot: '',
+  })
+  const [noteError, setNoteError] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['analysisResult', currentMeetingId],
@@ -251,6 +286,73 @@ export default function ResultsView({ onNavigate }: Props) {
   const lowStart = highCount + groupedActions.medium.length + 1
   const hasActions = highCount + groupedActions.medium.length + groupedActions.low.length > 0
 
+  useEffect(() => {
+    if (!analysisRaw || isEditingNote) return
+    setNoteDraft({
+      summary_text: analysisRaw.summary_text ?? '',
+      discussion_points: joinLines(discussionPoints),
+      key_decisions: joinLines(keyDecisions),
+      parking_lot: joinLines(parkingLot),
+    })
+  }, [analysisRaw, isEditingNote])
+
+  const notePayload = () => ({
+    summary_text: noteDraft.summary_text.trim(),
+    discussion_points: splitLines(noteDraft.discussion_points),
+    key_decisions: splitLines(noteDraft.key_decisions),
+    parking_lot: splitLines(noteDraft.parking_lot),
+  })
+
+  const saveNoteMutation = useMutation({
+    mutationFn: () => updateMeetingNote(currentMeetingId!, notePayload()),
+    onSuccess: () => {
+      setIsEditingNote(false)
+      setNoteError(null)
+      queryClient.invalidateQueries({ queryKey: ['analysisResult', currentMeetingId] })
+    },
+    onError: (err) => setNoteError(err instanceof Error ? err.message : String(err)),
+  })
+
+  const refreshTasksMutation = useMutation({
+    mutationFn: async () => {
+      if (isEditingNote) {
+        await updateMeetingNote(currentMeetingId!, notePayload())
+      }
+      return refreshActionItemsFromNote(currentMeetingId!)
+    },
+    onSuccess: (resp) => {
+      setNoteError(null)
+      setIsEditingNote(false)
+      setCurrentJobId(resp.job_id)
+      setProcessingKind('analyzing')
+      setRoute('processing')
+    },
+    onError: (err) => setNoteError(err instanceof Error ? err.message : String(err)),
+  })
+
+  const handleRefreshTasks = () => {
+    if (!currentMeetingId) return
+    const confirmed = window.confirm(
+      'Rebuild Tasks sẽ tạo lại action items từ meeting note hiện tại. Các item đã synced lên Jira sẽ được giữ lại và không bị chỉnh sửa. Tiếp tục?'
+    )
+    if (confirmed) refreshTasksMutation.mutate()
+  }
+
+  const textareaStyle: React.CSSProperties = {
+    width: '100%',
+    minHeight: 110,
+    border: '1px solid var(--color-border)',
+    borderRadius: 8,
+    padding: '10px 12px',
+    resize: 'vertical',
+    fontSize: 14,
+    lineHeight: 1.55,
+    color: 'var(--color-text-main)',
+    background: 'var(--color-surface)',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+  }
+
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, gap: 16, flexWrap: 'wrap' }}>
@@ -268,10 +370,44 @@ export default function ResultsView({ onNavigate }: Props) {
         {canReview && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Button variant="outline" onClick={() => onNavigate!('review_transcript')}><Icon name="article" size={16} /> Transcript</Button>
+            {isEditingNote ? (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={saveNoteMutation.isPending || refreshTasksMutation.isPending}
+                  onClick={() => setIsEditingNote(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="success"
+                  disabled={saveNoteMutation.isPending || refreshTasksMutation.isPending}
+                  onClick={() => saveNoteMutation.mutate()}
+                >
+                  <Icon name="save" size={16} /> Save Note
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => setIsEditingNote(true)}><Icon name="edit" size={16} /> Edit Note</Button>
+            )}
+            <Button
+              variant="primary"
+              disabled={refreshTasksMutation.isPending || saveNoteMutation.isPending || !analysisRaw}
+              onClick={handleRefreshTasks}
+            >
+              <Icon name={refreshTasksMutation.isPending ? 'progress_activity' : 'auto_awesome'} size={16} style={refreshTasksMutation.isPending ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+              {refreshTasksMutation.isPending ? 'Rebuilding...' : 'Rebuild Tasks'}
+            </Button>
             <Button variant="primary" onClick={() => onNavigate!('review')}><Icon name="rule" size={16} /> Review &amp; Push Jira</Button>
           </div>
         )}
       </div>
+
+      {noteError && (
+        <Card style={{ padding: 12, marginBottom: 16, background: 'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))', color: 'var(--color-danger)', boxShadow: 'none' }}>
+          {noteError}
+        </Card>
+      )}
 
       {isLoading ? (
         <Card style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>
@@ -295,7 +431,13 @@ export default function ResultsView({ onNavigate }: Props) {
             </div>
 
             <SectionTitle icon="lightbulb">Insight</SectionTitle>
-            {summaryLines.length > 0 ? (
+            {isEditingNote ? (
+              <textarea
+                value={noteDraft.summary_text}
+                onChange={(e) => setNoteDraft((prev) => ({ ...prev, summary_text: e.target.value }))}
+                style={{ ...textareaStyle, minHeight: 150 }}
+              />
+            ) : summaryLines.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {summaryLines.map((line, idx) => (
                   <p key={`${line}-${idx}`} style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-main)', margin: 0 }}>
@@ -307,17 +449,33 @@ export default function ResultsView({ onNavigate }: Props) {
               <p style={{ fontSize: 15, color: 'var(--color-text-muted)', margin: 0 }}>Không có tóm tắt.</p>
             )}
 
-            {discussionPoints.length > 0 && (
+            {(discussionPoints.length > 0 || isEditingNote) && (
               <>
                 <SectionTitle icon="forum">Discussion points</SectionTitle>
-                <BulletList items={discussionPoints} />
+                {isEditingNote ? (
+                  <textarea
+                    value={noteDraft.discussion_points}
+                    onChange={(e) => setNoteDraft((prev) => ({ ...prev, discussion_points: e.target.value }))}
+                    style={textareaStyle}
+                  />
+                ) : (
+                  <BulletList items={discussionPoints} />
+                )}
               </>
             )}
 
-            {keyDecisions.length > 0 && (
+            {(keyDecisions.length > 0 || isEditingNote) && (
               <>
                 <SectionTitle icon="verified">Key decisions</SectionTitle>
-                <BulletList items={keyDecisions} />
+                {isEditingNote ? (
+                  <textarea
+                    value={noteDraft.key_decisions}
+                    onChange={(e) => setNoteDraft((prev) => ({ ...prev, key_decisions: e.target.value }))}
+                    style={textareaStyle}
+                  />
+                ) : (
+                  <BulletList items={keyDecisions} />
+                )}
               </>
             )}
 
@@ -334,10 +492,18 @@ export default function ResultsView({ onNavigate }: Props) {
               </p>
             )}
 
-            {parkingLot.length > 0 && (
+            {(parkingLot.length > 0 || isEditingNote) && (
               <>
                 <SectionTitle icon="inventory_2">Parking lot</SectionTitle>
-                <BulletList items={parkingLot} />
+                {isEditingNote ? (
+                  <textarea
+                    value={noteDraft.parking_lot}
+                    onChange={(e) => setNoteDraft((prev) => ({ ...prev, parking_lot: e.target.value }))}
+                    style={textareaStyle}
+                  />
+                ) : (
+                  <BulletList items={parkingLot} />
+                )}
               </>
             )}
           </Card>
