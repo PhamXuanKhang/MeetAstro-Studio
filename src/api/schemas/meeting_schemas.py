@@ -98,6 +98,15 @@ class TranscriptPatch(BaseModel):
     segments: list[dict[str, Any]] = Field(..., min_length=1)
 
 
+class AnalysisPatch(BaseModel):
+    """Editable meeting-note fields."""
+
+    summary_text: Optional[str] = None
+    key_decisions: Optional[list[str]] = None
+    discussion_points: Optional[list[str]] = None
+    parking_lot: Optional[list[str]] = None
+
+
 class AnalysisResponse(BaseModel):
     """Response model for analysis_results table."""
 
@@ -106,8 +115,8 @@ class AnalysisResponse(BaseModel):
     # Column mapping: Supabase uses raw_response, not analysis_json
     raw_response: Optional[dict[str, Any]] = None
     summary_text: Optional[str] = None
-    key_decisions: Optional[dict[str, Any]] = None
-    parking_lot: Optional[dict[str, Any]] = None
+    key_decisions: Optional[Any] = None
+    parking_lot: Optional[Any] = None
     ai_model: Optional[str] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None

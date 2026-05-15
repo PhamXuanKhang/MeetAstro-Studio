@@ -232,3 +232,39 @@ def create_analysis_result(
     if existing:
         return sc.update_by_id(sc.TABLE_ANALYSIS_RESULTS, existing["id"], data)
     return sc.insert(sc.TABLE_ANALYSIS_RESULTS, data)
+
+
+def update_analysis_result(
+    meeting_id: str | uuid.UUID,
+    *,
+    summary_text: Optional[str] = None,
+    key_decisions: Optional[list[str]] = None,
+    discussion_points: Optional[list[str]] = None,
+    parking_lot: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Update editable meeting-note fields in analysis_results."""
+    meeting_uuid = str(meeting_id)
+    existing = sc.fetch_one(sc.TABLE_ANALYSIS_RESULTS, {"meeting_id": meeting_uuid})
+    if not existing:
+        raise ValueError("Analysis result not found.")
+
+    raw_response = existing.get("raw_response") or {}
+    if not isinstance(raw_response, dict):
+        raw_response = {}
+
+    data: dict[str, Any] = {}
+    if summary_text is not None:
+        data["summary_text"] = summary_text
+        raw_response["summary"] = summary_text
+    if key_decisions is not None:
+        data["key_decisions"] = key_decisions
+        raw_response["key_decisions"] = key_decisions
+    if discussion_points is not None:
+        raw_response["discussion_points"] = discussion_points
+    if parking_lot is not None:
+        data["parking_lot"] = parking_lot
+        raw_response["parking_lot"] = parking_lot
+        raw_response["parking_lot_items"] = parking_lot
+
+    data["raw_response"] = raw_response
+    return sc.update_by_id(sc.TABLE_ANALYSIS_RESULTS, existing["id"], data)

@@ -99,3 +99,25 @@ export async function startAnalysis(meetingId: string): Promise<StartAnalysisRes
   )
   return data
 }
+
+export interface MeetingNotePayload {
+  summary_text?: string
+  key_decisions?: string[]
+  discussion_points?: string[]
+  parking_lot?: string[]
+}
+
+export async function updateMeetingNote(
+  meetingId: string,
+  payload: MeetingNotePayload
+): Promise<unknown> {
+  const { data } = await getClient().patch(`/meetings/${meetingId}/analysis`, payload)
+  return data
+}
+
+export async function refreshActionItemsFromNote(meetingId: string): Promise<StartAnalysisResponse> {
+  const { data } = await getClient().post<StartAnalysisResponse>(
+    `/meetings/${meetingId}/action-items/regenerate`
+  )
+  return data
+}

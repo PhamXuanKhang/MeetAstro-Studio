@@ -62,6 +62,49 @@ def _extract_via_openai(transcript: str) -> list[dict[str, Any]]:
     return items
 
 
+def _format_synced_items(synced_items: list[dict[str, Any]]) -> str:
+    if not synced_items:
+        return "None."
+    lines = []
+    for item in synced_items:
+        title = item.get("title") or ""
+        jira_key = item.get("jira_issue_key") or "synced"
+        item_type = item.get("item_type") or "item"
+        description = item.get("description") or item.get("context") or ""
+        lines.append(f"- [{item_type}] {title} ({jira_key})")
+        if description:
+            lines.append(f"  Context: {description}")
+    return "\n".join(lines)
+
+
+def analyze_note_actions(
+    meeting_note: str,
+    *,
+    synced_items: list[dict[str, Any]] | None = None,
+) -> MeetingAnalysis:
+    """Extract action items from an edited meeting note without rewriting the note."""
+    if not meeting_note.strip():
+        raise ValueError("Meeting note cannot be empty.")
+
+    settings = get_settings()
+    if not settings.openai_api_key:
+        logger.warning("OPENAI_API_KEY empty - using MockAnalyzer for meeting note.")
+        return MockAnalyzer().analyze(meeting_note)
+
+    synced_context = _format_synced_items(synced_items or [])
+    prompt = (
+        "SOURCE TYPE: Curated meeting note.\n\n"
+        "Task: Extract only the action-item hierarchy from this meeting note. "
+        "Do not rewrite or summarize the meeting note itself. "
+        "Do not recreate action items that are already synced to Jira.\n\n"
+        "Already synced Jira items to skip:\n"
+        f"{synced_context}\n\n"
+        "Meeting note:\n"
+        f"{meeting_note}"
+    )
+    return OpenAIAnalyzer().analyze(prompt)
+
+
 def _build_analysis(
     validated_items: list[dict[str, Any]],
     summary_result: dict[str, Any],

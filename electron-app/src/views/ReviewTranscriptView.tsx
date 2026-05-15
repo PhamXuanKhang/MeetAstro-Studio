@@ -2,6 +2,7 @@
 import { useAppStore } from '../store/appStore'
 import { useTranscriptSegments, useEditTranscriptSegment, useRenameSpeaker } from '../hooks/supabase/useTranscript'
 import { startAnalysis } from '../api/meetings'
+import { useFileDialog } from '../hooks/useFileDialog'
 import type { TranscriptSegment } from '../types/supabase-models'
 import { Badge, Button, Card, EmptyState, Field, Icon, Input, Modal } from '../components/ui'
 
@@ -27,6 +28,10 @@ function fmtTime(s: number | null): string {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
+function safeFileName(value: string): string {
+  return value.trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').replace(/\s+/g, ' ') || 'transcript'
+}
+
 interface EditState {
   [segId: string]: string
 }
@@ -34,8 +39,10 @@ interface EditState {
 export default function ReviewTranscriptView() {
   const {
     currentMeetingId,
+    currentMeetingTitle,
     setCurrentJobId, setProcessingKind, setRoute,
   } = useAppStore()
+  const { saveFile } = useFileDialog()
 
   const {
     data: segmentsData,
@@ -125,6 +132,33 @@ export default function ReviewTranscriptView() {
     }
   }, [currentMeetingId, segments.length, setCurrentJobId, setProcessingKind, setRoute])
 
+  const handleDownloadTranscript = useCallback(async () => {
+    const transcriptText = segments
+      .map((seg) => {
+        const content = (editState[seg.id] ?? seg.content ?? '').trim()
+        if (!content) return null
+        return `[${displaySpeaker(seg.speaker)}]: ${content}`
+      })
+      .filter((line): line is string => Boolean(line))
+      .join('\n')
+
+    if (!transcriptText) {
+      setError('Không có nội dung transcript để download.')
+      return
+    }
+
+    setError(null)
+    try {
+      await saveFile(
+        `${transcriptText}\n`,
+        `${safeFileName(currentMeetingTitle ?? currentMeetingId ?? 'transcript')}-transcript.txt`,
+        [{ name: 'Text Files', extensions: ['txt'] }]
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [currentMeetingId, currentMeetingTitle, editState, saveFile, segments])
+
   if (loadingSegs) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
@@ -164,21 +198,21 @@ export default function ReviewTranscriptView() {
 
       <Modal
         open={confirmReAnalyzeOpen}
-        title="Xác nhận phân tích lại"
+        title="Xác nhận rebuild note & tasks"
         onClose={() => setConfirmReAnalyzeOpen(false)}
         footer={(
           <>
             <Button variant="outline" onClick={() => setConfirmReAnalyzeOpen(false)} disabled={analyzing}>Hủy</Button>
             <Button variant="danger" onClick={handleReAnalyze} disabled={analyzing || segments.length === 0}>
               <Icon name={analyzing ? 'progress_activity' : 'auto_awesome'} size={16} style={analyzing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
-              {analyzing ? 'Đang khởi chạy...' : 'Phân tích lại'}
+              {analyzing ? 'Đang khởi chạy...' : 'Rebuild Note & Tasks'}
             </Button>
           </>
         )}
       >
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', color: 'var(--color-text-muted)', fontSize: 14, lineHeight: 1.6 }}>
           <Icon name="warning" size={20} style={{ color: 'var(--color-warning)', flexShrink: 0 }} />
-          <span>Phân tích lại sẽ thay thế toàn bộ action items cũ của meeting này, bao gồm cả item đã synced lên Jira. Bạn vẫn muốn tiếp tục?</span>
+          <span>Rebuild sẽ tạo lại meeting note và các action items chưa synced từ transcript hiện tại. Các item đã synced lên Jira sẽ được giữ lại và không bị chỉnh sửa. Bạn vẫn muốn tiếp tục?</span>
         </div>
       </Modal>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
@@ -194,10 +228,13 @@ export default function ReviewTranscriptView() {
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <Button variant="outline" onClick={() => setRoute('results')}><Icon name="arrow_back" size={16} /> Results</Button>
+          <Button variant="outline" onClick={handleDownloadTranscript} disabled={segments.length === 0}>
+            <Icon name="download" size={16} /> Download TXT
+          </Button>
           <Button variant="secondary" onClick={() => setRoute('review')}><Icon name="rule" size={16} /> Review & Push Jira</Button>
           <Button variant="primary" onClick={() => setConfirmReAnalyzeOpen(true)} disabled={analyzing || segments.length === 0}>
             <Icon name={analyzing ? 'progress_activity' : 'auto_awesome'} size={16} style={analyzing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
-            {analyzing ? 'Đang khởi chạy...' : 'Re-analyze'}
+            {analyzing ? 'Đang khởi chạy...' : 'Rebuild Note & Tasks'}
           </Button>
         </div>
       </div>
@@ -213,7 +250,7 @@ export default function ReviewTranscriptView() {
       <Card style={{ marginBottom: 16, padding: 14, background: 'color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))', color: 'var(--color-warning)' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.5 }}>
           <Icon name="warning" size={18} />
-          <span>Re-analyze sẽ tạo lại kết quả phân tích và thay thế toàn bộ action items cũ, bao gồm cả các item đã synced lên Jira.</span>
+          <span>Rebuild Note & Tasks sẽ tạo lại meeting note và các action items chưa synced từ transcript hiện tại. Các item đã synced lên Jira sẽ được giữ lại.</span>
         </div>
       </Card>
 
@@ -289,7 +326,7 @@ export default function ReviewTranscriptView() {
       <div style={{ marginTop: 32, textAlign: 'right' }}>
         <Button variant="primary" size="lg" onClick={() => setConfirmReAnalyzeOpen(true)} disabled={analyzing || segments.length === 0}>
           <Icon name={analyzing ? 'progress_activity' : 'auto_awesome'} size={18} style={analyzing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
-          {analyzing ? 'Đang khởi chạy phân tích lại...' : 'Re-analyze'}
+          {analyzing ? 'Đang khởi chạy rebuild...' : 'Rebuild Note & Tasks'}
         </Button>
       </div>
     </div>

@@ -37,6 +37,55 @@ def delete_review_items_for_meeting(meeting_id: str | uuid.UUID) -> int:
     return count
 
 
+def delete_non_synced_review_items_for_meeting(meeting_id: str | uuid.UUID) -> int:
+    """Delete all action items that have not been synced to Jira."""
+    client = sc.get_supabase_client()
+    meeting_uuid = str(meeting_id)
+    count_result = (
+        client.table(sc.TABLE_ACTION_ITEMS)
+        .select("id", count="exact")
+        .eq("meeting_id", meeting_uuid)
+        .neq("sync_status", "synced")
+        .execute()
+    )
+    count = count_result.count or 0
+    if count > 0:
+        (
+            client.table(sc.TABLE_ACTION_ITEMS)
+            .delete()
+            .eq("meeting_id", meeting_uuid)
+            .neq("sync_status", "synced")
+            .execute()
+        )
+    return count
+
+
+def list_synced_review_items(meeting_id: str | uuid.UUID) -> list[dict[str, Any]]:
+    """Return action items already synced to Jira for dedupe and continuity."""
+    client = sc.get_supabase_client()
+    result = (
+        client.table(sc.TABLE_ACTION_ITEMS)
+        .select("*")
+        .eq("meeting_id", str(meeting_id))
+        .eq("sync_status", "synced")
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return result.data or []
+
+
+def update_review_item_parent(
+    item_id: str | uuid.UUID,
+    parent_id: str | uuid.UUID,
+) -> dict[str, Any]:
+    """Patch parent_id after bulk insert when parent rows are generated together."""
+    return sc.update_by_id(
+        sc.TABLE_ACTION_ITEMS,
+        str(item_id),
+        {"parent_id": str(parent_id)},
+    )
+
+
 def list_review_items(
     meeting_id: str | uuid.UUID,
     *,
