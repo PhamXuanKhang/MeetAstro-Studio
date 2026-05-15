@@ -35,6 +35,7 @@ export type {
 export {
   createMeeting,
   getMeetingPipelineStatus,
+  updateMeetingTitle,
   listMeetings,
   getMeetingDetail,
   deleteMeeting,

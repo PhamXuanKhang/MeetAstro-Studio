@@ -107,6 +107,32 @@ export async function getMeetingPipelineStatus(
  * Lấy danh sách meetings có phân trang (limit/offset).
  * Sắp xếp theo `created_at` mới nhất.
  */
+export async function updateMeetingTitle(
+  meetingId: string,
+  title: string
+): Promise<Pick<Meeting, 'id' | 'title' | 'updated_at'>> {
+  const cleanTitle = title.trim();
+  if (!cleanTitle) {
+    throw new Error('Tên meeting không được để trống.');
+  }
+
+  try {
+    const client = ensureClient();
+    const { data, error } = await client
+      .from('meetings')
+      .update({ title: cleanTitle })
+      .eq('id', meetingId)
+      .select('id, title, updated_at')
+      .single();
+
+    if (error) throw error;
+    return data as Pick<Meeting, 'id' | 'title' | 'updated_at'>;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`[H6] Cập nhật tên meeting thất bại: ${message}`);
+  }
+}
+
 export async function listMeetings(params: ListMeetingsParams = {}): Promise<MeetingsListResult> {
   const { limit = 20, offset = 0 } = params;
 

@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAnalysisResult } from '../api/supabase/analysis.api'
 import { refreshActionItemsFromNote, updateMeetingNote } from '../api/meetings'
 import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
+import { useRenameMeeting } from '../hooks/supabase/useMeetings'
 import type { ActionItem } from '../types/supabase-models'
-import { Badge, Button, Card, EmptyState, Icon } from '../components/ui'
+import { Badge, Button, Card, EmptyState, Icon, Input } from '../components/ui'
 
 interface Props {
   onNavigate?: (route: string) => void
@@ -67,6 +68,7 @@ interface NoteDraft {
   summary_text: string
   discussion_points: string
   key_decisions: string
+  action_plan_draft: string
   parking_lot: string
 }
 
@@ -163,6 +165,25 @@ function groupActions(actions: NoteAction[]): Record<PriorityGroup, NoteAction[]
   )
 }
 
+function renderActionPlanDraft(actions: NoteAction[]): string {
+  return actions.map((action, index) => {
+    const lines = [`${index + 1}. ${action.title}`]
+    const meta = [
+      action.assignee ? `Assignee: ${action.assignee}` : '',
+      action.deadline ? `Due: ${action.deadline}` : '',
+      action.priority ? `Priority: ${action.priority}` : '',
+      action.topic ? `Topic: ${action.topic}` : '',
+    ].filter(Boolean)
+    if (meta.length) lines.push(`   ${meta.join(' | ')}`)
+    if (action.description) lines.push(`   Action: ${action.description}`)
+    if (action.context && action.context !== action.description) lines.push(`   Context: ${action.context}`)
+    for (const subtask of action.subtasks) {
+      lines.push(`   - Subtask: ${subtask.title}${subtask.assignee ? ` [${subtask.assignee}]` : ''}`)
+    }
+    return lines.join('\n')
+  }).join('\n\n')
+}
+
 function SectionTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
     <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, lineHeight: 1.35, fontWeight: 800, color: 'var(--color-text-main)', margin: '24px 0 10px' }}>
@@ -250,7 +271,9 @@ export default function ResultsView({ onNavigate }: Props) {
     currentMeetingTitle,
     currentMeetingId,
     setCurrentJobId,
+    setCurrentMeetingTitle,
     setProcessingKind,
+    setProcessingDoneRoute,
     setRoute,
   } = useAppStore()
   const queryClient = useQueryClient()
@@ -260,9 +283,14 @@ export default function ResultsView({ onNavigate }: Props) {
     summary_text: '',
     discussion_points: '',
     key_decisions: '',
+    action_plan_draft: '',
     parking_lot: '',
   })
   const [noteError, setNoteError] = useState<string | null>(null)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(currentMeetingTitle ?? '')
+  const [titleError, setTitleError] = useState<string | null>(null)
+  const renameMeetingMutation = useRenameMeeting()
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['analysisResult', currentMeetingId],
@@ -281,10 +309,20 @@ export default function ResultsView({ onNavigate }: Props) {
     ...getRawArray(rawResponse, 'insights'),
   ]
   const groupedActions = groupActions(collectActions(trees))
+  const actionPlanDraftFromItems = renderActionPlanDraft(collectActions(trees))
+  const savedActionPlanDraft = typeof rawResponse?.action_plan_draft === 'string' ? rawResponse.action_plan_draft : ''
+  const displayActionPlanDraft = savedActionPlanDraft || actionPlanDraftFromItems
+  const hasActionPlanDraftEdits = Boolean(savedActionPlanDraft)
   const highCount = groupedActions.high.length
   const mediumStart = highCount + 1
   const lowStart = highCount + groupedActions.medium.length + 1
   const hasActions = highCount + groupedActions.medium.length + groupedActions.low.length > 0
+
+  useEffect(() => {
+    if (!isEditingTitle) {
+      setTitleDraft(currentMeetingTitle ?? '')
+    }
+  }, [currentMeetingTitle, isEditingTitle])
 
   useEffect(() => {
     if (!analysisRaw || isEditingNote) return
@@ -292,6 +330,7 @@ export default function ResultsView({ onNavigate }: Props) {
       summary_text: analysisRaw.summary_text ?? '',
       discussion_points: joinLines(discussionPoints),
       key_decisions: joinLines(keyDecisions),
+      action_plan_draft: displayActionPlanDraft,
       parking_lot: joinLines(parkingLot),
     })
   }, [analysisRaw, isEditingNote])
@@ -300,6 +339,7 @@ export default function ResultsView({ onNavigate }: Props) {
     summary_text: noteDraft.summary_text.trim(),
     discussion_points: splitLines(noteDraft.discussion_points),
     key_decisions: splitLines(noteDraft.key_decisions),
+    action_plan_draft: noteDraft.action_plan_draft.trim(),
     parking_lot: splitLines(noteDraft.parking_lot),
   })
 
@@ -325,6 +365,7 @@ export default function ResultsView({ onNavigate }: Props) {
       setIsEditingNote(false)
       setCurrentJobId(resp.job_id)
       setProcessingKind('analyzing')
+      setProcessingDoneRoute('review')
       setRoute('processing')
     },
     onError: (err) => setNoteError(err instanceof Error ? err.message : String(err)),
@@ -336,6 +377,42 @@ export default function ResultsView({ onNavigate }: Props) {
       'Rebuild Tasks sẽ tạo lại action items từ meeting note hiện tại. Các item đã synced lên Jira sẽ được giữ lại và không bị chỉnh sửa. Tiếp tục?'
     )
     if (confirmed) refreshTasksMutation.mutate()
+  }
+
+  const handleCancelTitleEdit = () => {
+    setTitleDraft(currentMeetingTitle ?? '')
+    setTitleError(null)
+    setIsEditingTitle(false)
+  }
+
+  const handleSaveTitle = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentMeetingId) return
+
+    const cleanTitle = titleDraft.trim()
+    if (!cleanTitle) {
+      setTitleError('Tên meeting không được để trống.')
+      return
+    }
+
+    if (cleanTitle === (currentMeetingTitle ?? '').trim()) {
+      setTitleError(null)
+      setIsEditingTitle(false)
+      return
+    }
+
+    renameMeetingMutation.mutate(
+      { meetingId: currentMeetingId, title: cleanTitle },
+      {
+        onSuccess: (meeting) => {
+          setCurrentMeetingTitle(meeting.title)
+          setTitleDraft(meeting.title)
+          setTitleError(null)
+          setIsEditingTitle(false)
+        },
+        onError: (err) => setTitleError(err instanceof Error ? err.message : String(err)),
+      }
+    )
   }
 
   const textareaStyle: React.CSSProperties = {
@@ -359,10 +436,54 @@ export default function ResultsView({ onNavigate }: Props) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <Icon name="summarize" size={22} style={{ color: 'var(--color-primary)' }} />
-            <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-text-main)', margin: 0 }}>
-              {currentMeetingTitle || 'Meeting note'}
-            </h2>
+            {isEditingTitle ? (
+              <form onSubmit={handleSaveTitle} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') handleCancelTitleEdit()
+                  }}
+                  style={{ width: 360, maxWidth: 'min(360px, 70vw)', height: 34, fontSize: 18, fontWeight: 800 }}
+                  disabled={renameMeetingMutation.isPending}
+                />
+                <Button type="submit" size="sm" variant="success" disabled={renameMeetingMutation.isPending}>
+                  <Icon name="save" size={15} /> Save
+                </Button>
+                <Button type="button" size="sm" variant="outline" disabled={renameMeetingMutation.isPending} onClick={handleCancelTitleEdit}>
+                  Cancel
+                </Button>
+              </form>
+            ) : (
+              <>
+                <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-text-main)', margin: 0 }}>
+                  {currentMeetingTitle || 'Meeting note'}
+                </h2>
+                {currentMeetingId && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    title="Đổi tên meeting"
+                    onClick={() => {
+                      setTitleDraft(currentMeetingTitle ?? '')
+                      setTitleError(null)
+                      setIsEditingTitle(true)
+                    }}
+                    style={{ width: 30, padding: 0 }}
+                  >
+                    <Icon name="edit" size={16} />
+                  </Button>
+                )}
+              </>
+            )}
           </div>
+          {titleError && (
+            <p style={{ fontSize: 12, color: 'var(--color-danger)', margin: '0 0 6px 32px' }}>
+              {titleError}
+            </p>
+          )}
           <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>
             Meeting note được tạo từ transcript và action items.
           </p>
@@ -480,7 +601,27 @@ export default function ResultsView({ onNavigate }: Props) {
             )}
 
             <SectionTitle icon="account_tree">Action plan</SectionTitle>
-            {hasActions ? (
+            {isEditingNote ? (
+              <>
+                <textarea
+                  value={noteDraft.action_plan_draft}
+                  onChange={(e) => setNoteDraft((prev) => ({ ...prev, action_plan_draft: e.target.value }))}
+                  style={{ ...textareaStyle, minHeight: 220 }}
+                />
+                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '8px 0 0' }}>
+                  Action plan draft sẽ được dùng làm nguồn chính khi bấm Rebuild Tasks.
+                </p>
+              </>
+            ) : hasActionPlanDraftEdits ? (
+              <>
+                <Card style={{ padding: 12, marginBottom: 12, background: 'color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))', color: 'var(--color-warning)', boxShadow: 'none' }}>
+                  Action plan đang hiển thị từ draft đã chỉnh. Bấm Rebuild Tasks để cập nhật structured action items ở màn Review.
+                </Card>
+                <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.6, color: 'var(--color-text-main)' }}>
+                  {displayActionPlanDraft}
+                </pre>
+              </>
+            ) : hasActions ? (
               <>
                 <ActionGroup group="high" items={groupedActions.high} startIndex={1} />
                 <ActionGroup group="medium" items={groupedActions.medium} startIndex={mediumStart} />

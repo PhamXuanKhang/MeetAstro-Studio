@@ -105,6 +105,7 @@ async def patch_analysis_endpoint(
             key_decisions=payload.key_decisions,
             discussion_points=payload.discussion_points,
             parking_lot=payload.parking_lot,
+            action_plan_draft=payload.action_plan_draft,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

@@ -241,6 +241,7 @@ def update_analysis_result(
     key_decisions: Optional[list[str]] = None,
     discussion_points: Optional[list[str]] = None,
     parking_lot: Optional[list[str]] = None,
+    action_plan_draft: Optional[str] = None,
 ) -> dict[str, Any]:
     """Update editable meeting-note fields in analysis_results."""
     meeting_uuid = str(meeting_id)
@@ -265,6 +266,8 @@ def update_analysis_result(
         data["parking_lot"] = parking_lot
         raw_response["parking_lot"] = parking_lot
         raw_response["parking_lot_items"] = parking_lot
+    if action_plan_draft is not None:
+        raw_response["action_plan_draft"] = action_plan_draft
 
     data["raw_response"] = raw_response
     return sc.update_by_id(sc.TABLE_ANALYSIS_RESULTS, existing["id"], data)

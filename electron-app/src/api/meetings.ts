@@ -105,6 +105,7 @@ export interface MeetingNotePayload {
   key_decisions?: string[]
   discussion_points?: string[]
   parking_lot?: string[]
+  action_plan_draft?: string
 }
 
 export async function updateMeetingNote(
