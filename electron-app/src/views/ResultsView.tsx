@@ -1,8 +1,9 @@
-import { useAppStore } from '../store/appStore'
+﻿import { useAppStore } from '../store/appStore'
 import { useQuery } from '@tanstack/react-query'
 import { getAnalysisResult } from '../api/supabase/analysis.api'
 import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
 import type { ActionItem } from '../types/supabase-models'
+import { Badge, Button, Card, EmptyState, Icon } from '../components/ui'
 
 interface Props {
   onNavigate?: (route: string) => void
@@ -21,18 +22,6 @@ interface NoteAction {
   confidence: number
   topic?: string
   subtasks: ActionItem[]
-}
-
-const UI = {
-  ink: '#0f172a',
-  text: '#1e293b',
-  muted: '#64748b',
-  hairline: '#e2e8f0',
-  paper: '#ffffff',
-  high: '#dc2626',
-  medium: '#f97316',
-  low: '#d97706',
-  accent: '#2563eb',
 }
 
 function parseJsonbArray(val: unknown): string[] {
@@ -74,14 +63,20 @@ function priorityLabel(group: PriorityGroup): string {
   return 'LOW'
 }
 
+function priorityVariant(group: PriorityGroup): 'error' | 'warning' | 'default' {
+  if (group === 'high') return 'error'
+  if (group === 'medium') return 'warning'
+  return 'default'
+}
+
 function priorityColor(group: PriorityGroup): string {
-  if (group === 'high') return UI.high
-  if (group === 'medium') return UI.medium
-  return UI.low
+  if (group === 'high') return 'var(--color-danger)'
+  if (group === 'medium') return 'var(--color-warning)'
+  return 'var(--color-text-muted)'
 }
 
 function formatAssignee(assignee: string | null): string {
-  return assignee ? `[@${assignee}]` : ''
+  return assignee ? `@${assignee}` : ''
 }
 
 function formatDue(deadline: string | null): string {
@@ -148,9 +143,10 @@ function groupActions(actions: NoteAction[]): Record<PriorityGroup, NoteAction[]
   )
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
-    <h3 style={{ fontSize: 16, lineHeight: 1.35, fontWeight: 800, color: UI.ink, margin: '24px 0 8px' }}>
+    <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, lineHeight: 1.35, fontWeight: 800, color: 'var(--color-text-main)', margin: '24px 0 10px' }}>
+      <Icon name={icon} size={18} style={{ color: 'var(--color-primary)' }} />
       {children}
     </h3>
   )
@@ -159,9 +155,9 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function BulletList({ items }: { items: string[] }) {
   if (items.length === 0) return null
   return (
-    <ul style={{ margin: 0, paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 5 }}>
+    <ul style={{ margin: 0, paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 6 }}>
       {items.map((item, idx) => (
-        <li key={`${item}-${idx}`} style={{ fontSize: 14, lineHeight: 1.55, color: UI.text }}>
+        <li key={`${item}-${idx}`} style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--color-text-main)' }}>
           {item}
         </li>
       ))}
@@ -181,49 +177,47 @@ function ActionGroup({
   if (items.length === 0) return null
 
   return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ color: priorityColor(group), fontSize: 16, lineHeight: 1.35, fontWeight: 800, marginBottom: 8 }}>
-        {priorityLabel(group)}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ marginTop: 18 }}>
+      <Badge variant={priorityVariant(group)}>{priorityLabel(group)}</Badge>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
         {items.map((action, idx) => {
           const due = formatDue(action.deadline)
           const assignee = formatAssignee(action.assignee)
           return (
-            <div key={action.id}>
-              <div style={{ fontSize: 15, lineHeight: 1.5, color: UI.ink, fontWeight: 650 }}>
-                {startIndex + idx}. {action.title}
-                {assignee && <span style={{ color: '#16a34a', fontWeight: 600 }}> {assignee}</span>}
+            <Card key={action.id} style={{ padding: 16, boxShadow: 'none' }}>
+              <div style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--color-text-main)', fontWeight: 800 }}>
+                <span style={{ color: priorityColor(group) }}>{startIndex + idx}.</span> {action.title}
+                {assignee && <span style={{ color: 'var(--color-success)', fontWeight: 700 }}> [{assignee}]</span>}
               </div>
               {action.topic && (
-                <div style={{ color: UI.muted, fontSize: 12, marginTop: 2 }}>
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>
                   Topic: {action.topic}
                 </div>
               )}
-              <ul style={{ margin: '7px 0 0', paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <ul style={{ margin: '9px 0 0', paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {action.description && (
-                  <li style={{ fontSize: 14, lineHeight: 1.55, color: UI.text }}>
+                  <li style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--color-text-main)' }}>
                     <strong>Action:</strong> {action.description}
                   </li>
                 )}
                 {due && (
-                  <li style={{ fontSize: 14, lineHeight: 1.55, color: UI.text }}>
+                  <li style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--color-text-main)' }}>
                     <strong>Due:</strong> {due}
                   </li>
                 )}
                 {action.context && action.context !== action.description && (
-                  <li style={{ fontSize: 14, lineHeight: 1.55, color: UI.text }}>
+                  <li style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--color-text-main)' }}>
                     <strong>Context:</strong> {action.context}
                   </li>
                 )}
                 {action.subtasks.map((subtask) => (
-                  <li key={subtask.id} style={{ fontSize: 14, lineHeight: 1.55, color: UI.text }}>
+                  <li key={subtask.id} style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--color-text-main)' }}>
                     <strong>Subtask:</strong> {subtask.title}
-                    {subtask.assignee && <span style={{ color: '#16a34a' }}> {formatAssignee(subtask.assignee)}</span>}
+                    {subtask.assignee && <span style={{ color: 'var(--color-success)' }}> [{formatAssignee(subtask.assignee)}]</span>}
                   </li>
                 ))}
               </ul>
-            </div>
+            </Card>
           )
         })}
       </div>
@@ -261,122 +255,92 @@ export default function ResultsView({ onNavigate }: Props) {
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 750, color: UI.ink, margin: '0 0 4px' }}>
-            {currentMeetingTitle || 'Meeting note'}
-          </h2>
-          <p style={{ fontSize: 12, color: UI.muted, margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Icon name="summarize" size={22} style={{ color: 'var(--color-primary)' }} />
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-text-main)', margin: 0 }}>
+              {currentMeetingTitle || 'Meeting note'}
+            </h2>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>
             Meeting note được tạo từ transcript và action items.
           </p>
         </div>
         {canReview && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => onNavigate!('review_transcript')}
-              style={{
-                padding: '9px 16px',
-                background: '#fff',
-                color: UI.ink,
-                border: `1px solid ${UI.hairline}`,
-                borderRadius: 8,
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Transcript
-            </button>
-            <button
-              onClick={() => onNavigate!('review')}
-              style={{
-                padding: '9px 16px',
-                background: UI.accent,
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Review &amp; Push Jira
-            </button>
+            <Button variant="outline" onClick={() => onNavigate!('review_transcript')}><Icon name="article" size={16} /> Transcript</Button>
+            <Button variant="primary" onClick={() => onNavigate!('review')}><Icon name="rule" size={16} /> Review &amp; Push Jira</Button>
           </div>
         )}
       </div>
 
       {isLoading ? (
-        <div style={{ background: UI.paper, borderRadius: 8, border: `1px solid ${UI.hairline}`, padding: 24, textAlign: 'center', color: UI.muted }}>
-          Đang tải kết quả phân tích từ cơ sở dữ liệu...
-        </div>
+        <Card style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+          <Icon name="progress_activity" size={24} style={{ color: 'var(--color-primary)', animation: 'spin 0.8s linear infinite', marginBottom: 8 }} />
+          <div>Đang tải kết quả phân tích từ cơ sở dữ liệu...</div>
+        </Card>
       ) : error ? (
-        <div style={{ background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', padding: 24, color: '#ef4444' }}>
+        <Card style={{ padding: 24, background: 'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))', color: 'var(--color-danger)' }}>
           Đã có lỗi xảy ra: {error instanceof Error ? error.message : String(error)}
-        </div>
+        </Card>
       ) : !analysisRaw ? (
-        <div style={{ background: UI.paper, borderRadius: 8, border: `1px solid ${UI.hairline}`, padding: 24, color: '#94a3b8' }}>
-          Chưa có kết quả phân tích. Phân tích đang chạy hoặc bạn chưa khởi tạo nội dung cho meeting này.
-        </div>
+        <Card><EmptyState icon="draft" title="Chưa có kết quả phân tích" description="Phân tích đang chạy hoặc bạn chưa khởi tạo nội dung cho meeting này." /></Card>
       ) : (
-        <article
-          style={{
-            background: UI.paper,
-            border: `1px solid ${UI.hairline}`,
-            borderRadius: 8,
-            padding: '26px 34px 34px',
-            color: UI.text,
-            boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
-          }}
-        >
-          <h1 style={{ fontSize: 23, lineHeight: 1.25, color: UI.ink, margin: '0 0 22px', fontWeight: 800 }}>
-            Meeting note
-          </h1>
-
-          <SectionTitle>Insight</SectionTitle>
-          {summaryLines.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {summaryLines.map((line, idx) => (
-                <p key={`${line}-${idx}`} style={{ fontSize: 14, lineHeight: 1.65, color: UI.text, margin: 0 }}>
-                  {line}
-                </p>
-              ))}
+        <article>
+          <Card style={{ padding: '28px 34px 34px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <Icon name="notes" size={24} style={{ color: 'var(--color-primary)' }} />
+              <h1 style={{ fontSize: 24, lineHeight: 1.25, color: 'var(--color-text-main)', margin: 0, fontWeight: 900 }}>
+                Meeting note
+              </h1>
             </div>
-          ) : (
-            <p style={{ fontSize: 15, color: UI.muted, margin: 0 }}>Không có tóm tắt.</p>
-          )}
 
-          {discussionPoints.length > 0 && (
-            <>
-              <SectionTitle>Discussion points</SectionTitle>
-              <BulletList items={discussionPoints} />
-            </>
-          )}
+            <SectionTitle icon="lightbulb">Insight</SectionTitle>
+            {summaryLines.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {summaryLines.map((line, idx) => (
+                  <p key={`${line}-${idx}`} style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-main)', margin: 0 }}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: 15, color: 'var(--color-text-muted)', margin: 0 }}>Không có tóm tắt.</p>
+            )}
 
-          {keyDecisions.length > 0 && (
-            <>
-              <SectionTitle>Key decisions</SectionTitle>
-              <BulletList items={keyDecisions} />
-            </>
-          )}
+            {discussionPoints.length > 0 && (
+              <>
+                <SectionTitle icon="forum">Discussion points</SectionTitle>
+                <BulletList items={discussionPoints} />
+              </>
+            )}
 
-          <SectionTitle>Action plan</SectionTitle>
-          {hasActions ? (
-            <>
-              <ActionGroup group="high" items={groupedActions.high} startIndex={1} />
-              <ActionGroup group="medium" items={groupedActions.medium} startIndex={mediumStart} />
-              <ActionGroup group="low" items={groupedActions.low} startIndex={lowStart} />
-            </>
-          ) : (
-            <p style={{ fontSize: 15, color: UI.muted, margin: 0 }}>
-              Chưa có action items nào cho meeting này.
-            </p>
-          )}
+            {keyDecisions.length > 0 && (
+              <>
+                <SectionTitle icon="verified">Key decisions</SectionTitle>
+                <BulletList items={keyDecisions} />
+              </>
+            )}
 
-          {parkingLot.length > 0 && (
-            <>
-              <SectionTitle>Parking lot</SectionTitle>
-              <BulletList items={parkingLot} />
-            </>
-          )}
+            <SectionTitle icon="account_tree">Action plan</SectionTitle>
+            {hasActions ? (
+              <>
+                <ActionGroup group="high" items={groupedActions.high} startIndex={1} />
+                <ActionGroup group="medium" items={groupedActions.medium} startIndex={mediumStart} />
+                <ActionGroup group="low" items={groupedActions.low} startIndex={lowStart} />
+              </>
+            ) : (
+              <p style={{ fontSize: 15, color: 'var(--color-text-muted)', margin: 0 }}>
+                Chưa có action items nào cho meeting này.
+              </p>
+            )}
+
+            {parkingLot.length > 0 && (
+              <>
+                <SectionTitle icon="inventory_2">Parking lot</SectionTitle>
+                <BulletList items={parkingLot} />
+              </>
+            )}
+          </Card>
         </article>
       )}
     </div>

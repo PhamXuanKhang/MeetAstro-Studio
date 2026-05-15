@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react'
+﻿import { useState, useCallback } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { isSupabaseConfigured } from '../../lib/supabase'
-import { alertError, alertSuccess, alertWarning, buttonPrimary, buttonSecondary, inputStyle } from '../../styles/designTokens'
+import { Button, Field, Icon, Input } from '../../components/ui'
+import { alertError, alertSuccess, alertWarning } from '../../styles/designTokens'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -39,9 +40,7 @@ export default function RegisterView({ onGoLogin }: Props) {
 
       try {
         const result = await register(email.trim(), password, name.trim() || undefined)
-        if (result?.message) {
-          setSuccessMsg(result.message)
-        }
+        if (result?.message) setSuccessMsg(result.message)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Đăng ký thất bại.')
       }
@@ -61,24 +60,12 @@ export default function RegisterView({ onGoLogin }: Props) {
   if (successMsg) {
     return (
       <>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--color-text-main)', margin: '0 0 16px' }}>
           Kiểm tra email
         </h2>
-        <div style={{ ...alertSuccess, marginBottom: 20 }}>
-          {successMsg}
-        </div>
-        <button
-          onClick={onGoLogin}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#0ea5e9',
-            cursor: 'pointer',
-            fontSize: 13,
-            padding: 0,
-          }}
-        >
-          ← Quay lại đăng nhập
+        <div style={{ ...alertSuccess, marginBottom: 20 }}>{successMsg}</div>
+        <button onClick={onGoLogin} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontSize: 13, padding: 0, fontWeight: 700 }}>
+          <Icon name="arrow_back" size={14} /> Quay lại đăng nhập
         </button>
       </>
     )
@@ -86,9 +73,12 @@ export default function RegisterView({ onGoLogin }: Props) {
 
   return (
     <>
-      <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 24 }}>
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--color-text-main)', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
         Tạo tài khoản
       </h2>
+      <p style={{ fontSize: 14, color: 'var(--color-text-muted)', margin: '0 0 24px' }}>
+        Thiết lập workspace để quản lý transcript và Jira action items.
+      </p>
 
       {!isSupabaseConfigured && (
         <div style={{ ...alertWarning, marginBottom: 16 }}>
@@ -99,75 +89,44 @@ export default function RegisterView({ onGoLogin }: Props) {
 
       {error && <div style={{ ...alertError, marginBottom: 16 }}>{error}</div>}
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <input
-          type="text"
-          placeholder="Họ và tên (tùy chọn)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="name"
-          style={inputStyle}
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          autoComplete="email"
-          style={inputStyle}
-        />
-        <input
-          type="password"
-          placeholder="Mật khẩu (ít nhất 8 ký tự)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          autoComplete="new-password"
-          style={inputStyle}
-        />
-        <input
-          type="password"
-          placeholder="Xác nhận mật khẩu"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          required
-          autoComplete="new-password"
-          style={inputStyle}
-        />
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Field label="Họ và tên">
+          <Input type="text" placeholder="Nguyễn Văn A" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+        </Field>
+        <Field label="Email" required>
+          <Input type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+        </Field>
+        <Field label="Mật khẩu" hint="Ít nhất 8 ký tự" required>
+          <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
+        </Field>
+        <Field label="Xác nhận mật khẩu" required>
+          <Input type="password" placeholder="••••••••" value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" />
+        </Field>
 
-        <button
-          type="submit"
-          disabled={loading || !isSupabaseConfigured}
-          style={{ ...buttonPrimary, cursor: loading || !isSupabaseConfigured ? 'not-allowed' : 'pointer', opacity: loading || !isSupabaseConfigured ? 0.7 : 1, marginTop: 4 }}
-        >
+        <Button type="submit" variant="primary" disabled={loading || !isSupabaseConfigured} style={{ width: '100%', marginTop: 4 }}>
+          {loading && <Icon name="progress_activity" size={18} style={{ animation: 'spin 1s linear infinite' }} />}
           {loading ? 'Đang xử lý...' : 'Tạo tài khoản'}
-        </button>
+        </Button>
       </form>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0', color: '#94a3b8', fontSize: 12 }}>
-        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0', color: 'var(--color-text-subtle)', fontSize: 12 }}>
+        <div style={{ flex: 1, height: 1, background: 'var(--color-border-subtle)' }} />
         hoặc
-        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+        <div style={{ flex: 1, height: 1, background: 'var(--color-border-subtle)' }} />
       </div>
 
-      <button
-        type="button"
-        onClick={handleGoogle}
-        disabled={loading || !isSupabaseConfigured}
-        style={{ ...buttonSecondary, width: '100%', opacity: loading || !isSupabaseConfigured ? 0.7 : 1, cursor: loading || !isSupabaseConfigured ? 'not-allowed' : 'pointer' }}
-      >
+      <Button type="button" variant="secondary" onClick={handleGoogle} disabled={loading || !isSupabaseConfigured} style={{ width: '100%' }}>
+        <Icon name="open_in_new" size={18} />
         Tiếp tục với Google
-      </button>
+      </Button>
 
       <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13 }}>
-        <button
-          onClick={onGoLogin}
-          style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, padding: 0 }}
-        >
-          ← Đã có tài khoản? Đăng nhập
+        <button onClick={onGoLogin} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 13, padding: 0 }}>
+          <Icon name="arrow_back" size={14} /> Đã có tài khoản? Đăng nhập
         </button>
       </div>
     </>
   )
 }
+
+

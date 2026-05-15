@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from './store/appStore'
 import { useAuthStore } from './store/authStore'
 import Sidebar from './components/Sidebar'
@@ -19,6 +19,7 @@ import LoginView from './views/auth/LoginView'
 import RegisterView from './views/auth/RegisterView'
 import ForgotPasswordView from './views/auth/ForgotPasswordView'
 import ResetPasswordView from './views/auth/ResetPasswordView'
+import { Icon } from './components/ui'
 
 type AuthRoute = 'login' | 'register' | 'forgot' | 'reset'
 
@@ -34,11 +35,9 @@ const ROUTE_TITLES: Record<string, string> = {
   settings: 'Cài đặt',
 }
 
-// PIP mode: main process passes --pip-mode via additionalArguments in webPreferences
 const IS_PIP_MODE = window.electronAPI?.isPipMode === true
 
 export default function App() {
-  // Render minimal PIP view when running in the secondary always-on-top window
   if (IS_PIP_MODE) return <MiniPopupView />
 
   const { user, initialized, initializing, handleAuthCallback } = useAuthStore()
@@ -113,9 +112,8 @@ export default function App() {
 
   if (!initialized || initializing) {
     return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
-        <div style={{ width: 32, height: 32, border: '3px solid #0ea5e9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', color: 'var(--color-primary)' }}>
+        <Icon name="progress_activity" size={32} style={{ animation: 'spin 1s linear infinite' }} />
       </div>
     )
   }
@@ -124,7 +122,7 @@ export default function App() {
     return (
       <AuthLayout>
         {deepLinkError && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
+          <div style={{ background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)', color: 'var(--color-danger)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
             <strong>Lỗi xác thực:</strong> {deepLinkError}
           </div>
         )}
@@ -156,9 +154,10 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f8fafc' }}>
+    <div style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', background: 'var(--color-bg)', position: 'relative', isolation: 'isolate' }}>
+      <div className="landing-grid" style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }} />
       <Sidebar currentRoute={route} onNavigate={navigate} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, position: 'relative', zIndex: 1 }}>
         <Topbar
           title={ROUTE_TITLES[route] ?? ''}
           searchValue={searchQuery}
@@ -166,7 +165,7 @@ export default function App() {
           onRecordClick={() => navigate('new_meeting')}
         />
         {busy && <BusyBanner text={progressText} />}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        <main className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px 40px 40px' }}>
           {renderView()}
         </main>
       </div>

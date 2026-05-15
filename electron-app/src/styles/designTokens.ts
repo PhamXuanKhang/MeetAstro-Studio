@@ -1,16 +1,24 @@
-import type { CSSProperties } from 'react'
+﻿import type { CSSProperties } from 'react'
+
+export const cssVar = (name: string) => `var(${name})`
 
 export const colors = {
-  background: '#f6f5f4',
-  surface: '#ffffff',
-  text: '#1a1a1a',
-  muted: '#5d5b54',
-  primary: '#5645d4',
-  success: '#1aae39',
-  warning: '#dd5b00',
-  danger: '#e03131',
-  border: '#e5e3df',
-  input: '#fafaf9',
+  background: cssVar('--color-bg'),
+  backgroundAlt: cssVar('--color-bg-alt'),
+  surface: cssVar('--color-surface'),
+  surface2: cssVar('--color-surface-2'),
+  surface3: cssVar('--color-surface-3'),
+  text: cssVar('--color-text-main'),
+  muted: cssVar('--color-text-muted'),
+  subtle: cssVar('--color-text-subtle'),
+  primary: cssVar('--color-primary'),
+  primaryHover: cssVar('--color-primary-hover'),
+  success: cssVar('--color-success'),
+  warning: cssVar('--color-warning'),
+  danger: cssVar('--color-danger'),
+  info: cssVar('--color-info'),
+  border: cssVar('--color-border'),
+  borderSubtle: cssVar('--color-border-subtle'),
 }
 
 export const spacing = {
@@ -24,13 +32,17 @@ export const spacing = {
 
 export const radius = {
   sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  md: cssVar('--radius-brand'),
+  lg: cssVar('--radius-brand-lg'),
+  chip: cssVar('--radius-chip'),
 }
 
 export const shadows = {
-  card: '0 4px 12px rgba(15, 15, 15, 0.08)',
+  soft: cssVar('--shadow-soft'),
+  card: cssVar('--shadow-soft'),
+  cardHover: cssVar('--shadow-card-hover'),
+  elev: cssVar('--shadow-elev'),
+  focus: cssVar('--shadow-focus'),
 }
 
 export const inputStyle: CSSProperties = {
@@ -40,7 +52,7 @@ export const inputStyle: CSSProperties = {
   borderRadius: radius.md,
   fontSize: 13,
   outline: 'none',
-  background: colors.input,
+  background: colors.surface,
   color: colors.text,
   boxSizing: 'border-box',
 }
@@ -48,7 +60,7 @@ export const inputStyle: CSSProperties = {
 export const buttonPrimary: CSSProperties = {
   padding: '10px 16px',
   background: colors.primary,
-  color: '#fff',
+  color: 'white',
   border: 'none',
   borderRadius: radius.md,
   fontWeight: 700,
@@ -70,40 +82,40 @@ export const buttonSecondary: CSSProperties = {
 export const buttonDanger: CSSProperties = {
   ...buttonSecondary,
   color: colors.danger,
-  border: '1px solid #f4b8b8',
+  border: `1px solid ${colors.border}`,
 }
 
 export const buttonDisabled: CSSProperties = {
-  background: colors.border,
-  color: '#bbb8b1',
+  background: colors.surface3,
+  color: colors.subtle,
   border: `1px solid ${colors.border}`,
   cursor: 'not-allowed',
-  opacity: 0.8,
+  opacity: 0.5,
 }
 
 export const alertSuccess: CSSProperties = {
   padding: '10px 14px',
-  background: '#d9f3e1',
-  border: '1px solid #b7e6c4',
+  background: 'color-mix(in srgb, var(--color-success) 10%, transparent)',
+  border: '1px solid color-mix(in srgb, var(--color-success) 30%, transparent)',
   borderRadius: radius.md,
   fontSize: 13,
-  color: '#0f6f25',
+  color: colors.success,
 }
 
 export const alertError: CSSProperties = {
   padding: '10px 14px',
-  background: '#fde0ec',
-  border: '1px solid #f5b8cf',
+  background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)',
+  border: '1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)',
   borderRadius: radius.md,
   fontSize: 13,
-  color: '#9f1d1d',
+  color: colors.danger,
 }
 
 export const alertWarning: CSSProperties = {
   padding: '10px 14px',
-  background: '#fef7d6',
-  border: '1px solid #f5d75e',
+  background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+  border: '1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)',
   borderRadius: radius.md,
   fontSize: 12,
-  color: '#793400',
+  color: colors.warning,
 }

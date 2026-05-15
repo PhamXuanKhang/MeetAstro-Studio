@@ -1,20 +1,9 @@
-import { useCallback } from 'react'
+﻿import { useCallback } from 'react'
+import { Icon } from '../ui'
 
 const AUDIO_EXTS = ['wav', 'mp3', 'm4a', 'ogg']
 const VIDEO_EXTS = ['mp4', 'mkv', 'webm']
 const ALL_EXTS = [...AUDIO_EXTS, ...VIDEO_EXTS]
-
-const UI = {
-  ink: '#1a1a1a',
-  slate: '#5d5b54',
-  steel: '#787671',
-  hairline: '#e5e3df',
-  hairlineStrong: '#c8c4be',
-  surface: '#f6f5f4',
-  mint: '#d9f3e1',
-  success: '#1aae39',
-  font: "'Notion Sans', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif",
-}
 
 interface Props {
   audioPath: string | null
@@ -42,35 +31,26 @@ export default function UploadTab({ audioPath, onAudioPicked, openFile, onToast 
         onClick={handlePickFile}
         style={{
           padding: '32px 20px',
-          border: `1px dashed ${UI.hairlineStrong}`,
-          borderRadius: 12,
-          background: UI.surface,
+          border: '1px dashed var(--color-border)',
+          borderRadius: 14,
+          background: 'var(--color-surface-2)',
           cursor: 'pointer',
           fontSize: 14,
-          color: UI.slate,
-          fontWeight: 500,
+          color: 'var(--color-text-muted)',
+          fontWeight: 600,
           textAlign: 'center',
           transition: 'border-color 0.15s, background 0.15s',
-          fontFamily: UI.font,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = UI.ink
-          e.currentTarget.style.background = '#fafaf9'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = UI.hairlineStrong
-          e.currentTarget.style.background = UI.surface
         }}
       >
-        📂 Nhấp để chọn file
-        <div style={{ fontSize: 12, color: UI.steel, marginTop: 6 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="perm_media" size={20} /> Nhấp để chọn file</span>
+        <div style={{ fontSize: 12, color: 'var(--color-text-subtle)', marginTop: 6 }}>
           Audio: WAV, MP3, M4A, OGG &nbsp;|&nbsp; Video: MP4, MKV, WEBM
         </div>
       </button>
 
       {audioPath && (
-        <div style={{ fontSize: 13, color: UI.success, padding: '8px 12px', background: UI.mint, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>✓</span>
+        <div style={{ fontSize: 13, color: 'var(--color-success)', padding: '8px 12px', background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="check_circle" size={18} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {audioPath.split(/[\\/]/).pop()}
           </span>
