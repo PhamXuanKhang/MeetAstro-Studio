@@ -1,8 +1,9 @@
-import React from 'react'
+﻿import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import { useAuthStore } from './store/authStore'
+import './styles/global.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,3 +24,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>
 )
+

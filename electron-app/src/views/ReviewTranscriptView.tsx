@@ -3,32 +3,13 @@ import { useAppStore } from '../store/appStore'
 import { useTranscriptSegments, useEditTranscriptSegment, useRenameSpeaker } from '../hooks/supabase/useTranscript'
 import { startAnalysis } from '../api/meetings'
 import type { TranscriptSegment } from '../types/supabase-models'
+import { Badge, Button, Card, EmptyState, Field, Icon, Input, Modal } from '../components/ui'
 
-const UI = {
-  primary: '#5645d4',
-  ink: '#1a1a1a',
-  charcoal: '#37352f',
-  slate: '#5d5b54',
-  steel: '#787671',
-  muted: '#bbb8b1',
-  canvas: '#ffffff',
-  surface: '#f6f5f4',
-  surfaceSoft: '#fafaf9',
-  hairline: '#e5e3df',
-  hairlineStrong: '#c8c4be',
-  lavender: '#e6e0f5',
-  peach: '#ffe8d4',
-  warning: '#dd5b00',
-  dangerBg: '#fee2e2',
-  danger: '#991b1b',
-  font: "'Notion Sans', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif",
-}
-
-// Deterministic color per speaker name
 const SPEAKER_COLORS = [
-  '#5645d4', '#7b3ff2', '#2a9d99', '#dd5b00', '#ff64c8',
-  '#1aae39', '#0075de', '#523410', '#a02e6d', '#391c57',
+  'var(--color-primary)', 'var(--color-info)', 'var(--color-success)', 'var(--color-warning)', 'var(--color-danger)',
+  'var(--color-brand-700)', 'var(--color-brand-400)', 'var(--color-text-muted)', 'var(--color-text-subtle)', 'var(--color-primary-hover)',
 ]
+
 function speakerColor(name: string): string {
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff
@@ -56,7 +37,6 @@ export default function ReviewTranscriptView() {
     setCurrentJobId, setProcessingKind, setRoute,
   } = useAppStore()
 
-  // ─── React Query: fetch segments from Supabase ────────
   const {
     data: segmentsData,
     isLoading: loadingSegs,
@@ -64,27 +44,23 @@ export default function ReviewTranscriptView() {
   } = useTranscriptSegments(currentMeetingId)
 
   const segments = segmentsData?.segments ?? []
-
-  // ─── Mutations ────────────────────────────────────────
   const { mutate: editSegment, isPending: isSavingSegment } = useEditTranscriptSegment(currentMeetingId)
   const { mutate: renameSpk } = useRenameSpeaker(currentMeetingId)
 
-  // ─── Local UI State ───────────────────────────────────
   const [editState, setEditState] = useState<EditState>({})
   const [renamingFrom, setRenamingFrom] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [savingSegId, setSavingSegId] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [confirmReAnalyzeOpen, setConfirmReAnalyzeOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Guard: redirect if missing state
   useEffect(() => {
     if (!currentMeetingId && !loadingSegs) {
       setRoute('new_meeting')
     }
   }, [currentMeetingId, loadingSegs, setRoute])
 
-  // Unique speaker names
   const speakers = useMemo(
     () => Array.from(new Set(segments.map((s) => s.speaker).filter((speaker): speaker is string => !!speaker?.trim()))),
     [segments]
@@ -102,11 +78,13 @@ export default function ReviewTranscriptView() {
     editSegment(
       { segment_id: seg.id, content: newContent },
       {
-        onError: () => setError('Lưu thất bại — vui lòng thử lại.'),
+        onSuccess: () => {
+          setEditState((prev) => { const n = { ...prev }; delete n[seg.id]; return n })
+        },
+        onError: () => setError('Lưu thất bại — nội dung sửa vẫn được giữ, vui lòng thử lại.'),
         onSettled: () => setSavingSegId(null),
       }
     )
-    setEditState((prev) => { const n = { ...prev }; delete n[seg.id]; return n })
   }, [editState, editSegment])
 
   const handleOpenRename = useCallback((speaker: string) => {
@@ -129,14 +107,10 @@ export default function ReviewTranscriptView() {
     )
   }, [renamingFrom, renameValue, currentMeetingId, renameSpk])
 
-  // startAnalysis giữ nguyên FastAPI (trigger Celery job)
   const handleReAnalyze = useCallback(async () => {
     if (!currentMeetingId || segments.length === 0) return
-    const confirmed = window.confirm(
-      'Phân tích lại sẽ thay thế toàn bộ action items cũ của meeting này, bao gồm cả item đã synced lên Jira. Bạn vẫn muốn tiếp tục?'
-    )
-    if (!confirmed) return
 
+    setConfirmReAnalyzeOpen(false)
     setAnalyzing(true)
     setError(null)
     try {
@@ -151,102 +125,98 @@ export default function ReviewTranscriptView() {
     }
   }, [currentMeetingId, segments.length, setCurrentJobId, setProcessingKind, setRoute])
 
-  const btnBase: React.CSSProperties = {
-    padding: '10px 18px', borderRadius: 8, border: 'none',
-    fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: UI.font,
-  }
-
   if (loadingSegs) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
-        <div style={{ width: 32, height: 32, border: `3px solid ${UI.primary}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <Icon name="progress_activity" size={32} style={{ color: 'var(--color-primary)', animation: 'spin 0.8s linear infinite' }} />
       </div>
     )
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: UI.font, color: UI.ink }}>
-      {/* Speaker rename modal */}
-      {renamingFrom && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setRenamingFrom(null) }}
-        >
-          <div style={{ background: UI.canvas, borderRadius: 12, padding: 28, width: 360, boxShadow: 'rgba(15, 15, 15, 0.16) 0px 16px 48px -8px', border: `1px solid ${UI.hairline}` }}>
-            <h3 style={{ margin: '0 0 16px', fontWeight: 600, fontSize: 18, color: UI.ink, lineHeight: 1.4 }}>
-              Đổi tên người nói
-            </h3>
-            <p style={{ margin: '0 0 12px', fontSize: 14, color: UI.slate, lineHeight: 1.5 }}>
-              Tất cả đoạn của <strong style={{ color: speakerColor(renamingFrom) }}>{renamingFrom}</strong> sẽ được đổi tên:
-            </p>
-            <input
+    <div style={{ maxWidth: 900, margin: '0 auto', color: 'var(--color-text-main)' }}>
+      <Modal
+        open={!!renamingFrom}
+        title="Đổi tên người nói"
+        onClose={() => setRenamingFrom(null)}
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setRenamingFrom(null)}>Hủy</Button>
+            <Button variant="primary" onClick={handleRenameConfirm} disabled={!renameValue.trim()}>Lưu</Button>
+          </>
+        )}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+            Tất cả đoạn của <strong style={{ color: renamingFrom ? speakerColor(renamingFrom) : 'var(--color-primary)' }}>{renamingFrom}</strong> sẽ được đổi tên.
+          </p>
+          <Field label="Tên mới">
+            <Input
               autoFocus
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleRenameConfirm() }}
-              style={{ width: '100%', height: 44, padding: '12px 16px', border: `1px solid ${UI.hairlineStrong}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', marginBottom: 16, color: UI.ink, fontFamily: UI.font }}
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setRenamingFrom(null)} style={{ ...btnBase, background: UI.canvas, color: UI.ink, border: `1px solid ${UI.hairlineStrong}` }}>
-                Hủy
-              </button>
-              <button onClick={handleRenameConfirm} disabled={!renameValue.trim()} style={{ ...btnBase, background: UI.primary, color: '#fff' }}>
-                Lưu
-              </button>
-            </div>
-          </div>
+          </Field>
         </div>
-      )}
+      </Modal>
 
-      {/* Header */}
+
+      <Modal
+        open={confirmReAnalyzeOpen}
+        title="Xác nhận phân tích lại"
+        onClose={() => setConfirmReAnalyzeOpen(false)}
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setConfirmReAnalyzeOpen(false)} disabled={analyzing}>Hủy</Button>
+            <Button variant="danger" onClick={handleReAnalyze} disabled={analyzing || segments.length === 0}>
+              <Icon name={analyzing ? 'progress_activity' : 'auto_awesome'} size={16} style={analyzing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+              {analyzing ? 'Đang khởi chạy...' : 'Phân tích lại'}
+            </Button>
+          </>
+        )}
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', color: 'var(--color-text-muted)', fontSize: 14, lineHeight: 1.6 }}>
+          <Icon name="warning" size={20} style={{ color: 'var(--color-warning)', flexShrink: 0 }} />
+          <span>Phân tích lại sẽ thay thế toàn bộ action items cũ của meeting này, bao gồm cả item đã synced lên Jira. Bạn vẫn muốn tiếp tục?</span>
+        </div>
+      </Modal>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, margin: '0 0 4px' }}>Transcript</h2>
-          <p style={{ color: UI.slate, fontSize: 14, lineHeight: 1.5, margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Icon name="article" size={22} style={{ color: 'var(--color-primary)' }} />
+            <h2 style={{ fontWeight: 800, fontSize: 22, lineHeight: 1.3, margin: 0 }}>Transcript</h2>
+          </div>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 14, lineHeight: 1.5, margin: 0 }}>
             Kiểm tra, chỉnh sửa transcript và phân tích lại khi cần.
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setRoute('results')}
-            style={{ ...btnBase, background: UI.canvas, color: UI.ink, border: `1px solid ${UI.hairlineStrong}` }}
-          >
-            ← Results
-          </button>
-          <button
-            onClick={() => setRoute('review')}
-            style={{ ...btnBase, background: '#2563eb', color: '#fff' }}
-          >
-            Review & Push Jira
-          </button>
-          <button
-            onClick={handleReAnalyze}
-            disabled={analyzing || segments.length === 0}
-            style={{
-              ...btnBase,
-              background: analyzing || segments.length === 0 ? UI.hairline : UI.primary,
-              color: '#fff', fontSize: 14, padding: '11px 22px',
-              cursor: analyzing || segments.length === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
+          <Button variant="outline" onClick={() => setRoute('results')}><Icon name="arrow_back" size={16} /> Results</Button>
+          <Button variant="secondary" onClick={() => setRoute('review')}><Icon name="rule" size={16} /> Review & Push Jira</Button>
+          <Button variant="primary" onClick={() => setConfirmReAnalyzeOpen(true)} disabled={analyzing || segments.length === 0}>
+            <Icon name={analyzing ? 'progress_activity' : 'auto_awesome'} size={16} style={analyzing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
             {analyzing ? 'Đang khởi chạy...' : 'Re-analyze'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {(error || fetchError) && (
-        <div style={{ marginBottom: 16, padding: '10px 16px', background: UI.peach, borderRadius: 8, color: UI.warning, fontSize: 13 }}>
-          {error || fetchError?.message}
+        <div style={{ marginBottom: 16 }}>
+          <Card style={{ padding: 14, background: 'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))', color: 'var(--color-danger)' }}>
+            {error || fetchError?.message}
+          </Card>
         </div>
       )}
 
-      <div style={{ marginBottom: 16, padding: '10px 16px', background: UI.dangerBg, borderRadius: 8, color: UI.danger, fontSize: 13, lineHeight: 1.5 }}>
-        Re-analyze sẽ tạo lại kết quả phân tích và thay thế toàn bộ action items cũ, bao gồm cả các item đã synced lên Jira.
-      </div>
+      <Card style={{ marginBottom: 16, padding: 14, background: 'color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))', color: 'var(--color-warning)' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.5 }}>
+          <Icon name="warning" size={18} />
+          <span>Re-analyze sẽ tạo lại kết quả phân tích và thay thế toàn bộ action items cũ, bao gồm cả các item đã synced lên Jira.</span>
+        </div>
+      </Card>
 
-      {/* Speaker legend */}
       {speakers.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           {speakers.map((sp) => (
@@ -255,22 +225,18 @@ export default function ReviewTranscriptView() {
               onClick={() => handleOpenRename(sp)}
               title="Nhấn để đổi tên"
               style={{
-                padding: '4px 12px', borderRadius: 99, border: 'none',
-                background: speakerColor(sp) + '22',
-                color: speakerColor(sp), fontWeight: 600, fontSize: 12, cursor: 'pointer',
+                padding: '5px 10px', borderRadius: 'var(--radius-chip)', border: '1px solid var(--color-border-subtle)',
+                background: 'var(--color-surface)', color: speakerColor(sp), fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'inline-flex', gap: 6, alignItems: 'center',
               }}
             >
-              {sp} ✎
+              {sp} <Icon name="edit" size={13} />
             </button>
           ))}
         </div>
       )}
 
-      {/* Segments */}
       {segments.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: UI.steel, fontSize: 14 }}>
-          Không có transcript — thử lại từ đầu.
-        </div>
+        <Card><EmptyState icon="speaker_notes_off" title="Không có transcript" description="Thử lại từ đầu hoặc kiểm tra trạng thái xử lý meeting." /></Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {segments.map((seg) => {
@@ -279,73 +245,56 @@ export default function ReviewTranscriptView() {
             const editVal = editState[seg.id] ?? seg.content ?? ''
             const isSaving = savingSegId === seg.id && isSavingSegment
             return (
-              <div
-                key={seg.id}
-                style={{
-                  background: UI.canvas, borderRadius: 12, border: `1px solid ${UI.hairline}`,
-                  padding: '12px 16px', display: 'flex', gap: 12,
-                }}
-              >
-                {/* Left: speaker + time */}
-                <div style={{ minWidth: 90, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <button
-                    onClick={() => { if (seg.speaker) handleOpenRename(seg.speaker) }}
-                    title={seg.speaker ? 'Đổi tên người nói' : 'Transcript không có speaker diarization'}
-                    style={{
-                      padding: '2px 8px', borderRadius: 99, border: 'none',
-                      background: color + '22', color, fontWeight: 700, fontSize: 11,
-                      cursor: seg.speaker ? 'pointer' : 'default',
-                      textAlign: 'left',
-                    }}
-                  >
-                    {speakerName}
-                  </button>
-                  <span style={{ fontSize: 11, color: UI.steel, fontVariantNumeric: 'tabular-nums' }}>
-                    {fmtTime(seg.start_time)} – {fmtTime(seg.end_time)}
-                  </span>
-                </div>
+              <Card key={seg.id} style={{ padding: '12px 16px' }}>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ minWidth: 104, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <button
+                      onClick={() => { if (seg.speaker) handleOpenRename(seg.speaker) }}
+                      title={seg.speaker ? 'Đổi tên người nói' : 'Transcript không có speaker diarization'}
+                      style={{
+                        padding: '3px 8px', borderRadius: 'var(--radius-chip)', border: '1px solid var(--color-border-subtle)',
+                        background: 'var(--color-surface-2)', color, fontWeight: 800, fontSize: 11,
+                        cursor: seg.speaker ? 'pointer' : 'default', textAlign: 'left',
+                      }}
+                    >
+                      {speakerName}
+                    </button>
+                    <Badge size="sm" variant="default">{fmtTime(seg.start_time)} – {fmtTime(seg.end_time)}</Badge>
+                  </div>
 
-                {/* Right: editable content */}
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <textarea
-                    value={editVal}
-                    onChange={(e) => handleContentEdit(seg.id, e.target.value)}
-                    onBlur={() => handleContentBlur(seg)}
-                    rows={Math.max(2, Math.ceil(editVal.length / 80))}
-                    style={{
-                      width: '100%', border: 'none', background: 'transparent',
-                      resize: 'none', fontSize: 14, lineHeight: 1.55, color: UI.charcoal,
-                      fontFamily: UI.font, outline: 'none', boxSizing: 'border-box',
-                    }}
-                  />
-                  {isSaving && (
-                    <span style={{ position: 'absolute', top: 0, right: 0, fontSize: 11, color: UI.steel }}>
-                      lưu...
-                    </span>
-                  )}
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <textarea
+                      value={editVal}
+                      onChange={(e) => handleContentEdit(seg.id, e.target.value)}
+                      onBlur={() => handleContentBlur(seg)}
+                      rows={Math.max(2, Math.ceil(editVal.length / 80))}
+                      style={{
+                        width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14,
+                        lineHeight: 1.55, color: 'var(--color-text-main)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+                      }}
+                    />
+                    {isSaving && (
+                      <span style={{ position: 'absolute', top: 0, right: 0, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                        lưu...
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </Card>
             )
           })}
         </div>
       )}
 
-      {/* Sticky bottom Analyze CTA */}
       <div style={{ marginTop: 32, textAlign: 'right' }}>
-        <button
-          onClick={handleReAnalyze}
-          disabled={analyzing || segments.length === 0}
-          style={{
-            ...btnBase,
-            background: analyzing || segments.length === 0 ? UI.hairline : UI.primary,
-            color: '#fff', fontSize: 15, padding: '13px 32px',
-            cursor: analyzing || segments.length === 0 ? 'not-allowed' : 'pointer',
-          }}
-        >
+        <Button variant="primary" size="lg" onClick={() => setConfirmReAnalyzeOpen(true)} disabled={analyzing || segments.length === 0}>
+          <Icon name={analyzing ? 'progress_activity' : 'auto_awesome'} size={18} style={analyzing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
           {analyzing ? 'Đang khởi chạy phân tích lại...' : 'Re-analyze'}
-        </button>
+        </Button>
       </div>
     </div>
   )
 }
+
+
 

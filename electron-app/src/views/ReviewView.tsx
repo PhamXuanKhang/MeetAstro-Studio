@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, memo } from 'react'
+﻿import { useEffect, useState, useCallback, useMemo, memo } from 'react'
 import { useAppStore } from '../store/appStore'
 import {
   useActionItemsList,
@@ -14,47 +14,39 @@ import { subscribeActionItemSyncStatus, unsubscribeChannel } from '../api/supaba
 import ConfidenceBadge from '../components/ConfidenceBadge'
 import type { ActionItem, ActionItemPriority, ActionItemType } from '../types/supabase-models'
 import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
+import { Badge, Button, Card, EmptyState, Field, Icon, Input, Modal, Select, Toast as UiToast } from '../components/ui'
 
 interface Props {
   onNavigate: (route: string) => void
   setBusy: (busy: boolean, text?: string) => void
 }
 
-// ─── Status Badge (inline, uses Supabase review_status values) ──
-
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    draft:    { bg: '#f1f5f9', color: '#64748b', label: 'Draft' },
-    edited:   { bg: '#fef3c7', color: '#92400e', label: 'Edited' },
-    approved: { bg: '#dcfce7', color: '#166534', label: 'Approved' },
-    rejected: { bg: '#fee2e2', color: '#991b1b', label: 'Rejected' },
+  const map: Record<string, { variant: 'default' | 'warning' | 'success' | 'error'; label: string }> = {
+    draft: { variant: 'default', label: 'Draft' },
+    edited: { variant: 'warning', label: 'Edited' },
+    approved: { variant: 'success', label: 'Approved' },
+    rejected: { variant: 'error', label: 'Rejected' },
   }
   const s = map[status] ?? map.draft
-  return (
-    <span style={{ padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.color, fontSize: 10, fontWeight: 700 }}>
-      {s.label}
-    </span>
-  )
+  return <Badge variant={s.variant} size="sm">{s.label}</Badge>
 }
 
-// ─── Sync Status Badge (Realtime-powered) ───────────────
-
 function SyncBadge({ status, error: syncError }: { status: string; error?: string | null }) {
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    pending:  { bg: '#f1f5f9', color: '#64748b', label: '⏳ Pending' },
-    syncing:  { bg: '#dbeafe', color: '#1e40af', label: '🔄 Syncing' },
-    synced:   { bg: '#dcfce7', color: '#166534', label: '✅ Synced' },
-    failed:   { bg: '#fee2e2', color: '#991b1b', label: '❌ Failed' },
+  const map: Record<string, { variant: 'default' | 'info' | 'success' | 'error'; icon: string; label: string }> = {
+    pending: { variant: 'default', icon: 'schedule', label: 'Pending' },
+    syncing: { variant: 'info', icon: 'sync', label: 'Syncing' },
+    synced: { variant: 'success', icon: 'check_circle', label: 'Synced' },
+    failed: { variant: 'error', icon: 'error', label: 'Failed' },
   }
   const s = map[status] ?? map.pending
   return (
-    <span title={syncError || undefined} style={{ padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.color, fontSize: 10, fontWeight: 600 }}>
+    <Badge title={syncError || undefined} variant={s.variant} size="sm">
+      <Icon name={s.icon} size={13} style={status === 'syncing' ? { animation: 'spin 0.8s linear infinite' } : undefined} />
       {s.label}
-    </span>
+    </Badge>
   )
 }
-
-// ─── ReviewItemCard ─────────────────────────────────────
 
 interface CardProps {
   item: ActionItem
@@ -119,26 +111,17 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
 
   const actioning = isApproving || isRejecting
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '7px 10px', border: '1px solid #cbd5e1',
-    borderRadius: 6, fontSize: 12, outline: 'none', background: '#fff',
-  }
-
   return (
-    <div
+    <Card
       style={{
         padding: 14,
-        borderRadius: 12,
-        border: `1px solid ${isLowConfidence ? '#fdba74' : '#e2e8f0'}`,
-        background: isLowConfidence ? '#fff7ed' : '#fff',
         marginBottom: 10,
+        borderColor: isLowConfidence ? 'color-mix(in srgb, var(--color-warning) 45%, var(--color-border))' : undefined,
+        background: isLowConfidence ? 'color-mix(in srgb, var(--color-warning) 8%, var(--color-surface))' : undefined,
       }}
     >
-      {/* Top row: type badge, confidence, status, sync, edit button */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ padding: '2px 7px', borderRadius: 4, background: '#dbeafe', color: '#1e40af', fontSize: 10, fontWeight: 700 }}>
-          {typeLabel}
-        </span>
+        <Badge variant="primary" size="sm">{typeLabel}</Badge>
         <ConfidenceBadge confidence={item.confidence_score} />
         <StatusBadge status={item.review_status} />
         <SyncBadge status={syncStatus} error={syncError} />
@@ -148,124 +131,79 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
             onClick={(e) => {
               if (!jiraIssueUrl) e.preventDefault()
             }}
-            style={{ color: '#2563eb', fontSize: 11, fontWeight: 700, textDecoration: 'none' }}
+            style={{ color: 'var(--color-primary)', fontSize: 11, fontWeight: 800, textDecoration: 'none' }}
           >
             {jiraIssueKey}
           </a>
         )}
         <div style={{ flex: 1 }} />
         {!isEditing && (
-          <button
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setIsEditing(true)}
             disabled={isSynced}
             title={isSynced ? 'Item đã synced lên Jira nên không thể chỉnh sửa.' : undefined}
-            style={{
-              padding: '4px 10px',
-              borderRadius: 6,
-              border: '1px solid #cbd5e1',
-              background: '#fff',
-              cursor: isSynced ? 'not-allowed' : 'pointer',
-              fontSize: 12,
-              opacity: isSynced ? 0.45 : 1,
-            }}
           >
-            ✎ Sửa
-          </button>
+            <Icon name="edit" size={14} /> Sửa
+          </Button>
         )}
       </div>
 
-      {/* Title */}
-      <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>
+      <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--color-text-main)', marginBottom: 6 }}>
         {item.title}
       </div>
 
-      {/* Description */}
       {item.description && (
-        <div style={{ fontSize: 12, color: '#475569', marginBottom: 6, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 8, lineHeight: 1.5 }}>
           {item.description}
         </div>
       )}
 
-      {/* Meta */}
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
-        👤 {item.assignee || 'TBD'} &nbsp;|&nbsp;
-        📅 {item.deadline || 'N/A'} &nbsp;|&nbsp;
-        🔥 {item.priority}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 8 }}>
+        <span><Icon name="person" size={13} /> {item.assignee || 'TBD'}</span>
+        <span><Icon name="event" size={13} /> {item.deadline || 'N/A'}</span>
+        <span><Icon name="local_fire_department" size={13} /> {item.priority}</span>
       </div>
 
-      {/* Context */}
       {item.context && (
-        <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginBottom: 6 }}>
-          💬 {item.context}
+        <div style={{ fontSize: 11, color: 'var(--color-text-subtle)', fontStyle: 'italic', marginBottom: 8, lineHeight: 1.45 }}>
+          <Icon name="format_quote" size={14} /> {item.context}
         </div>
       )}
 
-      {/* Inline edit form */}
       {isEditing && (
-        <div style={{ marginTop: 10, padding: 12, background: '#f8fafc', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-            style={inputStyle}
-            placeholder="Title"
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} placeholder="Assignee" style={{ ...inputStyle, flex: 1 }} />
-            <input value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} placeholder="YYYY-MM-DD" style={{ ...inputStyle, flex: 1 }} />
-            <select value={editPriority} onChange={(e) => setEditPriority(e.target.value as ActionItemPriority)} style={{ ...inputStyle, flex: 1 }}>
-              {['critical', 'high', 'medium', 'low'].map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+        <div style={{ marginTop: 10, padding: 12, background: 'var(--color-bg)', borderRadius: 'var(--radius-brand)', display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--color-border-subtle)' }}>
+          <Field label="Title"><Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Title" /></Field>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+            <Field label="Assignee"><Input value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} placeholder="Assignee" /></Field>
+            <Field label="Deadline"><Input value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} placeholder="YYYY-MM-DD" /></Field>
+            <Field label="Priority">
+              <Select value={editPriority} onChange={(e) => setEditPriority(e.target.value as ActionItemPriority)}>
+                {['critical', 'high', 'medium', 'low'].map((p) => <option key={p} value={p}>{p}</option>)}
+              </Select>
+            </Field>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={handleSave}
-              disabled={isSaving || isSynced}
-              style={{ padding: '6px 16px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: isSaving ? 0.7 : 1 }}
-            >
-              {isSaving ? 'Đang lưu...' : '💾 Lưu'}
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              style={{ padding: '6px 16px', background: '#fff', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-            >
-              Hủy
-            </button>
+            <Button size="sm" variant="primary" onClick={handleSave} disabled={isSaving || isSynced}>
+              <Icon name="save" size={14} /> {isSaving ? 'Đang lưu...' : 'Lưu'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Hủy</Button>
           </div>
         </div>
       )}
 
-      {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button
-          onClick={handleApprove}
-          disabled={isSynced || item.review_status === 'approved' || actioning}
-          style={{
-            padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-            background: item.review_status === 'approved' ? '#dcfce7' : '#f0fdf4',
-            color: '#166534', fontSize: 12, fontWeight: 600,
-            opacity: isSynced || item.review_status === 'approved' || actioning ? 0.6 : 1,
-          }}
-        >
-          ✓ Approve
-        </button>
-        <button
-          onClick={handleReject}
-          disabled={isSynced || item.review_status === 'rejected' || actioning}
-          style={{
-            padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-            background: item.review_status === 'rejected' ? '#fee2e2' : '#fff1f2',
-            color: '#991b1b', fontSize: 12, fontWeight: 600,
-            opacity: isSynced || item.review_status === 'rejected' || actioning ? 0.6 : 1,
-          }}
-        >
-          ✗ Reject
-        </button>
+        <Button size="sm" variant={item.review_status === 'approved' ? 'success' : 'outline'} onClick={handleApprove} disabled={isSynced || item.review_status === 'approved' || actioning}>
+          <Icon name="check" size={14} /> Approve
+        </Button>
+        <Button size="sm" variant={item.review_status === 'rejected' ? 'danger' : 'outline'} onClick={handleReject} disabled={isSynced || item.review_status === 'rejected' || actioning}>
+          <Icon name="close" size={14} /> Reject
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 })
-
-// ─── Recursive Tree Renderer ────────────────────────────
 
 function ActionItemTreeRenderer({
   node,
@@ -288,7 +226,7 @@ function ActionItemTreeRenderer({
           style={{
             marginLeft: 24,
             paddingLeft: 16,
-            borderLeft: '2px dashed #cbd5e1',
+            borderLeft: '2px dashed var(--color-border)',
             marginTop: 8,
           }}
         >
@@ -305,8 +243,6 @@ function ActionItemTreeRenderer({
     </div>
   )
 }
-
-// ─── Add Manual Item Modal ─────────────────────────────
 
 type ManualItemType = Extract<ActionItemType, 'task' | 'subtask'>
 
@@ -345,16 +281,6 @@ function AddManualItemModal({
     }
   }, [itemType, parentId, tasks])
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '9px 10px',
-    border: '1px solid #cbd5e1',
-    borderRadius: 6,
-    fontSize: 13,
-    outline: 'none',
-    background: '#fff',
-  }
-
   const handleSubmit = () => {
     const cleanTitle = title.trim()
     if (!cleanTitle) {
@@ -376,41 +302,31 @@ function AddManualItemModal({
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 998,
-        background: 'rgba(15,23,42,0.35)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-      }}
+    <Modal
+      open
+      title="Add action item"
+      onClose={isSaving ? undefined : onClose}
+      footer={(
+        <>
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>Hủy</Button>
+          <Button variant="primary" onClick={handleSubmit} disabled={isSaving || (itemType === 'subtask' && tasks.length === 0)}>
+            <Icon name="add" size={16} /> {isSaving ? 'Đang thêm...' : 'Add'}
+          </Button>
+        </>
+      )}
     >
-      <div style={{ width: '100%', maxWidth: 520, background: '#fff', borderRadius: 10, padding: 18, boxShadow: '0 16px 48px rgba(15,23,42,0.22)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Add action item</div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Manual items are approved by default and ready to push.</div>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={isSaving}
-            style={{ border: 'none', background: '#f8fafc', borderRadius: 6, padding: '5px 9px', cursor: isSaving ? 'not-allowed' : 'pointer' }}
-          >
-            ✕
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: itemType === 'subtask' ? '140px 1fr' : '1fr', gap: 10 }}>
-            <select value={itemType} onChange={(e) => setItemType(e.target.value as ManualItemType)} style={inputStyle}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>Manual items are approved by default and ready to push.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: itemType === 'subtask' ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr', gap: 10 }}>
+          <Field label="Type">
+            <Select value={itemType} onChange={(e) => setItemType(e.target.value as ManualItemType)}>
               <option value="task">Task</option>
               <option value="subtask">Subtask</option>
-            </select>
-            {itemType === 'subtask' && (
-              <select value={parentId} onChange={(e) => setParentId(e.target.value)} style={inputStyle} disabled={tasks.length === 0}>
+            </Select>
+          </Field>
+          {itemType === 'subtask' && (
+            <Field label="Parent task">
+              <Select value={parentId} onChange={(e) => setParentId(e.target.value)} disabled={tasks.length === 0}>
                 {tasks.length === 0 ? (
                   <option value="">No task available</option>
                 ) : (
@@ -420,71 +336,45 @@ function AddManualItemModal({
                     </option>
                   ))
                 )}
-              </select>
-            )}
-          </div>
+              </Select>
+            </Field>
+          )}
+        </div>
 
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" style={inputStyle} />
+        <Field label="Title" required><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" /></Field>
+        <Field label="Description">
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Description"
             rows={4}
-            style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.45 }}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-brand)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-main)', outline: 'none', resize: 'vertical', lineHeight: 1.45 }}
           />
-          <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="Assignee" style={inputStyle} />
+        </Field>
+        <Field label="Assignee"><Input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="Assignee" /></Field>
 
-          {error && (
-            <div style={{ padding: '8px 10px', borderRadius: 6, background: '#fee2e2', color: '#991b1b', fontSize: 12 }}>
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
-          <button
-            onClick={onClose}
-            disabled={isSaving}
-            style={{ padding: '8px 16px', borderRadius: 7, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: isSaving ? 'not-allowed' : 'pointer', fontWeight: 600 }}
-          >
-            Hủy
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={isSaving || (itemType === 'subtask' && tasks.length === 0)}
-            style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', cursor: isSaving ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: isSaving || (itemType === 'subtask' && tasks.length === 0) ? 0.6 : 1 }}
-          >
-            {isSaving ? 'Đang thêm...' : '+ Add'}
-          </button>
-        </div>
+        {error && (
+          <Card style={{ padding: 10, background: 'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))', color: 'var(--color-danger)', fontSize: 12 }}>
+            {error}
+          </Card>
+        )}
       </div>
-    </div>
+    </Modal>
   )
 }
-
-// ─── Toast ──────────────────────────────────────────────
 
 function Toast({ msg, isError, onClose }: { msg: string; isError: boolean; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
   return (
-    <div style={{
-      position: 'fixed', bottom: 24, right: 24, zIndex: 999,
-      padding: '12px 20px', borderRadius: 10,
-      background: isError ? '#fee2e2' : '#dcfce7',
-      color: isError ? '#991b1b' : '#166534',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.12)', fontSize: 13, fontWeight: 500,
-    }}>
-      {msg}
+    <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999 }}>
+      <UiToast type={isError ? 'error' : 'success'} title={isError ? 'Error' : 'Done'} message={msg} />
     </div>
   )
 }
 
-// ─── ReviewView Main ────────────────────────────────────
-
 export default function ReviewView({ onNavigate, setBusy }: Props) {
   const { currentMeetingId } = useAppStore()
 
-  // React Query: action items from Supabase
   const { data: items = [], isLoading, refetch } = useActionItemsList(currentMeetingId)
   const jiraStatus = useProviderConfigStatus('jira')
   const { mutate: bulkApprove, isPending: approvingAll } = useBulkApproveActionItems(currentMeetingId)
@@ -493,8 +383,6 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   const [toast, setToast] = useState<{ msg: string; isError: boolean } | null>(null)
   const [pushing, setPushing] = useState(false)
   const [showAddItemModal, setShowAddItemModal] = useState(false)
-
-  // ─── Realtime: sync status overrides ──────────────────
   const [syncOverrides, setSyncOverrides] = useState<Record<string, SyncOverride>>({})
 
   useEffect(() => {
@@ -519,7 +407,6 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     setToast({ msg, isError })
   }, [])
 
-  // Compute summary from items
   const effectiveItems = useMemo(
     () => items.map((item) => ({ ...item, ...syncOverrides[item.id] })),
     [items, syncOverrides]
@@ -546,7 +433,6 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
     })
   }, [bulkApprove, showToast])
 
-  // pushToJira giữ nguyên FastAPI
   const handlePushJira = useCallback(async () => {
     setPushing(true)
     setBusy(true, 'Đang push lên Jira...')
@@ -605,11 +491,7 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   )
 
   if (!currentMeetingId) {
-    return (
-      <div style={{ padding: 24, color: '#94a3b8' }}>
-        Không có meeting nào được chọn để review.
-      </div>
-    )
+    return <Card><EmptyState icon="rule" title="Không có meeting nào được chọn" description="Chọn một meeting để review action items." /></Card>
   }
 
   return (
@@ -624,120 +506,81 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
         />
       )}
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
-            Review action items
-          </h2>
-          <p style={{ fontSize: 12, color: '#64748b' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Icon name="rule" size={22} style={{ color: 'var(--color-primary)' }} />
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-text-main)', margin: 0 }}>
+              Review action items
+            </h2>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>
             Approve hoặc reject từng item trước khi push lên Jira.
           </p>
         </div>
-        <button
-          onClick={() => onNavigate('results')}
-          style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 13 }}
-        >
-          ← Back
-        </button>
+        <Button variant="outline" onClick={() => onNavigate('results')}><Icon name="arrow_back" size={16} /> Back</Button>
       </div>
 
-      {/* Summary bar */}
-      <div style={{ background: '#eff6ff', borderRadius: 8, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#1e40af' }}>
-        Tổng: {summary.total} &nbsp;|&nbsp;
-        ✓ Approved: {summary.approved} &nbsp;|&nbsp;
-        ⚠ Cần xem: {summary.flagged} &nbsp;|&nbsp;
-        ⏳ Chờ: {summary.pending}
-      </div>
-
-      <div style={{
-        background: pushBlockReason ? '#fff7ed' : '#f0fdf4',
-        border: `1px solid ${pushBlockReason ? '#fdba74' : '#bbf7d0'}`,
-        color: pushBlockReason ? '#9a3412' : '#166534',
-        borderRadius: 8,
-        padding: '10px 16px',
-        marginBottom: 12,
-        fontSize: 12,
-        lineHeight: 1.5,
-      }}>
-        <div>
-          Synced: {summary.synced} | Ready: {summary.ready} | Failed: {summary.failed}
+      <Card style={{ padding: 14, marginBottom: 12, background: 'color-mix(in srgb, var(--color-primary) 7%, var(--color-surface))' }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: 'var(--color-primary)', fontWeight: 800 }}>
+          <span>Tổng: {summary.total}</span>
+          <span>Approved: {summary.approved}</span>
+          <span>Rejected: {summary.rejected}</span>
+          <span>Cần xem: {summary.flagged}</span>
+          <span>Chờ: {summary.pending}</span>
         </div>
-        <div>
-          {pushBlockReason
-            ? `Chua the push: ${pushBlockReason}`
-            : `San sang push/retry ${summary.pushableApproved} item da approve len Jira.`}
+      </Card>
+
+      <Card
+        style={{
+          padding: 14,
+          marginBottom: 12,
+          background: pushBlockReason ? 'color-mix(in srgb, var(--color-warning) 8%, var(--color-surface))' : 'color-mix(in srgb, var(--color-success) 8%, var(--color-surface))',
+          borderColor: pushBlockReason ? 'color-mix(in srgb, var(--color-warning) 35%, var(--color-border))' : 'color-mix(in srgb, var(--color-success) 35%, var(--color-border))',
+          color: pushBlockReason ? 'var(--color-warning)' : 'var(--color-success)',
+        }}
+      >
+        <div style={{ fontSize: 12, lineHeight: 1.5, fontWeight: 700 }}>
+          <div>Synced: {summary.synced} | Ready: {summary.ready} | Failed: {summary.failed} | Syncing: {summary.syncing}</div>
+          <div>
+            {pushBlockReason
+              ? `Chưa thể push: ${pushBlockReason}`
+              : `Sẵn sàng push/retry ${summary.pushableApproved} item đã approve lên Jira.`}
+          </div>
         </div>
+      </Card>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        <Button variant="outline" onClick={() => setShowAddItemModal(true)}><Icon name="add" size={16} /> Add Task</Button>
+        <Button variant="success" onClick={handleApproveAll} disabled={approvingAll}>
+          <Icon name="done_all" size={16} /> {approvingAll ? 'Đang approve...' : 'Approve all'}
+        </Button>
+        <Button variant="primary" onClick={handlePushJira} disabled={pushDisabled} title={pushBlockReason || undefined}>
+          <Icon name={pushing ? 'progress_activity' : 'rocket_launch'} size={16} style={pushing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+          {pushing ? 'Đang push...' : 'Push to Jira'}
+        </Button>
       </div>
 
-      {/* Bulk actions */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <button
-          onClick={() => setShowAddItemModal(true)}
-          style={{
-            padding: '9px 20px',
-            background: '#fff',
-            color: '#0f172a',
-            border: '1px solid #cbd5e1',
-            borderRadius: 8,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
-          + Add Task
-        </button>
-        <button
-          onClick={handleApproveAll}
-          disabled={approvingAll}
-          style={{
-            padding: '9px 20px', background: '#16a34a', color: '#fff',
-            border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer',
-            opacity: approvingAll ? 0.7 : 1,
-          }}
-        >
-          {approvingAll ? 'Đang approve...' : '✓ Approve all'}
-        </button>
-        <button
-          onClick={handlePushJira}
-          disabled={pushDisabled}
-          title={pushBlockReason || undefined}
-          style={{
-            padding: '9px 20px', background: '#2563eb', color: '#fff',
-            border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13,
-            cursor: pushDisabled ? 'not-allowed' : 'pointer',
-            opacity: pushDisabled ? 0.5 : 1,
-          }}
-        >
-          {pushing ? 'Đang push...' : '🚀 Push to Jira'}
-        </button>
-      </div>
-
-      {/* Items list */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#64748b', fontSize: 13 }}>
-          <div style={{ width: 18, height: 18, border: '2px solid #0ea5e9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <Card style={{ padding: 24, color: 'var(--color-text-muted)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Icon name="progress_activity" size={20} style={{ color: 'var(--color-primary)', animation: 'spin 0.8s linear infinite' }} />
           Đang tải...
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </Card>
+      ) : treeNodes.length > 0 ? (
+        <div>
+          {treeNodes.map((node) => (
+            <ActionItemTreeRenderer
+              key={node.item.id}
+              node={node}
+              onToast={showToast}
+              syncOverrides={syncOverrides}
+            />
+          ))}
         </div>
       ) : (
-        <>
-          {treeNodes.length > 0 ? (
-            <div>
-              {treeNodes.map((node) => (
-                <ActionItemTreeRenderer
-                  key={node.item.id}
-                  node={node}
-                  onToast={showToast}
-                  syncOverrides={syncOverrides}
-                />
-              ))}
-            </div>
-          ) : (
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>Không có items để review.</div>
-          )}
-        </>
+        <Card><EmptyState icon="task_alt" title="Không có items để review" description="Action items sẽ xuất hiện sau khi meeting được phân tích." /></Card>
       )}
     </div>
   )
 }
+

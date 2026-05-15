@@ -1,4 +1,5 @@
-import { useCallback } from 'react'
+﻿import { useCallback } from 'react'
+import { Button, Icon } from '../ui'
 
 function fmtTime(s: number): string {
   const m = Math.floor(s / 60)
@@ -22,59 +23,20 @@ export default function RecordTab({ isRecording, elapsedSeconds, audioPath, onSt
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {!isRecording ? (
-          <button
-            onClick={handleStart}
-            style={{
-              padding: '10px 22px',
-              background: '#ef4444',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            ⏺ Bắt đầu ghi
-          </button>
+          <Button onClick={handleStart} variant="danger">
+            <Icon name="radio_button_checked" size={18} />
+            Bắt đầu ghi
+          </Button>
         ) : (
           <>
-            <button
-              onClick={handleStop}
-              style={{
-                padding: '10px 22px',
-                background: '#1e293b',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              ⏹ Dừng ghi
-            </button>
+            <Button onClick={handleStop} variant="secondary">
+              <Icon name="stop_circle" size={18} />
+              Dừng ghi
+            </Button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: '#ef4444',
-                  animation: 'blink 1s ease-in-out infinite',
-                  display: 'inline-block',
-                }}
-              />
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#ef4444', fontVariantNumeric: 'tabular-nums' }}>
-                {fmtTime(elapsedSeconds)}
-              </span>
-              <span style={{ fontSize: 12, color: '#ef4444' }}>ĐANG GHI</span>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--color-danger)', animation: 'blink 1s ease-in-out infinite', display: 'inline-block' }} />
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-danger)', fontVariantNumeric: 'tabular-nums' }}>{fmtTime(elapsedSeconds)}</span>
+              <span style={{ fontSize: 12, color: 'var(--color-danger)', fontWeight: 700 }}>ĐANG GHI</span>
             </div>
             <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }`}</style>
           </>
@@ -82,17 +44,14 @@ export default function RecordTab({ isRecording, elapsedSeconds, audioPath, onSt
       </div>
 
       {audioPath && !isRecording && (
-        <div style={{ fontSize: 12, color: '#16a34a', padding: '8px 12px', background: '#f0fdf4', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>✓ Đã ghi:</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {audioPath.split(/[\\/]/).pop()}
-          </span>
+        <div style={{ fontSize: 12, color: 'var(--color-success)', padding: '8px 12px', background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="check_circle" size={16} />
+          <span>Đã ghi:</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{audioPath.split(/[\\/]/).pop()}</span>
         </div>
       )}
 
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>
-        Ghi âm trực tiếp từ microphone. File WAV 16kHz mono.
-      </div>
+      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Ghi âm trực tiếp từ microphone. File WAV 16kHz mono.</div>
     </div>
   )
 }

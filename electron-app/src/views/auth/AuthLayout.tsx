@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+﻿import type { ReactNode } from 'react'
+import { Card, Icon } from '../../components/ui'
 
 interface Props {
   children: ReactNode
@@ -9,46 +10,42 @@ export default function AuthLayout({ children }: Props) {
     <div
       style={{
         minHeight: '100vh',
-        background: '#f1f5f9',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 24,
+        background: 'var(--color-bg)',
+        padding: 16,
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      <div style={{ width: '100%', maxWidth: 400 }}>
+      <div className="landing-grid" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 448 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div
             style={{
               width: 52,
               height: 52,
-              background: '#0ea5e9',
-              borderRadius: 14,
+              background: 'linear-gradient(135deg, var(--color-brand-500), var(--color-brand-700))',
+              borderRadius: 8,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 26,
+              color: 'white',
               marginBottom: 12,
+              boxShadow: 'var(--shadow-card-hover)',
             }}
           >
-            🎙️
+            <Icon name="hub" size={26} />
           </div>
-          <div style={{ fontWeight: 800, fontSize: 20, color: '#0f172a' }}>AI Meeting Assistant</div>
-          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+          <div style={{ fontWeight: 800, fontSize: 30, letterSpacing: '-0.04em', color: 'var(--color-primary)' }}>MeetAstro</div>
+          <div style={{ fontSize: 14, color: 'var(--color-text-muted)', marginTop: 6 }}>
             Chuyển đổi cuộc họp thành action items
           </div>
         </div>
-        <div
-          style={{
-            background: '#fff',
-            borderRadius: 16,
-            border: '1px solid #e2e8f0',
-            padding: '32px 28px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
-          }}
-        >
+        <Card style={{ padding: '32px 28px', boxShadow: 'var(--shadow-elev)' }}>
           {children}
-        </div>
+        </Card>
       </div>
     </div>
   )

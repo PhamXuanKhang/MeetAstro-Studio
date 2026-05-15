@@ -1,31 +1,14 @@
-import type { ActionItemReviewStatus } from '../types/supabase-models'
+﻿import { Badge } from './ui'
 
-interface Props {
-  status: ActionItemReviewStatus
-}
+type Status = 'approved' | 'rejected' | 'edited' | 'draft' | string
 
-const STATUS_MAP: Record<ActionItemReviewStatus, { label: string; bg: string; color: string }> = {
-  approved: { label: '✓ Approved', bg: '#dcfce7', color: '#166534' },
-  rejected: { label: '✗ Rejected', bg: '#fee2e2', color: '#991b1b' },
-  edited:   { label: '✎ Edited',   bg: '#dbeafe', color: '#1e40af' },
-  draft:    { label: '⏳ Draft',    bg: '#f1f5f9', color: '#475569' },
-}
-
-export default function StatusBadge({ status }: Props) {
-  const s = STATUS_MAP[status] ?? STATUS_MAP.draft
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: '2px 8px',
-        borderRadius: 12,
-        background: s.bg,
-        color: s.color,
-        fontSize: 11,
-        fontWeight: 600,
-      }}
-    >
-      {s.label}
-    </span>
-  )
+export default function StatusBadge({ status }: { status: Status }) {
+  const map: Record<string, { label: string; variant: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' }> = {
+    approved: { label: 'Approved', variant: 'success' },
+    rejected: { label: 'Rejected', variant: 'error' },
+    edited: { label: 'Edited', variant: 'info' },
+    draft: { label: 'Draft', variant: 'default' },
+  }
+  const item = map[status] ?? { label: status, variant: 'default' as const }
+  return <Badge variant={item.variant} size="sm" dot>{item.label}</Badge>
 }

@@ -1,21 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
 import { pollJobStatus } from '../api/meetings'
 import { subscribeMeetingStatus, unsubscribeChannel } from '../api/supabase/realtime'
 import type { JobStatusResponse, MeetingStatus } from '../types/supabase-models'
-
-const UI = {
-  primary: '#5645d4',
-  ink: '#1a1a1a',
-  slate: '#5d5b54',
-  steel: '#787671',
-  canvas: '#ffffff',
-  hairline: '#e5e3df',
-  hairlineStrong: '#c8c4be',
-  error: '#e03131',
-  font: "'Notion Sans', Inter, -apple-system, system-ui, 'Segoe UI', Helvetica, sans-serif",
-}
+import { Button, Card, Icon } from '../components/ui'
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Đang chuẩn bị xử lý...',
@@ -74,9 +63,7 @@ export default function ProcessingView() {
   })
 
   useEffect(() => {
-    if (!currentJobId || !currentMeetingId || !processingKind) {
-      setRoute('new_meeting')
-    }
+    if (!currentJobId || !currentMeetingId || !processingKind) setRoute('new_meeting')
   }, [currentJobId, currentMeetingId, processingKind, setRoute])
 
   useEffect(() => {
@@ -86,48 +73,34 @@ export default function ProcessingView() {
 
   useEffect(() => {
     if (!currentMeetingId) return
-
     const channel = subscribeMeetingStatus(currentMeetingId, (update) => {
       setStatus(update.status)
       setMeetingStatus(update.status)
-      if (update.error_message) {
-        setError(update.error_message)
-      }
-      if (update.status === 'failed') {
-        setError(update.error_message || 'Pipeline xử lý thất bại.')
-      }
+      if (update.error_message) setError(update.error_message)
+      if (update.status === 'failed') setError(update.error_message || 'Pipeline xử lý thất bại.')
     })
-
     return () => { unsubscribeChannel(channel) }
   }, [currentMeetingId, setMeetingStatus])
 
   useEffect(() => {
     const job = jobQuery.data
     if (!job) return
-
     if (job.state === 'FAILURE') {
       setError(job.error || 'Pipeline xử lý thất bại.')
       return
     }
-
-    if (job.state === 'SUCCESS') {
-      setStatus('draft')
-    }
+    if (job.state === 'SUCCESS') setStatus('draft')
   }, [jobQuery.data])
 
   useEffect(() => {
-    if (jobQuery.error) {
-      setError(jobQuery.error.message)
-    }
+    if (jobQuery.error) setError(jobQuery.error.message)
   }, [jobQuery.error])
 
   useEffect(() => {
     if (error) return
-
     const floor = getProgressFloor(status)
     const ceiling = getProgressCeiling(status)
     setLocalProgress((prev) => Math.max(prev, floor))
-
     if (status === 'draft') {
       setLocalProgress(100)
       setProcessingProgress(100)
@@ -138,7 +111,6 @@ export default function ProcessingView() {
       }
       return
     }
-
     const timer = window.setInterval(() => {
       setLocalProgress((prev) => {
         const next = prev < ceiling ? Math.min(ceiling, prev + 1) : prev
@@ -146,73 +118,41 @@ export default function ProcessingView() {
         return next
       })
     }, status === 'pending' ? 2500 : 1200)
-
     return () => window.clearInterval(timer)
   }, [error, status, setProcessingMessage, setProcessingProgress, setRoute])
 
   useEffect(() => {
-    const message = STATUS_LABELS[status] ?? 'Đang xử lý...'
-    setProcessingMessage(message)
+    setProcessingMessage(STATUS_LABELS[status] ?? 'Đang xử lý...')
   }, [status, setProcessingMessage])
 
   const handleRetry = () => setRoute('new_meeting')
   const handleGoHistory = () => setRoute('history')
 
   return (
-    <div style={{ maxWidth: 560, margin: '80px auto 0', padding: '0 24px', textAlign: 'center', fontFamily: UI.font, color: UI.ink }}>
+    <Card style={{ maxWidth: 560, margin: '56px auto 0', padding: '40px 32px', textAlign: 'center' }}>
       {!error ? (
         <>
-          <div style={{ fontSize: 52, marginBottom: 20 }}>⏳</div>
-          <h2 style={{ fontWeight: 600, fontSize: 22, lineHeight: 1.3, color: UI.ink, marginBottom: 8 }}>
+          <Icon name="progress_activity" size={52} style={{ marginBottom: 20, color: 'var(--color-primary)', animation: 'spin 1s linear infinite' }} />
+          <h2 style={{ fontWeight: 700, fontSize: 22, lineHeight: 1.3, color: 'var(--color-text-main)', margin: '0 0 8px' }}>
             {STATUS_LABELS[status] ?? 'Đang xử lý...'}
           </h2>
-
-          <div style={{ background: UI.hairline, borderRadius: 9999, height: 8, overflow: 'hidden', margin: '24px 0 12px' }}>
-            <div
-              style={{
-                height: '100%',
-                borderRadius: 99,
-                background: UI.primary,
-                width: `${Math.max(25, Math.min(100, localProgress))}%`,
-                transition: 'width 0.45s ease',
-              }}
-            />
+          <div style={{ background: 'var(--color-surface-3)', borderRadius: 9999, height: 8, overflow: 'hidden', margin: '24px 0 12px' }}>
+            <div style={{ height: '100%', borderRadius: 99, background: 'var(--color-primary)', width: `${Math.max(25, Math.min(100, localProgress))}%`, transition: 'width 0.45s ease' }} />
           </div>
-
-          <p style={{ fontSize: 14, color: UI.slate, margin: '0 0 4px', lineHeight: 1.5 }}>
-            {Math.round(localProgress)}%
-          </p>
-          <p style={{ fontSize: 12, color: UI.steel }}>
-            Đã chờ {fmtElapsed(elapsed)}
-          </p>
+          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', margin: '0 0 4px', lineHeight: 1.5 }}>{Math.round(localProgress)}%</p>
+          <p style={{ fontSize: 12, color: 'var(--color-text-subtle)' }}>Đã chờ {fmtElapsed(elapsed)}</p>
         </>
       ) : (
         <>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>✕</div>
-          <h2 style={{ fontWeight: 600, fontSize: 18, color: UI.ink, marginBottom: 8 }}>Xử lý thất bại</h2>
-          <p style={{ fontSize: 13, color: UI.slate, marginBottom: 24, wordBreak: 'break-word' }}>{error}</p>
+          <Icon name="error" size={48} style={{ marginBottom: 16, color: 'var(--color-danger)' }} />
+          <h2 style={{ fontWeight: 700, fontSize: 18, color: 'var(--color-text-main)', marginBottom: 8 }}>Xử lý thất bại</h2>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 24, wordBreak: 'break-word' }}>{error}</p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button
-              onClick={handleRetry}
-              style={{
-                padding: '10px 18px', borderRadius: 8, border: `1px solid ${UI.hairlineStrong}`,
-                background: UI.canvas, color: UI.ink, fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: UI.font,
-              }}
-            >
-              Tạo cuộc họp mới
-            </button>
-            <button
-              onClick={handleGoHistory}
-              style={{
-                padding: '10px 18px', borderRadius: 8, border: 'none',
-                background: UI.primary, color: '#fff', fontWeight: 500, fontSize: 14, cursor: 'pointer', fontFamily: UI.font,
-              }}
-            >
-              Xem lịch sử
-            </button>
+            <Button onClick={handleRetry} variant="secondary">Tạo cuộc họp mới</Button>
+            <Button onClick={handleGoHistory} variant="primary">Xem lịch sử</Button>
           </div>
         </>
       )}
-    </div>
+    </Card>
   )
 }
