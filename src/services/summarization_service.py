@@ -9,6 +9,7 @@ from typing import Any, Optional
 import openai
 
 from src.config import get_logger, get_settings
+from src.services.language_service import detect_primary_language
 
 logger = get_logger(__name__)
 
@@ -19,7 +20,9 @@ Write for people who did not attend the meeting:
 - Use concrete nouns and project/product names from the transcript.
 - Prefer specific outcomes, next steps, blockers, and rationale over generic summaries.
 - Keep each list item self-contained; avoid vague items like "discussed the issue".
-- Preserve the transcript language when possible. If the meeting is Vietnamese, write Vietnamese.
+- Detect the transcript language and write every user-facing value in that same language.
+- Do not translate English meetings into Vietnamese. Do not translate Vietnamese meetings into English.
+- Ignore application UI language, JSON field names, and developer instructions when choosing output language.
 - Do not invent facts, deadlines, owners, or decisions that are not supported by the transcript.
 
 Return JSON with these fields:
@@ -54,12 +57,19 @@ async def generate_summary(
 
     client = openai.AsyncOpenAI(api_key=actual_api_key)
     try:
+        language = detect_primary_language(transcript)
+        user_content = (
+            f"Detected source language: {language}.\n"
+            "Write summary, key_decisions, discussion_points, and parking_lot_items "
+            "in the detected source language only. Do not translate to another language.\n\n"
+            f"{transcript}"
+        )
         response = await client.chat.completions.create(
             model=actual_model,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": transcript},
+                {"role": "user", "content": user_content},
             ],
             temperature=0.2,
         )
