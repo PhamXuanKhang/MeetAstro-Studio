@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
 import { pollJobStatus } from '../api/meetings'
@@ -9,7 +9,7 @@ import { Button, Card, Icon } from '../components/ui'
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Đang chuẩn bị xử lý...',
   transcribing: 'Đang chuyển âm thanh thành transcript...',
-  transcribed: 'Transcript đã sẵn sàng, đang chuẩn bị phân tích...',
+  transcribed: 'Transcript đã sẵn sàng, đang mở màn review...',
   analyzing: 'Đang phân tích và tạo action items...',
   draft: 'Hoàn tất. Đang mở kết quả phân tích...',
   failed: 'Xử lý thất bại',
@@ -90,8 +90,10 @@ export default function ProcessingView() {
       setError(job.error || 'Pipeline xử lý thất bại.')
       return
     }
-    if (job.state === 'SUCCESS') setStatus('draft')
-  }, [jobQuery.data])
+    if (job.state === 'SUCCESS') {
+      setStatus(processingKind === 'finalizing_recording' ? 'transcribed' : 'draft')
+    }
+  }, [jobQuery.data, processingKind])
 
   useEffect(() => {
     if (jobQuery.error) setError(jobQuery.error.message)
@@ -102,6 +104,16 @@ export default function ProcessingView() {
     const floor = getProgressFloor(status)
     const ceiling = getProgressCeiling(status)
     setLocalProgress((prev) => Math.max(prev, floor))
+    if (processingKind === 'finalizing_recording' && status === 'transcribed') {
+      setLocalProgress(100)
+      setProcessingProgress(100)
+      setProcessingMessage(STATUS_LABELS.transcribed)
+      if (!routedRef.current) {
+        routedRef.current = true
+        window.setTimeout(() => setRoute('review_transcript'), 700)
+      }
+      return
+    }
     if (status === 'draft') {
       setLocalProgress(100)
       setProcessingProgress(100)
@@ -120,7 +132,7 @@ export default function ProcessingView() {
       })
     }, status === 'pending' ? 2500 : 1200)
     return () => window.clearInterval(timer)
-  }, [error, processingDoneRoute, status, setProcessingMessage, setProcessingProgress, setRoute])
+  }, [error, processingDoneRoute, status, processingKind, setProcessingMessage, setProcessingProgress, setRoute])
 
   useEffect(() => {
     setProcessingMessage(STATUS_LABELS[status] ?? 'Đang xử lý...')

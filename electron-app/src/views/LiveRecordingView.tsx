@@ -1,7 +1,12 @@
-﻿import { useEffect, useCallback, useRef, useState } from 'react'
+import { useEffect, useCallback, useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useRecording } from '../hooks/useRecording'
 import { Button, Card, Icon } from '../components/ui'
+import type { LiveSegment } from '../types/electron'
+
+function cleanTranscriptText(text: string): string {
+  return text.replace(/<\|\d+(?:\.\d+)?\|>/g, '').replace(/\s+/g, ' ').trim()
+}
 
 function fmtTime(s: number): string {
   const m = Math.floor(s / 60)
@@ -9,22 +14,25 @@ function fmtTime(s: number): string {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
-function cleanTranscriptText(text: string): string {
-  return text.replace(/<\|\d+(?:\.\d+)?\|>/g, '').replace(/\s+/g, ' ').trim()
-}
-
-interface LiveSegment { speaker: string; start: number; end: number; text: string }
-
 export default function LiveRecordingView() {
-  const { currentMeetingId, setRecordingPath, miniPopupOpen, setMiniPopupOpen, setRoute } = useAppStore()
+  const {
+    currentMeetingId,
+    selectedLanguage,
+    setCurrentJobId,
+    setProcessingKind,
+    setProcessingMessage,
+    setRecordingPath,
+    miniPopupOpen,
+    setMiniPopupOpen,
+    setRoute,
+  } = useAppStore()
   const { isRecording, elapsedSeconds, error: recError, startRecording, stopRecording } = useRecording()
   const [error, setError] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([])
   const [streamDone, setStreamDone] = useState(false)
-  const [streamStarted, setStreamStarted] = useState(false)
   const startRequestedRef = useRef(false)
-  const transcriptRef = useRef<HTMLDivElement | null>(null)
+  const latestTranscriptLine = liveSegments.at(-1)?.text
 
   useEffect(() => { if (!currentMeetingId) { setRoute('new_meeting'); return } }, [currentMeetingId, setRoute])
 
@@ -33,60 +41,53 @@ export default function LiveRecordingView() {
     startRequestedRef.current = true
     ;(async () => {
       const apiBaseUrl = await window.electronAPI?.getApiUrl?.()
-      const result = await startRecording({ meeting_id: currentMeetingId, api_base_url: apiBaseUrl, stream_enabled: Boolean(currentMeetingId && apiBaseUrl) })
-      setStreamStarted(Boolean(result?.streaming))
-      if (result?.streamError) setError('Không thể mở live transcript. File WAV local vẫn được ghi để fallback.')
+      const language = selectedLanguage || 'auto'
+      const result = await startRecording({ meeting_id: currentMeetingId, api_base_url: apiBaseUrl, stream_enabled: Boolean(currentMeetingId && apiBaseUrl), language })
+      if (result?.streamError) setError(`Không thể mở live transcript qua WebSocket: ${result.streamError}`)
     })().catch((e) => setError(`Không thể bắt đầu ghi âm: ${e instanceof Error ? e.message : String(e)}`))
-    return () => {}
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentMeetingId, selectedLanguage, startRecording])
 
   useEffect(() => { if (recError) setError(recError) }, [recError])
-
   useEffect(() => {
-    if (!currentMeetingId || !streamStarted) return
-    let events: EventSource | null = null
-    let cancelled = false
-    ;(async () => {
-      const apiBaseUrl = await window.electronAPI?.getApiUrl?.()
-      if (!apiBaseUrl || cancelled) return
-      events = new EventSource(`${apiBaseUrl.replace(/\/$/, '')}/api/v1/meetings/${currentMeetingId}/recording/events`)
-      events.onopen = () => { console.info('[LiveRecording] SSE opened') }
-      events.addEventListener('partial', (event) => {
-        try {
-          console.info('[LiveRecording] SSE partial raw:', (event as MessageEvent).data)
-          const payload = JSON.parse((event as MessageEvent).data) as { segments?: LiveSegment[] }
-          const segments = (payload.segments ?? []).map((segment) => ({ ...segment, text: cleanTranscriptText(segment.text) })).filter((segment) => segment.text)
-          console.info('[LiveRecording] SSE partial segments:', segments.length)
-          setLiveSegments(segments)
-        } catch (e) {
-          console.error('[LiveRecording] SSE partial parse failed:', e)
-          setError('Live transcript payload không hợp lệ.')
-        }
-      })
-      events.addEventListener('done', () => { console.info('[LiveRecording] SSE done'); setStreamDone(true); events?.close() })
-      events.addEventListener('error', (event) => { console.error('[LiveRecording] SSE error:', event); setError('Kết nối live transcript bị gián đoạn. File WAV local vẫn được giữ để fallback.'); events?.close() })
-    })().catch((e) => setError(e instanceof Error ? e.message : String(e)))
-    return () => { cancelled = true; events?.close() }
-  }, [currentMeetingId, streamStarted])
-
-  const latestTranscriptLine = liveSegments.at(-1)?.text
-
-  useEffect(() => { if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight }, [liveSegments])
+    const cleanup = window.electronAPI?.onStreamPartial?.((segments) => {
+      setLiveSegments(segments.map((segment) => ({ ...segment, text: cleanTranscriptText(segment.text) })).filter((segment) => segment.text))
+    })
+    return () => cleanup?.()
+  }, [])
 
   const handleStop = useCallback(async () => {
     if (stopping) return
     setStopping(true)
     setError(null)
     try {
-      const outputPath = await stopRecording()
-      if (!outputPath) throw new Error('Không nhận được đường dẫn file ghi âm.')
-      setRecordingPath(outputPath)
+      const result = await stopRecording()
+      if (!result?.outputPath) throw new Error('Không nhận được đường dẫn file ghi âm.')
+      setRecordingPath(result.outputPath)
       setStreamDone(true)
+      const jobId = result.streamResult?.job_id
+      const persistedSegments = result.streamResult?.persisted_segments ?? 0
+      if (!jobId && persistedSegments > 0) {
+        setRoute('review_transcript')
+        return
+      }
+      if (!jobId) throw new Error(result.streamError || 'Không nhận được job xử lý transcript live.')
+      setCurrentJobId(jobId)
+      setProcessingKind('finalizing_recording')
+      setProcessingMessage('Đang hoàn tất transcript live...')
+      setRoute('processing')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setStopping(false)
     }
-  }, [stopping, stopRecording, setRecordingPath])
+  }, [
+    stopping,
+    stopRecording,
+    setRecordingPath,
+    setCurrentJobId,
+    setProcessingKind,
+    setProcessingMessage,
+    setRoute,
+  ])
 
   useEffect(() => { if (miniPopupOpen && isRecording) window.electronAPI?.updatePipState?.({ isRecording, elapsedSeconds, lastTranscriptLine: latestTranscriptLine }) }, [elapsedSeconds, isRecording, latestTranscriptLine, miniPopupOpen])
   useEffect(() => { const cleanup = window.electronAPI?.onPipStopRequest?.(() => { handleStop() }); return () => cleanup?.() }, [handleStop])
@@ -115,10 +116,10 @@ export default function LiveRecordingView() {
       <Card style={{ padding: 20, marginBottom: 24, textAlign: 'left', minHeight: 120 }}>
         <div style={{ fontSize: 11, color: 'var(--color-text-subtle)', marginBottom: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>Live Transcript</div>
         {liveSegments.length > 0 ? (
-          <div ref={transcriptRef} className="custom-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 220, overflowY: 'auto' }}>
+          <div className="custom-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 220, overflowY: 'auto' }}>
             {liveSegments.map((segment, idx) => <div key={`${segment.start}-${segment.end}-${idx}`} style={{ fontSize: 14, lineHeight: 1.5, color: 'var(--color-text-main)' }}><span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{segment.speaker}: </span><span>{segment.text}</span></div>)}
           </div>
-        ) : <p style={{ color: 'var(--color-text-muted)', fontSize: 14, lineHeight: 1.5, margin: 0, fontStyle: 'italic' }}>Đang chờ transcript trực tiếp từ WhisperLiveKit.</p>}
+        ) : <p style={{ color: 'var(--color-text-muted)', fontSize: 14, lineHeight: 1.5, margin: 0, fontStyle: 'italic' }}>Đang stream audio tới FastAPI qua WebSocket. Transcript sẽ mở ở bước review sau khi dừng ghi âm.</p>}
         {streamDone && <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-text-muted)' }}>Live stream đã hoàn tất.</div>}
       </Card>
 

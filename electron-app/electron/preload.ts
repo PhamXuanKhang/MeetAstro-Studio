@@ -9,6 +9,13 @@ interface PipState {
   lastTranscriptLine?: string
 }
 
+interface LiveSegment {
+  speaker: string
+  start: number
+  end: number
+  text: string
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // Audio recording
   startRecording: (config: Record<string, unknown>) =>
@@ -17,6 +24,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('audio:stop'),
   getRecordingStatus: () =>
     ipcRenderer.invoke('audio:status'),
+  onStreamPartial: (callback: (segments: LiveSegment[]) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, segments: LiveSegment[]) => callback(segments)
+    ipcRenderer.on('audio:streamPartial', listener)
+    return () => ipcRenderer.removeListener('audio:streamPartial', listener)
+  },
 
   // File dialogs
   openFileDialog: (filters?: { name: string; extensions: string[] }[]) =>

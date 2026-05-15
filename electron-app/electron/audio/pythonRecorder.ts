@@ -1,8 +1,10 @@
 import { spawn, ChildProcess } from 'child_process'
+import { BrowserWindow } from 'electron'
 import path from 'path'
 
 interface RecorderResponse {
   status: string
+  segments?: Array<{ speaker: string; start: number; end: number; text: string }>
   output_path?: string
   error?: string
   is_recording?: boolean
@@ -37,6 +39,12 @@ export class PythonRecorder {
           if (!trimmed) continue
           try {
             const msg: RecorderResponse = JSON.parse(trimmed)
+            if (msg.status === 'stream_partial') {
+              BrowserWindow.getAllWindows().forEach((window) => {
+                window.webContents.send('audio:streamPartial', msg.segments ?? [])
+              })
+              continue
+            }
             if (this.pendingResolve) {
               const resolve = this.pendingResolve
               this.pendingResolve = null
@@ -95,11 +103,12 @@ export class PythonRecorder {
       }
 
       console.info(`[PythonRecorder] sending ${action}`)
+      const timeoutMs = action === 'stop' ? 90000 : 30000
       const timeout = setTimeout(() => {
         this.pendingResolve = null
         console.error(`[PythonRecorder] ${action} timed out`)
         reject(new Error('Python recorder timeout'))
-      }, 30000)
+      }, timeoutMs)
 
       this.pendingResolve = (v) => {
         clearTimeout(timeout)
