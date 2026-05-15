@@ -1079,6 +1079,39 @@ Response:
 }
 ```
 
+## H6 - Rename Meeting
+
+Routing: Supabase SDK.
+
+Used by the Results / Meeting Note screen for lightweight title edits. The UI trims whitespace and rejects an empty title before sending the update. Supabase RLS must allow the meeting owner to update their own `meetings.title`.
+
+Request:
+```json
+{
+  "meeting_id": "uuid",
+  "title": "Updated meeting title"
+}
+```
+
+Supabase operation:
+```text
+UPDATE meetings
+SET title = {title}
+WHERE id = {meeting_id}
+RETURNING id, title, updated_at
+```
+
+Response:
+```json
+{
+  "meeting": {
+    "id": "uuid",
+    "title": "Updated meeting title",
+    "updated_at": "2026-05-05T10:45:00Z"
+  }
+}
+```
+
 ## H4 - View Old Meeting Detail
 
 Routing: Supabase SDK.

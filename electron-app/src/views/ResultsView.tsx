@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAnalysisResult } from '../api/supabase/analysis.api'
 import { refreshActionItemsFromNote, updateMeetingNote } from '../api/meetings'
 import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
+import { useRenameMeeting } from '../hooks/supabase/useMeetings'
 import type { ActionItem } from '../types/supabase-models'
-import { Badge, Button, Card, EmptyState, Icon } from '../components/ui'
+import { Badge, Button, Card, EmptyState, Icon, Input } from '../components/ui'
 
 interface Props {
   onNavigate?: (route: string) => void
@@ -270,6 +271,7 @@ export default function ResultsView({ onNavigate }: Props) {
     currentMeetingTitle,
     currentMeetingId,
     setCurrentJobId,
+    setCurrentMeetingTitle,
     setProcessingKind,
     setProcessingDoneRoute,
     setRoute,
@@ -285,6 +287,10 @@ export default function ResultsView({ onNavigate }: Props) {
     parking_lot: '',
   })
   const [noteError, setNoteError] = useState<string | null>(null)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(currentMeetingTitle ?? '')
+  const [titleError, setTitleError] = useState<string | null>(null)
+  const renameMeetingMutation = useRenameMeeting()
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['analysisResult', currentMeetingId],
@@ -311,6 +317,12 @@ export default function ResultsView({ onNavigate }: Props) {
   const mediumStart = highCount + 1
   const lowStart = highCount + groupedActions.medium.length + 1
   const hasActions = highCount + groupedActions.medium.length + groupedActions.low.length > 0
+
+  useEffect(() => {
+    if (!isEditingTitle) {
+      setTitleDraft(currentMeetingTitle ?? '')
+    }
+  }, [currentMeetingTitle, isEditingTitle])
 
   useEffect(() => {
     if (!analysisRaw || isEditingNote) return
@@ -367,6 +379,42 @@ export default function ResultsView({ onNavigate }: Props) {
     if (confirmed) refreshTasksMutation.mutate()
   }
 
+  const handleCancelTitleEdit = () => {
+    setTitleDraft(currentMeetingTitle ?? '')
+    setTitleError(null)
+    setIsEditingTitle(false)
+  }
+
+  const handleSaveTitle = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentMeetingId) return
+
+    const cleanTitle = titleDraft.trim()
+    if (!cleanTitle) {
+      setTitleError('Tên meeting không được để trống.')
+      return
+    }
+
+    if (cleanTitle === (currentMeetingTitle ?? '').trim()) {
+      setTitleError(null)
+      setIsEditingTitle(false)
+      return
+    }
+
+    renameMeetingMutation.mutate(
+      { meetingId: currentMeetingId, title: cleanTitle },
+      {
+        onSuccess: (meeting) => {
+          setCurrentMeetingTitle(meeting.title)
+          setTitleDraft(meeting.title)
+          setTitleError(null)
+          setIsEditingTitle(false)
+        },
+        onError: (err) => setTitleError(err instanceof Error ? err.message : String(err)),
+      }
+    )
+  }
+
   const textareaStyle: React.CSSProperties = {
     width: '100%',
     minHeight: 110,
@@ -388,10 +436,54 @@ export default function ResultsView({ onNavigate }: Props) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <Icon name="summarize" size={22} style={{ color: 'var(--color-primary)' }} />
-            <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-text-main)', margin: 0 }}>
-              {currentMeetingTitle || 'Meeting note'}
-            </h2>
+            {isEditingTitle ? (
+              <form onSubmit={handleSaveTitle} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') handleCancelTitleEdit()
+                  }}
+                  style={{ width: 360, maxWidth: 'min(360px, 70vw)', height: 34, fontSize: 18, fontWeight: 800 }}
+                  disabled={renameMeetingMutation.isPending}
+                />
+                <Button type="submit" size="sm" variant="success" disabled={renameMeetingMutation.isPending}>
+                  <Icon name="save" size={15} /> Save
+                </Button>
+                <Button type="button" size="sm" variant="outline" disabled={renameMeetingMutation.isPending} onClick={handleCancelTitleEdit}>
+                  Cancel
+                </Button>
+              </form>
+            ) : (
+              <>
+                <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-text-main)', margin: 0 }}>
+                  {currentMeetingTitle || 'Meeting note'}
+                </h2>
+                {currentMeetingId && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    title="Đổi tên meeting"
+                    onClick={() => {
+                      setTitleDraft(currentMeetingTitle ?? '')
+                      setTitleError(null)
+                      setIsEditingTitle(true)
+                    }}
+                    style={{ width: 30, padding: 0 }}
+                  >
+                    <Icon name="edit" size={16} />
+                  </Button>
+                )}
+              </>
+            )}
           </div>
+          {titleError && (
+            <p style={{ fontSize: 12, color: 'var(--color-danger)', margin: '0 0 6px 32px' }}>
+              {titleError}
+            </p>
+          )}
           <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>
             Meeting note được tạo từ transcript và action items.
           </p>

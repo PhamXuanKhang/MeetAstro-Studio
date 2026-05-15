@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listMeetings,
   deleteMeeting,
+  updateMeetingTitle,
 } from '../../api/supabase/meetings.api'
 import type { ListMeetingsParams, MeetingsListResult } from '../../types/supabase-models'
 
@@ -54,6 +55,18 @@ export function useDeleteMeeting() {
     mutationFn: (meetingId: string) => deleteMeeting(meetingId),
     onSuccess: () => {
       // Invalidate tất cả list queries để UI refetch
+      queryClient.invalidateQueries({ queryKey: meetingKeys.lists() })
+    },
+  })
+}
+
+export function useRenameMeeting() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ meetingId, title }: { meetingId: string; title: string }) =>
+      updateMeetingTitle(meetingId, title),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: meetingKeys.lists() })
     },
   })
