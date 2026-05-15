@@ -40,6 +40,7 @@ export default function ProcessingView() {
     currentMeetingId,
     processingKind,
     processingProgress,
+    processingDoneRoute,
     setProcessingProgress,
     setProcessingMessage,
     setMeetingStatus,
@@ -107,7 +108,7 @@ export default function ProcessingView() {
       setProcessingMessage(STATUS_LABELS.draft)
       if (!routedRef.current) {
         routedRef.current = true
-        window.setTimeout(() => setRoute('results'), 700)
+        window.setTimeout(() => setRoute(processingDoneRoute ?? 'results'), 700)
       }
       return
     }
@@ -119,7 +120,7 @@ export default function ProcessingView() {
       })
     }, status === 'pending' ? 2500 : 1200)
     return () => window.clearInterval(timer)
-  }, [error, status, setProcessingMessage, setProcessingProgress, setRoute])
+  }, [error, processingDoneRoute, status, setProcessingMessage, setProcessingProgress, setRoute])
 
   useEffect(() => {
     setProcessingMessage(STATUS_LABELS[status] ?? 'Đang xử lý...')

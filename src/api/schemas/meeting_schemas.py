@@ -105,6 +105,7 @@ class AnalysisPatch(BaseModel):
     key_decisions: Optional[list[str]] = None
     discussion_points: Optional[list[str]] = None
     parking_lot: Optional[list[str]] = None
+    action_plan_draft: Optional[str] = None
 
 
 class AnalysisResponse(BaseModel):

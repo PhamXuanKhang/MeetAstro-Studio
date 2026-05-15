@@ -18,6 +18,7 @@ export interface AppState {
   processingKind: ProcessingKind | null
   processingProgress: number | null
   processingMessage: string
+  processingDoneRoute: string | null
   recordingPath: string | null
   miniPopupOpen: boolean
   selectedLanguage: string
@@ -38,6 +39,7 @@ interface AppActions {
   setProcessingKind: (kind: ProcessingKind | null) => void
   setProcessingProgress: (progress: number | null) => void
   setProcessingMessage: (message: string) => void
+  setProcessingDoneRoute: (route: string | null) => void
   setRecordingPath: (path: string | null) => void
   setMiniPopupOpen: (open: boolean) => void
   setSelectedLanguage: (lang: string) => void
@@ -60,6 +62,7 @@ const initialState: AppState = {
   processingKind: null,
   processingProgress: null,
   processingMessage: '',
+  processingDoneRoute: null,
   recordingPath: null,
   miniPopupOpen: false,
   selectedLanguage: '',
@@ -82,6 +85,7 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
   setProcessingKind: (processingKind) => set({ processingKind }),
   setProcessingProgress: (processingProgress) => set({ processingProgress }),
   setProcessingMessage: (processingMessage) => set({ processingMessage }),
+  setProcessingDoneRoute: (processingDoneRoute) => set({ processingDoneRoute }),
   setRecordingPath: (recordingPath) => set({ recordingPath }),
   setMiniPopupOpen: (miniPopupOpen) => set({ miniPopupOpen }),
   setSelectedLanguage: (selectedLanguage) => set({ selectedLanguage }),
@@ -99,6 +103,7 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
       processingKind: null,
       processingProgress: null,
       processingMessage: '',
+      processingDoneRoute: null,
       recordingPath: null,
       miniPopupOpen: false,
       isRecording: false,

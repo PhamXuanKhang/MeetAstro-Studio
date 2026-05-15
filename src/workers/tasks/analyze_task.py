@@ -19,6 +19,7 @@ from src.db.crud.meeting_crud import (
 from src.db.crud.review_crud import (
     bulk_create_review_items,
     delete_non_synced_review_items_for_meeting,
+    list_review_items,
     list_synced_review_items,
     update_review_item_parent,
 )
@@ -140,7 +141,8 @@ def regenerate_action_items_from_note(self, meeting_id: str) -> dict:
         )
         raise ValueError("Analysis result is missing - cannot refresh action items.")
 
-    note_text = _analysis_result_to_note_text(analysis_result)
+    current_items = list_review_items(meeting_id)
+    note_text = _analysis_result_to_note_text(analysis_result, current_items)
     if not note_text.strip():
         update_meeting_status(
             meeting_id,
@@ -218,7 +220,39 @@ def _synced_lookup_by_type(
     return lookup
 
 
-def _analysis_result_to_note_text(result: dict[str, Any]) -> str:
+def _items_to_action_plan_text(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return ""
+
+    lines: list[str] = []
+    for item in items:
+        item_type = str(item.get("item_type") or "task").upper()
+        title = item.get("title") or ""
+        if not title:
+            continue
+        assignee = item.get("assignee")
+        priority = item.get("priority")
+        deadline = item.get("deadline")
+        description = item.get("description") or item.get("context")
+
+        meta = []
+        if assignee:
+            meta.append(f"assignee: {assignee}")
+        if priority:
+            meta.append(f"priority: {priority}")
+        if deadline:
+            meta.append(f"due: {deadline}")
+        suffix = f" ({'; '.join(meta)})" if meta else ""
+        lines.append(f"- [{item_type}] {title}{suffix}")
+        if description:
+            lines.append(f"  Context: {description}")
+    return "\n".join(lines)
+
+
+def _analysis_result_to_note_text(
+    result: dict[str, Any],
+    current_items: list[dict[str, Any]] | None = None,
+) -> str:
     raw = result.get("raw_response") or {}
     if not isinstance(raw, dict):
         raw = {}
@@ -239,6 +273,23 @@ def _analysis_result_to_note_text(result: dict[str, Any]) -> str:
     parking = result.get("parking_lot") or raw.get("parking_lot_items") or raw.get("parking_lot") or []
     if isinstance(parking, list) and parking:
         sections.append("Parking lot:\n" + "\n".join(f"- {x}" for x in parking))
+
+    action_plan_draft = raw.get("action_plan_draft")
+    if isinstance(action_plan_draft, str) and action_plan_draft.strip():
+        sections.append("User-edited action plan draft:\n" + action_plan_draft.strip())
+    else:
+        action_plan_text = _items_to_action_plan_text(current_items or [])
+        if action_plan_text:
+            sections.append("Current structured action plan:\n" + action_plan_text)
+
+    transcript_text = get_transcript_text(result.get("meeting_id", ""))
+    if transcript_text.strip():
+        sections.append(
+            "Supporting transcript context:\n"
+            "Use this only to fill missing names, rationale, deadlines, or context. "
+            "If it conflicts with the edited meeting note or action plan draft, prefer the edited note/draft.\n"
+            f"{transcript_text}"
+        )
 
     return "\n\n".join(sections)
 
