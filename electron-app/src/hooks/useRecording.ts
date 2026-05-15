@@ -6,9 +6,15 @@ interface RecordingStartResult {
   streamError?: string
 }
 
+interface RecordingStopResult {
+  outputPath: string | null
+  streamError?: string | null
+  streamResult?: { job_id?: string; transcript_source?: string; persisted_segments?: number; status?: string }
+}
+
 type ElectronAPI = {
   startRecording: (config: Record<string, unknown>) => Promise<{ status: string; output_path?: string; error?: string; streaming?: boolean; stream_error?: string }>
-  stopRecording: () => Promise<{ status: string; output_path?: string; error?: string; stream_error?: string | null }>
+  stopRecording: () => Promise<{ status: string; output_path?: string; error?: string; stream_error?: string | null; stream_result?: RecordingStopResult['streamResult'] }>
   getRecordingStatus: () => Promise<{ isRecording: boolean; outputPath: string | null }>
 }
 
@@ -22,7 +28,7 @@ interface UseRecordingResult {
   error: string | null
   elapsedSeconds: number
   startRecording: (config?: Record<string, unknown>) => Promise<RecordingStartResult | null>
-  stopRecording: () => Promise<string | null>
+  stopRecording: () => Promise<RecordingStopResult | null>
 }
 
 /**
@@ -90,7 +96,7 @@ export function useRecording(): UseRecordingResult {
     []
   )
 
-  const stopRecording = useCallback(async (): Promise<string | null> => {
+  const stopRecording = useCallback(async (): Promise<RecordingStopResult | null> => {
     clearTimer()
     setIsRecording(false)
 
@@ -105,7 +111,11 @@ export function useRecording(): UseRecordingResult {
 
     const path = result.output_path ?? null
     setOutputPath(path)
-    return path
+    return {
+      outputPath: path,
+      streamError: result.stream_error,
+      streamResult: result.stream_result,
+    }
   }, [])
 
   return { isRecording, outputPath, error, elapsedSeconds, startRecording, stopRecording }
