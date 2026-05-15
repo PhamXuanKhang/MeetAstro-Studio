@@ -9,12 +9,23 @@ forwards them to WhisperLiveKit, and accumulates partial transcript results.
 import asyncio
 import json
 from typing import Callable, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import websockets
 
 from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
+
+
+def _with_language_query(url: str, language: Optional[str]) -> str:
+    cleaned = (language or "").strip()
+    if not cleaned or cleaned == "auto":
+        return url
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["language"] = cleaned
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 class StreamSession:
@@ -40,6 +51,7 @@ class StreamSession:
         self.meeting_id = meeting_id
         self._whisper_url = whisper_ws_url
         self._on_partial = on_partial
+        self._partial_subscribers: set[asyncio.Queue[dict]] = set()
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._partial_lines: list[dict] = []
         self._buffer_transcription = ""
@@ -53,6 +65,7 @@ class StreamSession:
         self._sent_chunks = 0
         self._sent_bytes = 0
         self._recv_messages = 0
+        self._ready_to_stop = asyncio.Event()
 
     async def connect(self) -> None:
         """Establish WebSocket connection to WhisperLiveKit and start send/receive tasks."""
@@ -79,38 +92,43 @@ class StreamSession:
         if not self._connected:
             raise RuntimeError(f"[{self.meeting_id}] Session not connected.")
 
-        try:
-            self._send_queue.put_nowait(chunk)
-            self._queued_chunks += 1
-            if self._queued_chunks == 1 or self._queued_chunks % 25 == 0:
-                logger.info(
-                    "[%s] Queued audio chunk #%d (%d bytes, queue=%d).",
-                    self.meeting_id,
-                    self._queued_chunks,
-                    len(chunk),
-                    self._send_queue.qsize(),
-                )
-        except asyncio.QueueFull:
-            logger.warning(
-                "[%s] Send queue full (len=%d) — dropping oldest chunk.",
+        await self._send_queue.put(chunk)
+        self._queued_chunks += 1
+        if self._queued_chunks == 1 or self._queued_chunks % 100 == 0:
+            logger.debug(
+                "[%s] Queued audio chunk #%d (%d bytes, queue=%d).",
                 self.meeting_id,
+                self._queued_chunks,
+                len(chunk),
                 self._send_queue.qsize(),
             )
+
+    def subscribe_partials(self) -> asyncio.Queue[dict]:
+        queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=1)
+        self._partial_subscribers.add(queue)
+        return queue
+
+    def unsubscribe_partials(self, queue: asyncio.Queue[dict]) -> None:
+        self._partial_subscribers.discard(queue)
+
+    def _publish_partial(self, payload: dict) -> None:
+        for queue in list(self._partial_subscribers):
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
             try:
-                self._send_queue.get_nowait()
-                self._send_queue.put_nowait(chunk)
-            except asyncio.QueueEmpty:
-                pass
+                queue.put_nowait(payload)
+            except asyncio.QueueFull:
+                logger.debug("[%s] Dropped stale partial for slow subscriber.", self.meeting_id)
 
     async def send_eof(self) -> None:
         """Signal end-of-stream to WhisperLiveKit by sending an empty bytes message."""
         if not self._connected:
             return
         logger.info("[%s] Sending EOF signal to WhisperLiveKit.", self.meeting_id)
-        try:
-            self._send_queue.put_nowait(b"")
-        except asyncio.QueueFull:
-            pass
+        await self._send_queue.put(b"")
 
     async def _send_loop(self) -> None:
         """Drain the send queue and forward chunks to WhisperLiveKit over WebSocket."""
@@ -130,8 +148,16 @@ class StreamSession:
                 await self._ws.send(chunk)
                 self._sent_chunks += 1
                 self._sent_bytes += len(chunk)
-                if self._sent_chunks == 1 or self._sent_chunks % 25 == 0 or chunk == b"":
+                if chunk == b"":
                     logger.info(
+                        "[%s] Sent EOF WS chunk #%d (total=%d, queue=%d).",
+                        self.meeting_id,
+                        self._sent_chunks,
+                        self._sent_bytes,
+                        self._send_queue.qsize(),
+                    )
+                elif self._sent_chunks == 1 or self._sent_chunks % 100 == 0:
+                    logger.debug(
                         "[%s] Sent WS chunk #%d (%d bytes, total=%d, queue=%d).",
                         self.meeting_id,
                         self._sent_chunks,
@@ -158,9 +184,9 @@ class StreamSession:
                 break
 
             if isinstance(msg, bytes):
-                logger.info("[%s] Raw WS bytes message len=%d sample=%s.", self.meeting_id, len(msg), msg[:200])
+                logger.debug("[%s] Raw WS bytes message len=%d.", self.meeting_id, len(msg))
             else:
-                logger.info("[%s] Raw WS text message len=%d sample=%s.", self.meeting_id, len(msg), msg[:2000])
+                logger.debug("[%s] Raw WS text message len=%d.", self.meeting_id, len(msg))
 
             try:
                 data = json.loads(msg)
@@ -174,8 +200,8 @@ class StreamSession:
 
             msg_type = data.get("type")
             self._recv_messages += 1
-            if self._recv_messages == 1 or self._recv_messages % 10 == 0 or "lines" in data:
-                logger.info(
+            if self._recv_messages == 1 or self._recv_messages % 100 == 0:
+                logger.debug(
                     "[%s] Received WS message #%d type=%s lines=%d buffer_len=%d.",
                     self.meeting_id,
                     self._recv_messages,
@@ -186,6 +212,8 @@ class StreamSession:
 
             if msg_type == "ready_to_stop":
                 logger.info("[%s] WhisperLiveKit signaled ready_to_stop.", self.meeting_id)
+                self._publish_partial(data)
+                self._ready_to_stop.set()
                 self._running = False
                 break
 
@@ -194,11 +222,25 @@ class StreamSession:
 
             if "lines" in data:
                 self._partial_lines = data["lines"]
+                self._publish_partial(data)
                 if self._on_partial:
                     try:
                         self._on_partial(self._partial_lines)
                     except Exception as exc:
                         logger.warning("[%s] on_partial callback error: %s", self.meeting_id, exc)
+
+    async def wait_until_ready_to_stop(self, timeout_seconds: float) -> bool:
+        """Wait until WhisperLiveKit confirms all audio has been processed."""
+        try:
+            await asyncio.wait_for(self._ready_to_stop.wait(), timeout=timeout_seconds)
+            return True
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[%s] Timed out waiting %.1fs for ready_to_stop.",
+                self.meeting_id,
+                timeout_seconds,
+            )
+            return False
 
     async def close(self) -> None:
         """Gracefully close the WebSocket connection and cancel tasks."""
@@ -250,6 +292,7 @@ class StreamSessionManager:
         self,
         meeting_id: str,
         on_partial: Optional[Callable[[list[dict]], None]] = None,
+        language: Optional[str] = None,
     ) -> StreamSession:
         """Create and connect a new streaming session for a meeting.
 
@@ -267,6 +310,7 @@ class StreamSessionManager:
                 "WHISPER_LIVEKIT_URL is not configured. "
                 "Cannot start a streaming session."
             )
+        url = _with_language_query(url, language)
 
         session = StreamSession(meeting_id, url, on_partial=on_partial)
         await session.connect()

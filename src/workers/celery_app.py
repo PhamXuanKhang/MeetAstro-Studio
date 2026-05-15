@@ -40,6 +40,7 @@ def create_celery() -> Celery:
     app.conf.include = [
         "src.workers.pipeline",
         "src.workers.tasks.transcribe_task",
+        "src.workers.tasks.stream_finalize_task",
         "src.workers.tasks.analyze_task",
         "src.workers.tasks.jira_push_task",
         "src.workers.tasks.cleanup_task",

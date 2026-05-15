@@ -44,6 +44,11 @@ class Settings(BaseSettings):
             "When set, the application uses WhisperLiveKit instead of OpenAI Whisper API."
         ),
     )
+    stream_stop_timeout_seconds: float = Field(
+        default=30.0,
+        alias="STREAM_STOP_TIMEOUT_SECONDS",
+        description="Maximum seconds to wait for WhisperLiveKit ready_to_stop after EOF.",
+    )
 
     # ── Database (PostgreSQL — deprecated, use Supabase instead) ──
     postgres_url: str = Field(default="", alias="POSTGRES_URL")
