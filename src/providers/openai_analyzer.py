@@ -1,6 +1,5 @@
-"""OpenAI GPT-4o analyzer for extracting action items from transcripts."""
+"""OpenAI analyzer for extracting action items from transcripts."""
 import json
-import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -10,17 +9,13 @@ import openai
 from src.config import get_logger, get_settings
 from src.providers.base_analyzer import BaseAnalyzer
 from src.schema import MeetingAnalysis
+from src.services.language_service import detect_primary_language
 
 logger = get_logger(__name__)
 
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "extract_action_items.md"
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 2.0
-_VIETNAMESE_RE = re.compile(
-    r"[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩị"
-    r"óòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]",
-    re.IGNORECASE,
-)
 
 
 def _load_system_prompt() -> str:
@@ -28,64 +23,45 @@ def _load_system_prompt() -> str:
     return _PROMPT_PATH.read_text(encoding="utf-8")
 
 
-def _detect_primary_language(text: str) -> str:
-    """Small guardrail for English/Vietnamese meetings."""
-    sample = text[:5000]
-    if _VIETNAMESE_RE.search(sample):
-        return "Vietnamese"
-    ascii_letters = sum(1 for char in sample if char.isascii() and char.isalpha())
-    if ascii_letters > 50:
-        return "English"
-    return "the source language"
-
-
 class OpenAIAnalyzer(BaseAnalyzer):
-    """Uses GPT-4o with JSON mode to analyze transcripts into Epic/Task/Subtask."""
+    """Uses an OpenAI chat model with JSON mode to analyze meeting content."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
     ) -> None:
-        """
-        Initialize the analyzer.
-
-        Args:
-            api_key: OpenAI API key. If None, loads from settings.
-            model: Model name to use. If None, loads from settings.
-        """
         settings = get_settings()
         actual_api_key = api_key if api_key is not None else settings.openai_api_key
         self._model = model if model is not None else settings.openai_model
         self._client = openai.OpenAI(api_key=actual_api_key)
         self._system_prompt = _load_system_prompt()
 
-    def analyze(self, transcript: str) -> MeetingAnalysis:
+    def analyze(
+        self,
+        transcript: str,
+        *,
+        language_source_text: Optional[str] = None,
+    ) -> MeetingAnalysis:
         """
-        Analyze transcript using GPT-4o.
+        Analyze transcript or curated note content.
 
-        Retries up to 3 times with exponential backoff.
-
-        Args:
-            transcript: Meeting transcript to analyze.
-
-        Returns:
-            MeetingAnalysis containing extracted epics, tasks, and subtasks.
-
-        Raises:
-            ValueError: If response cannot be parsed.
-            RuntimeError: If all retry attempts fail.
+        `language_source_text` lets callers pass only the actual meeting content
+        for language detection when `transcript` includes English prompt wrapper
+        instructions.
         """
         last_error: Exception = RuntimeError("Unknown error")
 
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
                 logger.info("Analyzing transcript (attempt %d/%d)...", attempt, _MAX_RETRIES)
-                language = _detect_primary_language(transcript)
+                language = detect_primary_language(language_source_text or transcript)
                 user_content = (
-                    f"Detected primary content language: {language}.\n"
-                    "You must write all user-facing JSON text fields in this language. "
-                    "Ignore application UI language, field names, and instructions when choosing output language.\n\n"
+                    f"Detected source language: {language}.\n"
+                    "You must write every user-facing JSON text field in the detected source language. "
+                    "Do not translate to another language. "
+                    "Ignore application UI language, field names, section labels, and developer instructions "
+                    "when choosing output language.\n\n"
                     f"{transcript}"
                 )
                 response = self._client.chat.completions.create(
@@ -114,7 +90,7 @@ class OpenAIAnalyzer(BaseAnalyzer):
                     time.sleep(delay)
 
             except (json.JSONDecodeError, KeyError, ValueError) as exc:
-                raise ValueError(f"Failed to parse GPT-4o response: {exc}") from exc
+                raise ValueError(f"Failed to parse OpenAI analyzer response: {exc}") from exc
 
         raise RuntimeError(
             f"OpenAI analyzer failed after {_MAX_RETRIES} attempts: {last_error}"

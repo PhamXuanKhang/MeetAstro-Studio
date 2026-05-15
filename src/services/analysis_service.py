@@ -107,7 +107,7 @@ def analyze_note_actions(
         "Meeting note:\n"
         f"{meeting_note}"
     )
-    return OpenAIAnalyzer().analyze(prompt)
+    return OpenAIAnalyzer().analyze(prompt, language_source_text=meeting_note)
 
 
 def _build_analysis(
