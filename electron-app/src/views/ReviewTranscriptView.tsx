@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+﻿import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useTranscriptSegments, useEditTranscriptSegment, useRenameSpeaker } from '../hooks/supabase/useTranscript'
 import { startAnalysis } from '../api/meetings'
@@ -348,3 +348,4 @@ export default function ReviewTranscriptView() {
     </div>
   )
 }
+
