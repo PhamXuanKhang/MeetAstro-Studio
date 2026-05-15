@@ -67,6 +67,7 @@ interface NoteDraft {
   summary_text: string
   discussion_points: string
   key_decisions: string
+  action_plan_draft: string
   parking_lot: string
 }
 
@@ -163,6 +164,25 @@ function groupActions(actions: NoteAction[]): Record<PriorityGroup, NoteAction[]
   )
 }
 
+function renderActionPlanDraft(actions: NoteAction[]): string {
+  return actions.map((action, index) => {
+    const lines = [`${index + 1}. ${action.title}`]
+    const meta = [
+      action.assignee ? `Assignee: ${action.assignee}` : '',
+      action.deadline ? `Due: ${action.deadline}` : '',
+      action.priority ? `Priority: ${action.priority}` : '',
+      action.topic ? `Topic: ${action.topic}` : '',
+    ].filter(Boolean)
+    if (meta.length) lines.push(`   ${meta.join(' | ')}`)
+    if (action.description) lines.push(`   Action: ${action.description}`)
+    if (action.context && action.context !== action.description) lines.push(`   Context: ${action.context}`)
+    for (const subtask of action.subtasks) {
+      lines.push(`   - Subtask: ${subtask.title}${subtask.assignee ? ` [${subtask.assignee}]` : ''}`)
+    }
+    return lines.join('\n')
+  }).join('\n\n')
+}
+
 function SectionTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
     <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, lineHeight: 1.35, fontWeight: 800, color: 'var(--color-text-main)', margin: '24px 0 10px' }}>
@@ -251,6 +271,7 @@ export default function ResultsView({ onNavigate }: Props) {
     currentMeetingId,
     setCurrentJobId,
     setProcessingKind,
+    setProcessingDoneRoute,
     setRoute,
   } = useAppStore()
   const queryClient = useQueryClient()
@@ -260,6 +281,7 @@ export default function ResultsView({ onNavigate }: Props) {
     summary_text: '',
     discussion_points: '',
     key_decisions: '',
+    action_plan_draft: '',
     parking_lot: '',
   })
   const [noteError, setNoteError] = useState<string | null>(null)
@@ -281,6 +303,10 @@ export default function ResultsView({ onNavigate }: Props) {
     ...getRawArray(rawResponse, 'insights'),
   ]
   const groupedActions = groupActions(collectActions(trees))
+  const actionPlanDraftFromItems = renderActionPlanDraft(collectActions(trees))
+  const savedActionPlanDraft = typeof rawResponse?.action_plan_draft === 'string' ? rawResponse.action_plan_draft : ''
+  const displayActionPlanDraft = savedActionPlanDraft || actionPlanDraftFromItems
+  const hasActionPlanDraftEdits = Boolean(savedActionPlanDraft)
   const highCount = groupedActions.high.length
   const mediumStart = highCount + 1
   const lowStart = highCount + groupedActions.medium.length + 1
@@ -292,6 +318,7 @@ export default function ResultsView({ onNavigate }: Props) {
       summary_text: analysisRaw.summary_text ?? '',
       discussion_points: joinLines(discussionPoints),
       key_decisions: joinLines(keyDecisions),
+      action_plan_draft: displayActionPlanDraft,
       parking_lot: joinLines(parkingLot),
     })
   }, [analysisRaw, isEditingNote])
@@ -300,6 +327,7 @@ export default function ResultsView({ onNavigate }: Props) {
     summary_text: noteDraft.summary_text.trim(),
     discussion_points: splitLines(noteDraft.discussion_points),
     key_decisions: splitLines(noteDraft.key_decisions),
+    action_plan_draft: noteDraft.action_plan_draft.trim(),
     parking_lot: splitLines(noteDraft.parking_lot),
   })
 
@@ -325,6 +353,7 @@ export default function ResultsView({ onNavigate }: Props) {
       setIsEditingNote(false)
       setCurrentJobId(resp.job_id)
       setProcessingKind('analyzing')
+      setProcessingDoneRoute('review')
       setRoute('processing')
     },
     onError: (err) => setNoteError(err instanceof Error ? err.message : String(err)),
@@ -480,7 +509,27 @@ export default function ResultsView({ onNavigate }: Props) {
             )}
 
             <SectionTitle icon="account_tree">Action plan</SectionTitle>
-            {hasActions ? (
+            {isEditingNote ? (
+              <>
+                <textarea
+                  value={noteDraft.action_plan_draft}
+                  onChange={(e) => setNoteDraft((prev) => ({ ...prev, action_plan_draft: e.target.value }))}
+                  style={{ ...textareaStyle, minHeight: 220 }}
+                />
+                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '8px 0 0' }}>
+                  Action plan draft sẽ được dùng làm nguồn chính khi bấm Rebuild Tasks.
+                </p>
+              </>
+            ) : hasActionPlanDraftEdits ? (
+              <>
+                <Card style={{ padding: 12, marginBottom: 12, background: 'color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))', color: 'var(--color-warning)', boxShadow: 'none' }}>
+                  Action plan đang hiển thị từ draft đã chỉnh. Bấm Rebuild Tasks để cập nhật structured action items ở màn Review.
+                </Card>
+                <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.6, color: 'var(--color-text-main)' }}>
+                  {displayActionPlanDraft}
+                </pre>
+              </>
+            ) : hasActions ? (
               <>
                 <ActionGroup group="high" items={groupedActions.high} startIndex={1} />
                 <ActionGroup group="medium" items={groupedActions.medium} startIndex={mediumStart} />
