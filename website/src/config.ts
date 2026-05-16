@@ -5,6 +5,12 @@ export type DownloadMetadata = {
   version: string
   size: string
   platform: string
+  publishedAt?: string
+}
+
+export type SiteMedia = {
+  heroImageUrl: string
+  demoEmbedUrl: string
 }
 
 export const fallbackDownloadMetadata: DownloadMetadata = {
@@ -14,6 +20,11 @@ export const fallbackDownloadMetadata: DownloadMetadata = {
   version: '0.1.0',
   size: '',
   platform: 'Windows',
+}
+
+export const siteMedia: SiteMedia = {
+  heroImageUrl: import.meta.env.VITE_HERO_IMAGE_URL || '/og-image.svg',
+  demoEmbedUrl: import.meta.env.VITE_DEMO_EMBED_URL || '',
 }
 
 export async function fetchDownloadMetadata(): Promise<DownloadMetadata> {
