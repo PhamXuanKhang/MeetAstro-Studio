@@ -19,13 +19,21 @@ if ($PackageJson.version -ne $Version) {
     throw "Tag version $Version does not match electron-app/package.json version $($PackageJson.version)."
 }
 
+$GhToken = $env:RELEASE_REPO_TOKEN
+if (-not $GhToken) {
+    throw "Set RELEASE_REPO_TOKEN before running this script."
+}
+
 $ElectronDir = Resolve-Path (Join-Path $PSScriptRoot "..\electron-app")
 $InstallerPath = Join-Path $ElectronDir "release\MeetAstro-Setup-$Version.exe"
 
 Push-Location $ElectronDir
 try {
     npm ci
-    npm run build -- --win --publish never
+    npm run typecheck
+    npm run build:renderer
+    npm run build:main
+    npx electron-builder --win --publish never
 }
 finally {
     Pop-Location
@@ -35,23 +43,43 @@ if (-not (Test-Path $InstallerPath)) {
     throw "Installer not found at $InstallerPath."
 }
 
-$GhToken = $env:RELEASE_REPO_TOKEN
-if (-not $GhToken) {
-    throw "Set RELEASE_REPO_TOKEN before running this script."
+$Headers = @{
+    Authorization = "Bearer $GhToken"
+    Accept = "application/vnd.github+json"
+    "X-GitHub-Api-Version" = "2022-11-28"
 }
 
-$env:GH_TOKEN = $GhToken
+$ApiBase = "https://api.github.com/repos/$ReleaseRepo"
+$Release = $null
 
 try {
-    gh release view $Tag --repo $ReleaseRepo *> $null
-    if ($LASTEXITCODE -ne 0) {
-        gh release create $Tag --repo $ReleaseRepo --title "MeetAstro $Tag" --generate-notes
+    $Release = Invoke-RestMethod -Method Get -Uri "$ApiBase/releases/tags/$Tag" -Headers $Headers
+}
+catch {
+    $StatusCode = $_.Exception.Response.StatusCode.value__
+    if ($StatusCode -ne 404) {
+        throw
     }
+}
 
-    gh release upload $Tag $InstallerPath --repo $ReleaseRepo --clobber
+if (-not $Release) {
+    $CreateBody = @{
+        tag_name = $Tag
+        name = "MeetAstro $Tag"
+        generate_release_notes = $true
+    } | ConvertTo-Json
+    $Release = Invoke-RestMethod -Method Post -Uri "$ApiBase/releases" -Headers $Headers -Body $CreateBody -ContentType "application/json"
 }
-finally {
-    Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+
+$AssetName = Split-Path $InstallerPath -Leaf
+foreach ($Asset in $Release.assets) {
+    if ($Asset.name -eq $AssetName) {
+        Invoke-RestMethod -Method Delete -Uri "$ApiBase/releases/assets/$($Asset.id)" -Headers $Headers | Out-Null
+        break
+    }
 }
+
+$UploadUrl = "https://uploads.github.com/repos/$ReleaseRepo/releases/$($Release.id)/assets?name=$AssetName"
+Invoke-RestMethod -Method Post -Uri $UploadUrl -Headers $Headers -InFile $InstallerPath -ContentType "application/octet-stream" | Out-Null
 
 Write-Host "Released $InstallerPath to $ReleaseRepo@$Tag"
