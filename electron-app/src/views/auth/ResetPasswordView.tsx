@@ -18,10 +18,6 @@ export default function ResetPasswordView({ onDone }: Props) {
     async (e: React.FormEvent) => {
       e.preventDefault()
       setError(null)
-      if (password.length < 8) {
-        setError('Mật khẩu phải có ít nhất 8 ký tự.')
-        return
-      }
       if (password !== confirm) {
         setError('Mật khẩu xác nhận không khớp.')
         return
@@ -51,7 +47,7 @@ export default function ResetPasswordView({ onDone }: Props) {
       {success && <div style={{ ...alertSuccess, marginBottom: 16 }}>Đã cập nhật mật khẩu.</div>}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Field label="Mật khẩu mới" hint="Ít nhất 8 ký tự" required>
+        <Field label="Mật khẩu mới" required>
           <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
         </Field>
         <Field label="Xác nhận mật khẩu mới" required>

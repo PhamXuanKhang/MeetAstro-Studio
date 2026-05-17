@@ -29,10 +29,6 @@ export default function RegisterView({ onGoLogin }: Props) {
         setError('Email không hợp lệ.')
         return
       }
-      if (password.length < 8) {
-        setError('Mật khẩu phải có ít nhất 8 ký tự.')
-        return
-      }
       if (password !== confirm) {
         setError('Mật khẩu xác nhận không khớp.')
         return
@@ -96,7 +92,7 @@ export default function RegisterView({ onGoLogin }: Props) {
         <Field label="Email" required>
           <Input type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
         </Field>
-        <Field label="Mật khẩu" hint="Ít nhất 8 ký tự" required>
+        <Field label="Mật khẩu" required>
           <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
         </Field>
         <Field label="Xác nhận mật khẩu" required>
