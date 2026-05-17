@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useMemo, memo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
 import {
   useActionItemsList,
@@ -7,12 +8,14 @@ import {
   useRejectActionItem,
   useBulkApproveActionItems,
   useAddManualActionItem,
+  useApplyWorkStatusUpdate,
 } from '../hooks/supabase/useActionItems'
 import { pushToJira } from '../api/jira'
+import { getAnalysisResult } from '../api/supabase/analysis.api'
 import { useProviderConfigStatus } from '../hooks/useProviderSettings'
 import { subscribeActionItemSyncStatus, unsubscribeChannel } from '../api/supabase/realtime'
 import ConfidenceBadge from '../components/ConfidenceBadge'
-import type { ActionItem, ActionItemPriority, ActionItemType } from '../types/supabase-models'
+import type { ActionItem, ActionItemPriority, ActionItemType, StatusUpdateProposal, WorkStatus } from '../types/supabase-models'
 import { buildActionItemTree, ActionItemTreeNode } from '../hooks/supabase/actionItemTree'
 import { Badge, Button, Card, EmptyState, Field, Icon, Input, Modal, Select, Toast as UiToast } from '../components/ui'
 
@@ -46,6 +49,45 @@ function SyncBadge({ status, error: syncError }: { status: string; error?: strin
       {s.label}
     </Badge>
   )
+}
+
+const WORK_STATUS_LABELS: Record<WorkStatus, string> = {
+  todo: 'Todo',
+  in_progress: 'In Progress',
+  blocked: 'Blocked',
+  done: 'Done',
+  cancelled: 'Cancelled',
+}
+
+function isWorkStatus(value: unknown): value is WorkStatus {
+  return typeof value === 'string' && value in WORK_STATUS_LABELS
+}
+
+function parseStatusUpdates(rawResponse: Record<string, unknown> | undefined): StatusUpdateProposal[] {
+  const rawUpdates = rawResponse?.status_updates
+  if (!Array.isArray(rawUpdates)) return []
+
+  return rawUpdates.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const row = item as Record<string, unknown>
+    const matchedId = row.matched_action_item_id
+    const oldStatus = row.old_status
+    const newStatus = row.new_status
+
+    if (typeof matchedId !== 'string' || !isWorkStatus(oldStatus) || !isWorkStatus(newStatus)) {
+      return []
+    }
+
+    return [{
+      matched_action_item_id: matchedId,
+      matched_title: typeof row.matched_title === 'string' ? row.matched_title : 'Existing task',
+      old_status: oldStatus,
+      new_status: newStatus,
+      evidence: typeof row.evidence === 'string' ? row.evidence : '',
+      reason: typeof row.reason === 'string' ? row.reason : '',
+      confidence: typeof row.confidence === 'number' ? row.confidence : 0,
+    }]
+  })
 }
 
 interface CardProps {
@@ -363,6 +405,82 @@ function AddManualItemModal({
   )
 }
 
+function SuggestedStatusUpdates({
+  updates,
+  isApplying,
+  onApprove,
+  onReject,
+}: {
+  updates: StatusUpdateProposal[]
+  isApplying: boolean
+  onApprove: (update: StatusUpdateProposal) => void
+  onReject: (update: StatusUpdateProposal) => void
+}) {
+  if (updates.length === 0) return null
+
+  return (
+    <Card
+      style={{
+        padding: 14,
+        marginBottom: 16,
+        background: 'color-mix(in srgb, var(--color-primary) 6%, var(--color-surface))',
+        borderColor: 'color-mix(in srgb, var(--color-primary) 28%, var(--color-border))',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <Icon name="published_with_changes" size={18} style={{ color: 'var(--color-primary)' }} />
+        <div>
+          <div style={{ fontWeight: 800, color: 'var(--color-text-main)', fontSize: 14 }}>Đề xuất cập nhật tiến độ</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>AI chỉ đề xuất. Trạng thái chỉ đổi sau khi bạn approve.</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {updates.map((update) => {
+          const key = `${update.matched_action_item_id}:${update.new_status}`
+          return (
+            <Card key={key} style={{ padding: 12, background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 260 }}>
+                  <div style={{ fontWeight: 800, color: 'var(--color-text-main)', fontSize: 13, marginBottom: 6 }}>
+                    {update.matched_title}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <Badge variant="default" size="sm">{WORK_STATUS_LABELS[update.old_status]}</Badge>
+                    <Icon name="arrow_forward" size={14} style={{ color: 'var(--color-text-muted)' }} />
+                    <Badge variant={update.new_status === 'done' ? 'success' : update.new_status === 'blocked' ? 'warning' : 'info'} size="sm">
+                      {WORK_STATUS_LABELS[update.new_status]}
+                    </Badge>
+                    <Badge variant="default" size="sm">{Math.round(update.confidence * 100)}%</Badge>
+                  </div>
+                  {update.evidence && (
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.45, marginBottom: 4 }}>
+                      <strong>Evidence:</strong> {update.evidence}
+                    </div>
+                  )}
+                  {update.reason && (
+                    <div style={{ fontSize: 11, color: 'var(--color-text-subtle)', lineHeight: 1.45 }}>
+                      {update.reason}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button size="sm" variant="success" onClick={() => onApprove(update)} disabled={isApplying}>
+                    <Icon name="check" size={14} /> Approve update
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onReject(update)} disabled={isApplying}>
+                    <Icon name="close" size={14} /> Reject
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
 function Toast({ msg, isError, onClose }: { msg: string; isError: boolean; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
   return (
@@ -376,14 +494,21 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   const { currentMeetingId } = useAppStore()
 
   const { data: items = [], isLoading, refetch } = useActionItemsList(currentMeetingId)
+  const { data: analysisData } = useQuery({
+    queryKey: ['reviewAnalysisResult', currentMeetingId],
+    queryFn: () => getAnalysisResult(currentMeetingId!),
+    enabled: !!currentMeetingId,
+  })
   const jiraStatus = useProviderConfigStatus('jira')
   const { mutate: bulkApprove, isPending: approvingAll } = useBulkApproveActionItems(currentMeetingId)
   const { mutate: addManualItem, isPending: addingManualItem } = useAddManualActionItem(currentMeetingId)
+  const { mutate: applyStatusUpdate, isPending: applyingStatusUpdate } = useApplyWorkStatusUpdate(currentMeetingId)
 
   const [toast, setToast] = useState<{ msg: string; isError: boolean } | null>(null)
   const [pushing, setPushing] = useState(false)
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [syncOverrides, setSyncOverrides] = useState<Record<string, SyncOverride>>({})
+  const [dismissedStatusUpdates, setDismissedStatusUpdates] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!currentMeetingId) return
@@ -406,6 +531,14 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   const showToast = useCallback((msg: string, isError = false) => {
     setToast({ msg, isError })
   }, [])
+
+  const statusUpdates = useMemo(() => {
+    const updates = parseStatusUpdates(analysisData?.analysis_result?.raw_response)
+    return updates.filter((update) => {
+      const key = `${update.matched_action_item_id}:${update.new_status}`
+      return !dismissedStatusUpdates.has(key)
+    })
+  }, [analysisData?.analysis_result?.raw_response, dismissedStatusUpdates])
 
   const effectiveItems = useMemo(
     () => items.map((item) => ({ ...item, ...syncOverrides[item.id] })),
@@ -475,6 +608,33 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
       }
     )
   }, [addManualItem, currentMeetingId, showToast])
+
+  const dismissStatusUpdate = useCallback((update: StatusUpdateProposal) => {
+    const key = `${update.matched_action_item_id}:${update.new_status}`
+    setDismissedStatusUpdates((prev) => new Set(prev).add(key))
+  }, [])
+
+  const handleApproveStatusUpdate = useCallback((update: StatusUpdateProposal) => {
+    applyStatusUpdate(
+      {
+        itemId: update.matched_action_item_id,
+        work_status: update.new_status,
+        note: update.evidence || update.reason || undefined,
+      },
+      {
+        onSuccess: () => {
+          dismissStatusUpdate(update)
+          showToast(`Đã cập nhật tiến độ: ${update.matched_title}`)
+        },
+        onError: (e) => showToast(`Lỗi cập nhật tiến độ: ${e.message}`, true),
+      }
+    )
+  }, [applyStatusUpdate, dismissStatusUpdate, showToast])
+
+  const handleRejectStatusUpdate = useCallback((update: StatusUpdateProposal) => {
+    dismissStatusUpdate(update)
+    showToast(`Đã bỏ qua đề xuất: ${update.matched_title}`)
+  }, [dismissStatusUpdate, showToast])
 
   const pushBlockReason = useMemo(() => {
     if (!jiraStatus.data?.is_configured) return 'Jira is not configured. Go to Settings > Jira to save the Base URL, email, API token, and project key.'
@@ -549,6 +709,13 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
           </div>
         </div>
       </Card>
+
+      <SuggestedStatusUpdates
+        updates={statusUpdates}
+        isApplying={applyingStatusUpdate}
+        onApprove={handleApproveStatusUpdate}
+        onReject={handleRejectStatusUpdate}
+      />
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button variant="outline" onClick={() => setShowAddItemModal(true)}><Icon name="add" size={16} /> Add Task</Button>

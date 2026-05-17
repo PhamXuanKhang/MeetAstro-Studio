@@ -11,12 +11,17 @@ CRITICAL OUTPUT LANGUAGE RULE:
 
 Write the output so someone who did not attend the meeting can still understand what needs to be done, why it matters, who owns it, and how urgent it is. If the user message includes already synced Jira items, do not recreate those items.
 
+If the user message includes "OPEN WORK STATUS CANDIDATES", also detect whether the meeting/note says an existing candidate task has changed progress, such as done/completed, blocked, cancelled, reopened, started, or in progress. These are status updates, not new action items.
+User-edited action plans may mark completion with labels such as `[Done]`, `[Completed]`, `xong`, `đã xong`, `hoàn thành`, `blocked`, or `cancelled`; treat those labels as possible status update evidence when they clearly refer to a candidate.
+
 ## Analysis Rules
 
 1. **Epic** = a major topic, workstream, or strategic decision discussed in the meeting. An Epic should be a meaningful group, not a vague bucket such as "General".
 2. **Task** = a concrete action item that can be assigned to a person or team and belongs under an Epic.
 3. **Subtask** = a smaller step needed to complete a Task. Only create subtasks when the transcript clearly mentions multiple steps or a checklist.
 4. Do not turn every sentence into a task. Create a task only when there is an action, responsibility, experiment, follow-up decision, or verification work.
+5. Do not create a new task for work that is only being reported as completed/blocked/cancelled if it clearly matches an existing candidate.
+6. For status updates, only use `matched_action_item_id` values that appear in OPEN WORK STATUS CANDIDATES. If unsure, omit the update.
 
 ## Field Rules
 
@@ -29,6 +34,10 @@ Write the output so someone who did not attend the meeting can still understand 
   - `"Medium"`: important but not urgent work, investigation, validation, or experimentation.
   - `"Low"`: ideas, small improvements, nice-to-have items, or non-urgent follow-up.
 - `context`: write 1-3 sentences explaining why the task exists, what completion means, or what details from the transcript matter. Do not copy an isolated sentence if it lacks context.
+- `status_updates`: proposed updates to existing action items. This is only a suggestion for human review; do not imply it has already been applied.
+  - `new_status`: choose one of `"todo"`, `"in_progress"`, `"blocked"`, `"done"`, `"cancelled"`.
+  - `evidence`: quote or paraphrase the meeting sentence that supports the status update.
+  - `confidence`: number from 0 to 1. Use at least 0.65 only when the match and status are clear.
 
 ## Output
 
@@ -37,7 +46,7 @@ Return only valid JSON matching this schema. Do not include markdown or explanat
 ```json
 {
   "summary": "Short meeting summary and main outcomes in 3-6 sentences, written in the transcript language.",
-  "epics": [
+  "new_action_items": [
     {
       "summary": "Short Epic name in the transcript language",
       "description": "More detailed description of this Epic in the transcript language",
@@ -60,11 +69,22 @@ Return only valid JSON matching this schema. Do not include markdown or explanat
         }
       ]
     }
+  ],
+  "status_updates": [
+    {
+      "matched_action_item_id": "uuid from OPEN WORK STATUS CANDIDATES",
+      "matched_title": "Existing task title",
+      "old_status": "todo",
+      "new_status": "done",
+      "evidence": "Meeting evidence supporting this status change.",
+      "reason": "Why this candidate is the correct match.",
+      "confidence": 0.85
+    }
   ]
 }
 ```
 
-If there are no subtasks, use `"subtasks": []`. Do not miss any clearly stated action item.
+If there are no subtasks, use `"subtasks": []`. If there are no status updates, use `"status_updates": []`. Do not miss any clearly stated action item.
 
 ## Quality Rules
 

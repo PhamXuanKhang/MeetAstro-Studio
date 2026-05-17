@@ -19,6 +19,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
+_WORK_STATUSES = {"todo", "in_progress", "blocked", "done", "cancelled"}
+
 
 def _uuid_from_str(v: Any) -> UUID:
     if isinstance(v, UUID):
@@ -52,6 +54,9 @@ class ReviewItemResponse(BaseModel):
     is_flagged: bool  # maps from action_items.is_selected (inverted)
     review_status: str
     sync_status: Optional[str] = None
+    work_status: str = "todo"
+    work_status_note: Optional[str] = None
+    work_status_updated_at: Optional[datetime] = None
     jira_issue_key: Optional[str] = None
     jira_issue_url: Optional[str] = None
     created_at: datetime
@@ -68,9 +73,11 @@ class ReviewItemResponse(BaseModel):
             return UUID(v)
         raise ValueError(f"Cannot convert {v!r} to UUID")
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_at", "updated_at", "work_status_updated_at", mode="before")
     @classmethod
-    def _dt(cls, v: Any) -> datetime:
+    def _dt(cls, v: Any) -> Optional[datetime]:
+        if v is None:
+            return None
         return _datetime_from_str(v)
 
     @field_validator("is_flagged", mode="before")
@@ -116,6 +123,9 @@ class ReviewItemResponse(BaseModel):
             is_flagged=bool(row.get("is_selected")),  # inverted: selected = flagged
             review_status=row.get("review_status", "draft"),
             sync_status=row.get("sync_status"),
+            work_status=row.get("work_status") or "todo",
+            work_status_note=row.get("work_status_note"),
+            work_status_updated_at=row.get("work_status_updated_at"),
             jira_issue_key=row.get("jira_issue_key"),
             jira_issue_url=row.get("jira_issue_url"),
             created_at=_datetime_from_str(row.get("created_at")),
@@ -148,6 +158,19 @@ class ReviewItemCreate(BaseModel):
     review_status: str = "approved"
     is_selected: bool = True
     sync_status: str = "pending"
+
+
+class WorkStatusPatch(BaseModel):
+    work_status: str
+    note: Optional[str] = None
+
+    @field_validator("work_status", mode="before")
+    @classmethod
+    def _work_status(cls, v: Any) -> str:
+        status = str(v).strip().lower().replace(" ", "_").replace("-", "_")
+        if status not in _WORK_STATUSES:
+            raise ValueError(f"Unsupported work_status: {v!r}")
+        return status
 
 
 class ReviewSummaryResponse(BaseModel):

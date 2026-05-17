@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Priority(str, Enum):
@@ -30,6 +30,16 @@ class ReviewStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     EDITED = "edited"
+
+
+class WorkStatus(str, Enum):
+    """Actual progress state of an action item."""
+
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    BLOCKED = "blocked"
+    DONE = "done"
+    CANCELLED = "cancelled"
 
 
 class MeetingStatus(str, Enum):
@@ -107,6 +117,25 @@ class Epic(_BaseSchemaModel):
     tasks: list[Task] = Field(default_factory=list)
 
 
+class StatusUpdate(_BaseSchemaModel):
+    """AI-proposed work status update, pending human approval."""
+
+    matched_action_item_id: Optional[str] = None
+    matched_title: str = ""
+    old_status: Optional[WorkStatus] = None
+    new_status: WorkStatus
+    evidence: str = ""
+    reason: str = ""
+    confidence: float = 0.0
+
+    @field_validator("old_status", "new_status", mode="before")
+    @classmethod
+    def _coerce_work_status(cls, v):
+        if v is None or isinstance(v, WorkStatus):
+            return v
+        return str(v).strip().lower().replace(" ", "_").replace("-", "_")
+
+
 class MeetingAnalysis(_BaseSchemaModel):
     """Kết quả phân tích một cuộc họp."""
 
@@ -115,7 +144,15 @@ class MeetingAnalysis(_BaseSchemaModel):
     key_decisions: list[str] = Field(default_factory=list)
     discussion_points: list[str] = Field(default_factory=list)
     parking_lot: list[str] = Field(default_factory=list)
+    status_updates: list[StatusUpdate] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_analysis_payload(cls, data):
+        if isinstance(data, dict) and "new_action_items" in data and "epics" not in data:
+            data = {**data, "epics": data.get("new_action_items") or []}
+        return data
 
 
 class MeetingRecord(_BaseSchemaModel):
@@ -153,6 +190,9 @@ class ReviewItem(_BaseSchemaModel):
     is_flagged: bool = False
     review_status: ReviewStatus = ReviewStatus.DRAFT
     sync_status: str = "pending"
+    work_status: WorkStatus = WorkStatus.TODO
+    work_status_note: Optional[str] = None
+    work_status_updated_at: Optional[datetime] = None
     jira_issue_key: Optional[str] = None
     jira_issue_url: Optional[str] = None
 

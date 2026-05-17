@@ -13,11 +13,13 @@ import {
   rejectActionItem,
   bulkApproveActionItems,
   addManualActionItem,
+  applyWorkStatusUpdate,
 } from '../../api/supabase/actionItem.api'
 import type {
   ActionItem,
   AddManualActionItemPayload,
   EditActionItemPayload,
+  WorkStatus,
 } from '../../types/supabase-models'
 
 // ─── Query Keys ─────────────────────────────────────────
@@ -132,6 +134,26 @@ export function useAddManualActionItem(meetingId: string | null) {
       if (meetingId) {
         queryClient.invalidateQueries({ queryKey: actionItemKeys.list(meetingId) })
       }
+    },
+  })
+}
+
+// ─── useApplyWorkStatusUpdate ───────────────────────────
+
+/**
+ * Mutation duyệt một đề xuất cập nhật tiến độ cho task cũ.
+ */
+export function useApplyWorkStatusUpdate(meetingId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (payload: { itemId: string; work_status: WorkStatus; note?: string }) =>
+      applyWorkStatusUpdate(meetingId!, payload.itemId, {
+        work_status: payload.work_status,
+        note: payload.note,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: actionItemKeys.all })
     },
   })
 }

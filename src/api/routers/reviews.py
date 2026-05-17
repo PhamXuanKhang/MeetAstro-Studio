@@ -20,6 +20,7 @@ from src.api.schemas.review_schemas import (
     ReviewItemPatch,
     ReviewItemResponse,
     ReviewSummaryResponse,
+    WorkStatusPatch,
 )
 from src.db.crud.meeting_crud import get_meeting
 from src.db.crud.review_crud import (
@@ -30,6 +31,7 @@ from src.db.crud.review_crud import (
     list_review_items,
     set_review_status,
     update_review_item,
+    update_review_item_work_status,
 )
 from supabase import Client
 
@@ -138,6 +140,23 @@ async def reject_item(
     return ReviewItemResponse.from_action_item(updated)
 
 
+@router.patch("/{meeting_id}/review/{item_id}/work-status", response_model=ReviewItemResponse)
+async def patch_work_status(
+    meeting_id: uuid.UUID,
+    item_id: uuid.UUID,
+    payload: WorkStatusPatch,
+    supabase: Annotated[Client, Depends(get_supabase)],
+) -> ReviewItemResponse:
+    """Apply a work_status update after explicit human approval."""
+    _get_item_for_work_status_update(item_id, meeting_id)
+    updated = update_review_item_work_status(
+        str(item_id),
+        work_status=payload.work_status,
+        note=payload.note,
+    )
+    return ReviewItemResponse.from_action_item(updated)
+
+
 @router.post("/{meeting_id}/review/approve_all")
 async def approve_all_endpoint(
     meeting_id: uuid.UUID,
@@ -160,5 +179,21 @@ def _get_item_or_404(item_id: uuid.UUID, meeting_id: uuid.UUID):
     """Helper to get review item or raise 404."""
     item = get_review_item(str(item_id))
     if not item or item.get("meeting_id") != str(meeting_id):
+        raise HTTPException(status_code=404, detail="Review item not found.")
+    return item
+
+
+def _get_item_for_work_status_update(item_id: uuid.UUID, current_meeting_id: uuid.UUID):
+    """Allow status updates for candidate items owned by the current meeting owner."""
+    current_meeting = get_meeting(str(current_meeting_id))
+    if not current_meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found.")
+
+    item = get_review_item(str(item_id))
+    if not item:
+        raise HTTPException(status_code=404, detail="Review item not found.")
+
+    item_meeting = get_meeting(str(item.get("meeting_id")))
+    if not item_meeting or item_meeting.get("user_id") != current_meeting.get("user_id"):
         raise HTTPException(status_code=404, detail="Review item not found.")
     return item

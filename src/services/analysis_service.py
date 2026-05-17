@@ -11,6 +11,7 @@ from src.providers.mock_analyzer import MockAnalyzer
 from src.providers.openai_analyzer import OpenAIAnalyzer
 from src.schema import Epic, MeetingAnalysis, Priority, Subtask, Task
 from src.services.extraction_service import rule_based_extraction
+from src.services.status_update_service import format_status_candidates_for_prompt
 from src.services.summarization_service import generate_summary
 from src.services.validation_service import validate_action_items
 
@@ -31,10 +32,38 @@ def _get_priority_str(priority: Priority) -> str:
     return str(priority).lower()
 
 
-def _extract_via_openai(transcript: str) -> list[dict[str, Any]]:
-    """Call OpenAIAnalyzer synchronously, return list of task dicts from all epics."""
+def _build_analysis_source(
+    source_text: str,
+    status_candidates: list[dict[str, Any]] | None,
+) -> str:
+    if not status_candidates:
+        return source_text
+
+    return (
+        "SOURCE MEETING CONTENT:\n"
+        f"{source_text}\n\n"
+        "OPEN WORK STATUS CANDIDATES:\n"
+        "The following existing task/subtask rows may be mentioned as completed, blocked, "
+        "cancelled, or in progress. If the meeting clearly updates one of them, return it "
+        "under status_updates using only one of these candidate ids. Do not recreate that "
+        "same item as a new action item.\n"
+        f"{format_status_candidates_for_prompt(status_candidates)}"
+    )
+
+
+def _extract_via_openai(
+    transcript: str,
+    status_candidates: list[dict[str, Any]] | None = None,
+) -> MeetingAnalysis:
+    """Call OpenAIAnalyzer synchronously."""
     analyzer = OpenAIAnalyzer()
-    analysis = analyzer.analyze(transcript)
+    return analyzer.analyze(
+        _build_analysis_source(transcript, status_candidates),
+        language_source_text=transcript,
+    )
+
+
+def _analysis_to_items(analysis: MeetingAnalysis) -> list[dict[str, Any]]:
     items = []
     for epic in analysis.epics:
         for task in epic.tasks:
@@ -81,6 +110,7 @@ def analyze_note_actions(
     meeting_note: str,
     *,
     synced_items: list[dict[str, Any]] | None = None,
+    status_candidates: list[dict[str, Any]] | None = None,
 ) -> MeetingAnalysis:
     """Extract action items from an edited meeting note without rewriting the note."""
     if not meeting_note.strip():
@@ -94,7 +124,7 @@ def analyze_note_actions(
     synced_context = _format_synced_items(synced_items or [])
     prompt = (
         "SOURCE TYPE: Curated meeting note.\n\n"
-        "Task: Extract only the action-item hierarchy from this meeting note. "
+        "Task: Extract the action-item hierarchy and any status update proposals from this meeting note. "
         "Do not rewrite or summarize the meeting note itself. "
         "Do not recreate action items that are already synced to Jira.\n"
         "Priority order for source material: "
@@ -105,7 +135,9 @@ def analyze_note_actions(
         "Already synced Jira items to skip:\n"
         f"{synced_context}\n\n"
         "Meeting note:\n"
-        f"{meeting_note}"
+        f"{meeting_note}\n\n"
+        "Open work status candidates:\n"
+        f"{format_status_candidates_for_prompt(status_candidates or [])}"
     )
     return OpenAIAnalyzer().analyze(prompt, language_source_text=meeting_note)
 
@@ -160,7 +192,11 @@ def _build_analysis(
     )
 
 
-async def analyze_async(transcript: str) -> MeetingAnalysis:
+async def analyze_async(
+    transcript: str,
+    *,
+    status_candidates: list[dict[str, Any]] | None = None,
+) -> MeetingAnalysis:
     """
     Async core: run summary + AI extraction in parallel, validate, build result.
 
@@ -178,9 +214,15 @@ async def analyze_async(transcript: str) -> MeetingAnalysis:
     loop = asyncio.get_event_loop()
 
     summary_coro = generate_summary(transcript)
-    ai_extract_future = loop.run_in_executor(None, _extract_via_openai, transcript)
+    ai_extract_future = loop.run_in_executor(
+        None,
+        _extract_via_openai,
+        transcript,
+        status_candidates,
+    )
 
-    summary_result, ai_items = await asyncio.gather(summary_coro, ai_extract_future)
+    summary_result, ai_analysis = await asyncio.gather(summary_coro, ai_extract_future)
+    ai_items = _analysis_to_items(ai_analysis)
 
     rule_items = rule_based_extraction(transcript)
     validated, metrics = validate_action_items(ai_items, rule_items, transcript)
@@ -194,6 +236,7 @@ async def analyze_async(transcript: str) -> MeetingAnalysis:
     )
 
     analysis = _build_analysis(validated, summary_result)
+    analysis.status_updates = ai_analysis.status_updates
     logger.info(
         "Analysis complete: %d epics, %d tasks.",
         len(analysis.epics),
@@ -202,7 +245,11 @@ async def analyze_async(transcript: str) -> MeetingAnalysis:
     return analysis
 
 
-def analyze(transcript: str) -> MeetingAnalysis:
+def analyze(
+    transcript: str,
+    *,
+    status_candidates: list[dict[str, Any]] | None = None,
+) -> MeetingAnalysis:
     """
     Sync wrapper for UI / scripts that run outside an event loop.
 
@@ -217,4 +264,4 @@ def analyze(transcript: str) -> MeetingAnalysis:
         logger.warning("OPENAI_API_KEY empty - using MockAnalyzer.")
         return MockAnalyzer().analyze(transcript)
 
-    return asyncio.run(analyze_async(transcript))
+    return asyncio.run(analyze_async(transcript, status_candidates=status_candidates))
