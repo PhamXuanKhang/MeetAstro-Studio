@@ -19,10 +19,19 @@ if ($PackageJson.version -ne $Version) {
     throw "Tag version $Version does not match electron-app/package.json version $($PackageJson.version)."
 }
 
-$GhToken = $env:RELEASE_REPO_TOKEN
-if (-not $GhToken) {
-    throw "Set RELEASE_REPO_TOKEN before running this script."
+$RequiredEnv = @(
+    "RELEASE_REPO_TOKEN",
+    "VITE_API_BASE_URL",
+    "VITE_SUPABASE_URL",
+    "VITE_SUPABASE_ANON_KEY"
+)
+foreach ($Name in $RequiredEnv) {
+    if (-not [Environment]::GetEnvironmentVariable($Name)) {
+        throw "Set $Name before running this script."
+    }
 }
+
+$GhToken = $env:RELEASE_REPO_TOKEN
 
 $ElectronDir = Resolve-Path (Join-Path $PSScriptRoot "..\electron-app")
 $InstallerPath = Join-Path $ElectronDir "release\MeetAstro-Setup-$Version.exe"
@@ -30,10 +39,15 @@ $InstallerPath = Join-Path $ElectronDir "release\MeetAstro-Setup-$Version.exe"
 Push-Location $ElectronDir
 try {
     npm ci
+    npm run build:sidecar
+    $SidecarPath = Join-Path $ElectronDir "python-dist\recorder_server\recorder_server.exe"
+    if (-not (Test-Path $SidecarPath)) {
+        throw "Recorder sidecar not found at $SidecarPath."
+    }
     npm run typecheck
     npm run build:renderer
     npm run build:main
-    npx electron-builder --win --publish never
+    npx electron-builder --win --x64 --publish never
 }
 finally {
     Pop-Location

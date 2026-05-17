@@ -40,9 +40,9 @@ def finalize_stream_recording(
         update_meeting_status(meeting_id, status="processing")
 
         if not audio_path:
-            message = "Live recording has no usable WLK transcript and no fallback audio_path."
-            update_meeting_status(meeting_id, status="failed", error_message=message)
-            return {"status": "failed", "source": "none", "segment_count": 0, "error": message}
+            message = "WhisperLiveKit returned no transcript for this live recording."
+            update_meeting_status(meeting_id, status="transcribed", error_message="")
+            return {"status": "transcribed", "source": "empty", "segment_count": 0, "warning": message}
 
         if not get_settings().openai_api_key:
             message = "OPENAI_API_KEY is not configured for live recording fallback."

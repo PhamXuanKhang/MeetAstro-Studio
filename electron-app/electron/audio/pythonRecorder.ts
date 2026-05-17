@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, app } from 'electron'
+import fs from 'fs'
 import path from 'path'
 
 interface RecorderResponse {
@@ -22,10 +23,10 @@ export class PythonRecorder {
   }
 
   private spawnProcess() {
-    const scriptPath = this.resolveScriptPath()
+    const command = this.resolveCommand()
 
     try {
-      this.process = spawn('python', [scriptPath], {
+      this.process = spawn(command.executable, command.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
       })
 
@@ -67,21 +68,27 @@ export class PythonRecorder {
       })
     } catch (err) {
       console.error('[PythonRecorder] Failed to spawn Python process:', err)
+      this.process = null
     }
   }
 
-  private resolveScriptPath(): string {
-    const fs = require('fs')
+  private resolveCommand(): { executable: string; args: string[] } {
+    if (app.isPackaged) {
+      const executable = path.join(process.resourcesPath, 'python', 'recorder_server', 'recorder_server.exe')
+      if (!fs.existsSync(executable)) {
+        throw new Error(`Bundled recorder sidecar not found at ${executable}`)
+      }
+      return { executable, args: [] }
+    }
 
-    // In packaged app, extraResources lands next to app.asar.
-    const packaged = path.join(process.resourcesPath, 'python', 'recorder_server.py')
-    if (fs.existsSync(packaged)) return packaged
+    const scriptPath = this.resolveDevScriptPath()
+    return { executable: 'python', args: [scriptPath] }
+  }
 
-    // Dev build output lives at electron-app/dist-electron.
+  private resolveDevScriptPath(): string {
     const devFromDist = path.join(__dirname, '../python/recorder_server.py')
     if (fs.existsSync(devFromDist)) return devFromDist
 
-    // Fallback for direct ts-node-style execution from electron/audio.
     return path.join(__dirname, '../../python/recorder_server.py')
   }
 

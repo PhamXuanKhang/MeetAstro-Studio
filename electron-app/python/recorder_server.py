@@ -295,7 +295,7 @@ class StreamClient:
         print(f"[recorder_server] stream stop sending ws control drained={drained}", file=sys.stderr, flush=True)
         if self._ws is None:
             raise RuntimeError("WebSocket is not connected for stop.")
-        self._ws.send(json.dumps({"type": "stop", "audio_path": audio_path}))
+        self._ws.send(json.dumps({"type": "stop"}))
         if not self._stop_event.wait(timeout=90):
             raise RuntimeError("Timed out waiting for WebSocket stop response.")
         if self._stop_result is None:
