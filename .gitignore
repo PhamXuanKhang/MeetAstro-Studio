@@ -67,6 +67,19 @@ test_e2e.sh
 test_wlk_diarize.py
 test_jira_push.sh
 tests/test_wer.py
+docs/metrics.md
+docs/test_result.md
+.gitignore
+test_result_ES2002a.json
+.gitignore
+test_result_test_audio.json
+.gitignore
+test_result_vid_10_2.json
+test_result_vid_10.json
+demo-script.md
+mo_slide.txt
+.gitignore
+pitch-deck.md
 tests/test_wer_jiwer.py
 Supabase Snippet List Public Table Columns.csv
 tongket.md
