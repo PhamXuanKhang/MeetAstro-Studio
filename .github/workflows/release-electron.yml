@@ -1,4 +1,4 @@
-name: Release Electron Windows EXE
+name: Validate Electron Release Tag
 
 on:
   push:
@@ -7,18 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish, e.g. v0.1.0'
+        description: 'Release tag to validate, e.g. v0.1.0'
         required: true
         type: string
 
 jobs:
-  release-windows:
+  validate-release-tag:
     runs-on: self-hosted
     permissions:
       contents: read
-
-    env:
-      RELEASE_REPO: PhamXuanKhang/MeetAstro-Studio
 
     steps:
       - name: Checkout source repository
@@ -42,64 +39,16 @@ jobs:
       - name: Verify package version matches tag
         shell: bash
         run: |
-          package_version=$(node -p "require('./electron-app/package.json').version")
+          package_version=$(python3 -c "import json; print(json.load(open('electron-app/package.json'))['version'])")
           expected="${{ steps.release_tag.outputs.version }}"
           if [ "$package_version" != "$expected" ]; then
             echo "Tag version $expected does not match electron-app/package.json version $package_version." >&2
             exit 1
           fi
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: electron-app/package-lock.json
-
-      - name: Install Electron dependencies
-        run: npm ci
-        working-directory: electron-app
-
-      - name: Build Electron installer
-        run: npm run build -- --win --publish never
-        working-directory: electron-app
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Resolve installer artifact
-        id: artifact
+      - name: Print local release command
         shell: bash
         run: |
-          version="${{ steps.release_tag.outputs.version }}"
-          installer="electron-app/release/MeetAstro-Setup-$version.exe"
-          if [ ! -f "$installer" ]; then
-            echo "Installer not found at $installer." >&2
-            exit 1
-          fi
-          size_bytes=$(wc -c < "$installer" | tr -d ' ')
-          echo "path=$installer" >> "$GITHUB_OUTPUT"
-          echo "name=MeetAstro-Setup-$version.exe" >> "$GITHUB_OUTPUT"
-          echo "size_bytes=$size_bytes" >> "$GITHUB_OUTPUT"
-
-      - name: Create or update release in public repository
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-        run: |
-          tag="${{ steps.release_tag.outputs.tag }}"
-          repo="$RELEASE_REPO"
-          if ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            gh release create "$tag" \
-              --repo "$repo" \
-              --title "MeetAstro $tag" \
-              --generate-notes
-          fi
-
-      - name: Upload EXE release asset
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-        run: |
-          gh release upload "${{ steps.release_tag.outputs.tag }}" "${{ steps.artifact.outputs.path }}" \
-            --repo "$RELEASE_REPO" \
-            --clobber
+          echo "Tag is valid. Build and upload the EXE from a Windows dev machine with:"
+          echo "  \$env:RELEASE_REPO_TOKEN='<token-with-contents-write>'"
+          echo "  .\\scripts\\release_electron.ps1 -Tag ${{ steps.release_tag.outputs.tag }}"
