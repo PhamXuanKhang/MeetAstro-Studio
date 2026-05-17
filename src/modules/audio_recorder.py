@@ -6,6 +6,7 @@ writes the result to a single WAV file. Designed to be started / stopped
 programmatically from the desktop UI.
 """
 import datetime as dt
+import math
 import os
 import queue
 import threading
@@ -18,6 +19,15 @@ import numpy as np
 from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
+
+
+def _pcm_stats(samples: np.ndarray) -> tuple[int, int]:
+    if samples.size == 0:
+        return 0, 0
+    values = samples.astype(np.int32)
+    peak = int(np.max(np.abs(values)))
+    rms = int(math.sqrt(float(np.mean(values.astype(np.float64) ** 2))))
+    return rms, peak
 
 
 class AudioRecorder:
@@ -59,6 +69,9 @@ class AudioRecorder:
         self._output_path: Optional[str] = None
         self._start_time: Optional[float] = None
         self._error: Optional[str] = None
+        self._mic_error: Optional[str] = None
+        self._mic_started = threading.Event()
+        self._mic_failed = threading.Event()
         self._total_frames: int = 0
         self._lock = threading.Lock()
 
@@ -76,6 +89,16 @@ class AudioRecorder:
     def error(self) -> Optional[str]:
         """Return any error that occurred during recording."""
         return self._error
+
+    @property
+    def mic_error(self) -> Optional[str]:
+        """Return any microphone capture error."""
+        return self._mic_error
+
+    @property
+    def mic_active(self) -> bool:
+        """Return True when microphone capture started successfully."""
+        return self._mic_started.is_set() and not self._mic_failed.is_set()
 
     def start(self, output_path: Optional[str] = None) -> str:
         """
@@ -103,6 +126,9 @@ class AudioRecorder:
 
         self._stop_event.clear()
         self._error = None
+        self._mic_error = None
+        self._mic_started.clear()
+        self._mic_failed.clear()
         self._total_frames = 0
 
         self._thread = threading.Thread(target=self._record_loop, daemon=True)
@@ -187,10 +213,14 @@ class AudioRecorder:
 
             if self._mic_enabled:
                 mic_thread = self._start_mic_capture(mic_q)
+                self._mic_started.wait(timeout=2.0)
+                if self._mic_failed.is_set():
+                    raise RuntimeError(self._mic_error or "Microphone capture failed.")
 
             recorder.start_recording()
 
             mic_buffer = np.empty((0,), dtype=np.int16)
+            chunk_count = 0
 
             for chunk in recorder.stream(timeout=0.25):
                 if self._stop_event.is_set():
@@ -230,6 +260,26 @@ class AudioRecorder:
                 else:
                     pcm_chunk = chunk
                     wf.writeframes(pcm_chunk)
+
+                chunk_count += 1
+                if chunk_count == 1 or chunk_count % 50 == 0:
+                    mixed_np = np.frombuffer(pcm_chunk, dtype=np.int16)
+                    sys_rms, sys_peak = _pcm_stats(sys_np)
+                    mic_rms, mic_peak = _pcm_stats(mic_part if self._mic_enabled else np.empty((0,), dtype=np.int16))
+                    mixed_rms, mixed_peak = _pcm_stats(mixed_np)
+                    logger.info(
+                        "Audio chunk #%d sys_rms=%d sys_peak=%d mic_rms=%d mic_peak=%d "
+                        "mixed_rms=%d mixed_peak=%d mic_queue=%d mic_buffer=%d.",
+                        chunk_count,
+                        sys_rms,
+                        sys_peak,
+                        mic_rms,
+                        mic_peak,
+                        mixed_rms,
+                        mixed_peak,
+                        mic_q.qsize(),
+                        mic_buffer.size,
+                    )
 
                 if self._on_chunk is not None:
                     try:
@@ -304,9 +354,14 @@ class AudioRecorder:
                     blocksize=0,
                     device=mic_device,
                 ):
+                    self._mic_started.set()
+                    logger.info("Mic capture started.")
                     while not stop_event.is_set():
                         sd.sleep(100)
             except Exception as exc:
+                self._mic_error = str(exc)
+                self._mic_failed.set()
+                self._mic_started.set()
                 logger.error("Mic capture error: %s", exc)
 
         t = threading.Thread(target=_run, daemon=True)

@@ -26,8 +26,13 @@ export class PythonRecorder {
     const command = this.resolveCommand()
 
     try {
+      const env = {
+        ...process.env,
+        MEETASTRO_RECORDER_LOG_DIR: path.join(app.getPath('userData'), 'logs'),
+      }
       this.process = spawn(command.executable, command.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        env,
       })
 
       this.process.stdout?.on('data', (data: Buffer) => {

@@ -21,6 +21,7 @@ import os
 import time
 import queue
 import threading
+import traceback
 import urllib.parse
 import urllib.request
 
@@ -55,6 +56,20 @@ except ImportError as e:
 def send(payload: dict) -> None:
     """Gửi JSON response lên stdout (Electron đọc từ đây)."""
     print(json.dumps(payload, ensure_ascii=False), flush=True)
+
+
+def _configure_file_logging() -> None:
+    log_dir = os.environ.get("MEETASTRO_RECORDER_LOG_DIR")
+    if not log_dir:
+        return
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "recorder_server.log")
+        log_file = open(log_path, "a", encoding="utf-8", buffering=1)
+        sys.stderr = log_file
+        print(f"[recorder_server] logging to {log_path}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
 
 
 class StreamClient:
@@ -308,6 +323,7 @@ class StreamClient:
         return result
 
 def main():
+    _configure_file_logging()
     if not _HAS_RECORDER:
         send({"status": "error", "error": f"Không thể import AudioRecorder: {_IMPORT_ERROR}"})
         sys.exit(1)
@@ -371,14 +387,29 @@ def main():
                     on_chunk=stream_client.send_chunk if stream_client is not None else None,
                 )
                 output_path = recorder.start()
+                time.sleep(2.1)
+                if recorder.error:
+                    if stream_client is not None:
+                        try:
+                            stream_client.stop(output_path)
+                        except Exception:
+                            pass
+                    send({"status": "error", "error": recorder.error, "mic_error": recorder.mic_error})
+                    print(f"[recorder_server] recorder start failed: {recorder.error}", file=sys.stderr, flush=True)
+                    recorder = None
+                    stream_client = None
+                    continue
                 send({
                     "status": "recording",
                     "output_path": output_path,
                     "streaming": stream_client is not None and stream_client.active,
                     "stream_error": stream_error,
+                    "mic_active": recorder.mic_active,
+                    "mic_error": recorder.mic_error,
                 })
                 print("[recorder_server] start response sent", file=sys.stderr, flush=True)
             except Exception as e:
+                traceback.print_exc(file=sys.stderr)
                 send({"status": "error", "error": str(e)})
 
         elif action == "stop":
