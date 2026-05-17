@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/diagrams/image/System%20Architecture_done.png" alt="AI Meeting Assistant system architecture" width="820" />
+  <img src="banner.png" alt="AI Meeting Assistant - MeetAstro Studio" width="820" />
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@ Architecture: **Electron desktop app** + **FastAPI backend** + **Celery worker**
 |---|---|
 | Product / Project Name | **AI Meeting Assistant** |
 | Product Description | [Product Spec](docs/product/spec.md) |
-| Thumbnail | [System Architecture Image](docs/diagrams/image/System%20Architecture_done.png) |
+| Thumbnail | [Thumbnail Image](banner.png) |
 | Architecture Diagram | [System Architecture Diagram](docs/diagrams/image/System%20Architecture_done.png) |
 | Weekly Journal | [JOURNAL.md](JOURNAL.md) |
 | Worklog | [WORKLOG.md](WORKLOG.md) |

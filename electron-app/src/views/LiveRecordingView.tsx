@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useRecording } from '../hooks/useRecording'
 import { Button, Card, Icon } from '../components/ui'
-import type { LiveSegment } from '../types/electron'
+import type { AudioLevelEvent, LiveSegment } from '../types/electron'
 
 function cleanTranscriptText(text: string): string {
   return text.replace(/<\|\d+(?:\.\d+)?\|>/g, '').replace(/\s+/g, ' ').trim()
@@ -12,6 +12,23 @@ function fmtTime(s: number): string {
   const m = Math.floor(s / 60)
   const sec = s % 60
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+function levelPercent(rms: number): number {
+  return Math.max(0, Math.min(100, Math.round((rms / 6000) * 100)))
+}
+
+function AudioLevelBar({ label, rms, peak }: { label: string; rms: number; peak: number }) {
+  const percent = levelPercent(rms)
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 96px', gap: 8, alignItems: 'center', fontSize: 12 }}>
+      <span style={{ color: 'var(--color-text-muted)', fontWeight: 700 }}>{label}</span>
+      <div style={{ height: 8, borderRadius: 999, background: 'var(--color-surface-2)', overflow: 'hidden' }}>
+        <div style={{ width: `${percent}%`, height: '100%', borderRadius: 999, background: percent > 0 ? 'var(--color-primary)' : 'var(--color-border)' }} />
+      </div>
+      <span style={{ color: 'var(--color-text-subtle)', fontVariantNumeric: 'tabular-nums' }}>rms {rms} / pk {peak}</span>
+    </div>
+  )
 }
 
 export default function LiveRecordingView() {
@@ -31,8 +48,11 @@ export default function LiveRecordingView() {
   const [stopping, setStopping] = useState(false)
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([])
   const [streamDone, setStreamDone] = useState(false)
+  const [audioLevel, setAudioLevel] = useState<AudioLevelEvent | null>(null)
+  const [silentChunks, setSilentChunks] = useState(0)
   const startRequestedRef = useRef(false)
   const latestTranscriptLine = liveSegments.at(-1)?.text
+  const isSilent = Boolean(audioLevel && audioLevel.chunk_index >= 10 && silentChunks >= 3)
 
   useEffect(() => { if (!currentMeetingId) { setRoute('new_meeting'); return } }, [currentMeetingId, setRoute])
 
@@ -54,6 +74,14 @@ export default function LiveRecordingView() {
     })
     return () => cleanup?.()
   }, [])
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onAudioLevel?.((level) => {
+      setAudioLevel(level)
+      const silent = level.sys_peak === 0 && level.mic_peak === 0 && level.mixed_peak === 0
+      setSilentChunks((count) => (silent ? count + 1 : 0))
+    })
+    return () => cleanup?.()
+  }, [])
 
   const handleStop = useCallback(async () => {
     if (stopping) return
@@ -66,11 +94,18 @@ export default function LiveRecordingView() {
       setStreamDone(true)
       const jobId = result.streamResult?.job_id
       const persistedSegments = result.streamResult?.persisted_segments ?? 0
+      if (result.streamError) throw new Error(`WebSocket live transcript lỗi khi dừng: ${result.streamError}`)
+      if (persistedSegments === 0 || result.streamResult?.no_transcript) {
+        const detail = isSilent
+          ? 'Audio đang bị silent nên không tạo được transcript. Hãy kiểm tra microphone/system audio rồi ghi lại.'
+          : 'Backend nhận stream nhưng WhisperLiveKit chưa trả transcript hợp lệ. Hãy kiểm tra dịch vụ transcription.'
+        throw new Error(detail)
+      }
       if (!jobId && persistedSegments > 0) {
         setRoute('review_transcript')
         return
       }
-      if (!jobId) throw new Error(result.streamError || 'Không nhận được job xử lý transcript live.')
+      if (!jobId) throw new Error('Không nhận được job xử lý transcript live.')
       setCurrentJobId(jobId)
       setProcessingKind('finalizing_recording')
       setProcessingMessage('Đang hoàn tất transcript live...')
@@ -87,6 +122,7 @@ export default function LiveRecordingView() {
     setProcessingKind,
     setProcessingMessage,
     setRoute,
+    isSilent,
   ])
 
   useEffect(() => { if (miniPopupOpen && isRecording) window.electronAPI?.updatePipState?.({ isRecording, elapsedSeconds, lastTranscriptLine: latestTranscriptLine }) }, [elapsedSeconds, isRecording, latestTranscriptLine, miniPopupOpen])
@@ -111,6 +147,12 @@ export default function LiveRecordingView() {
         <h2 style={{ fontWeight: 800, fontSize: 22, color: 'var(--color-text-main)', lineHeight: 1.3, margin: '0 0 8px' }}>{isRecording ? 'Đang ghi âm' : stopping ? 'Đang xử lý...' : 'Chuẩn bị ghi âm...'}</h2>
         <div style={{ fontSize: 38, fontWeight: 800, color: 'var(--color-danger)', fontVariantNumeric: 'tabular-nums', letterSpacing: 2, marginBottom: 8 }}>{fmtTime(elapsedSeconds)}</div>
         {isRecording && <div style={{ display: 'flex', justifyContent: 'center', gap: 3, marginBottom: 8, height: 20 }}>{Array.from({ length: 12 }).map((_, i) => <div key={i} style={{ width: 4, borderRadius: 2, background: 'var(--color-danger)', height: `${20 + Math.sin(Date.now() / 200 + i) * 10}%`, animation: `wave${i % 3} ${0.8 + (i % 4) * 0.15}s ease-in-out infinite alternate` }} />)}</div>}
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
+          <AudioLevelBar label="System" rms={audioLevel?.sys_rms ?? 0} peak={audioLevel?.sys_peak ?? 0} />
+          <AudioLevelBar label="Mic" rms={audioLevel?.mic_rms ?? 0} peak={audioLevel?.mic_peak ?? 0} />
+          <AudioLevelBar label="Mixed" rms={audioLevel?.mixed_rms ?? 0} peak={audioLevel?.mixed_peak ?? 0} />
+        </div>
+        {isSilent && <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 8, background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)', color: 'var(--color-warning)', fontSize: 12, lineHeight: 1.4 }}>Không phát hiện tín hiệu audio trong nhiều chunk liên tiếp. App vẫn tiếp tục ghi và gửi WebSocket; hãy kiểm tra microphone/system audio.</div>}
       </Card>
 
       <Card style={{ padding: 20, marginBottom: 24, textAlign: 'left', minHeight: 120 }}>

@@ -3,12 +3,37 @@ import { BrowserWindow, app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
+interface AudioLevelEvent {
+  source: string
+  chunk_index: number
+  bytes: number
+  sys_rms: number
+  sys_peak: number
+  mic_rms: number
+  mic_peak: number
+  mixed_rms: number
+  mixed_peak: number
+  mic_queue: number
+  mic_buffer: number
+}
+
 interface RecorderResponse {
   status: string
   segments?: Array<{ speaker: string; start: number; end: number; text: string }>
   output_path?: string
   error?: string
   is_recording?: boolean
+  source?: string
+  chunk_index?: number
+  bytes?: number
+  sys_rms?: number
+  sys_peak?: number
+  mic_rms?: number
+  mic_peak?: number
+  mixed_rms?: number
+  mixed_peak?: number
+  mic_queue?: number
+  mic_buffer?: number
 }
 
 export class PythonRecorder {
@@ -48,6 +73,25 @@ export class PythonRecorder {
             if (msg.status === 'stream_partial') {
               BrowserWindow.getAllWindows().forEach((window) => {
                 window.webContents.send('audio:streamPartial', msg.segments ?? [])
+              })
+              continue
+            }
+            if (msg.status === 'audio_level') {
+              const level: AudioLevelEvent = {
+                source: String(msg.source ?? 'capture'),
+                chunk_index: Number(msg.chunk_index ?? 0),
+                bytes: Number(msg.bytes ?? 0),
+                sys_rms: Number(msg.sys_rms ?? 0),
+                sys_peak: Number(msg.sys_peak ?? 0),
+                mic_rms: Number(msg.mic_rms ?? 0),
+                mic_peak: Number(msg.mic_peak ?? 0),
+                mixed_rms: Number(msg.mixed_rms ?? 0),
+                mixed_peak: Number(msg.mixed_peak ?? 0),
+                mic_queue: Number(msg.mic_queue ?? 0),
+                mic_buffer: Number(msg.mic_buffer ?? 0),
+              }
+              BrowserWindow.getAllWindows().forEach((window) => {
+                window.webContents.send('audio:level', level)
               })
               continue
             }
