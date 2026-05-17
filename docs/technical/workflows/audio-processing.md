@@ -1,6 +1,6 @@
 # Audio Processing Workflow
 
-Luồng xử lý âm thanh trong hệ thống, từ audio upload/record cho tới transcript lưu trong PostgreSQL.
+Luồng xử lý âm thanh trong hệ thống, từ audio upload/record cho tới transcript lưu trong Supabase.
 
 ---
 
@@ -9,17 +9,17 @@ Luồng xử lý âm thanh trong hệ thống, từ audio upload/record cho tớ
 Audio được xử lý bất đồng bộ qua FastAPI + Celery:
 
 ```text
-Flet desktop
+Electron desktop
   -> POST /api/v1/meetings/{id}/audio
   -> Celery run_pipeline
   -> transcribe_audio
-  -> OpenAI transcription provider
-  -> Transcript row in PostgreSQL
+  -> OpenAI or WhisperLiveKit transcription provider
+  -> transcript_segments rows in Supabase
 ```
 
 ### Input
 
-- Upload file `.wav`, `.mp3`, `.m4a` từ Flet desktop app.
+- Upload file `.wav`, `.mp3`, `.m4a` từ Electron desktop app.
 - Hoặc record local bằng `recording_service.py` / `audio_recorder.py`, sau đó upload file đã ghi.
 
 ### STT providers
@@ -42,12 +42,12 @@ diarize=true
 
 ### Output
 
-Transcript được lưu vào bảng `transcripts`:
+Transcript được lưu vào bảng Supabase `transcript_segments`:
 
-- `raw_text`: transcript dùng cho analysis.
-- `diarized_text`: transcript có speaker labels nếu có.
-- `language`: mã ngôn ngữ.
-- `char_count`: số ký tự transcript.
+- `text`: transcript segment dùng cho analysis.
+- `speaker`: speaker label nếu có.
+- `start_time` / `end_time`: timestamp segment nếu provider trả về.
+- `confidence`: confidence score nếu provider trả về.
 
 ---
 

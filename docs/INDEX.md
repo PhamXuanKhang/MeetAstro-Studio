@@ -22,10 +22,10 @@ docs/
 │   ├── architecture.md         <- System architecture + module map
 │   ├── data-flow.md            <- End-to-end data flow
 │   ├── api-reference.md        <- REST endpoints + data models
-│   ├── database-schema.md      <- PostgreSQL schema + migrations
+│   ├── database-schema.md      <- Supabase table schema reference
 │   ├── supabase-schema.md      <- Supabase Auth ownership + RLS
 │   ├── celery-tasks.md         <- Celery background tasks
-│   ├── frontend.md             <- Flet desktop app docs
+│   ├── frontend.md             <- Electron desktop app docs
 │   ├── security.md             <- Security considerations
 │   ├── deployment.md           <- Setup, installation, deployment
 │   └── workflows/              <- Detailed workflow documentation
@@ -64,7 +64,7 @@ docs/
 - [System Architecture](technical/architecture.md) — High-level overview
 - [Data Flow](technical/data-flow.md) — Pipeline diagram
 - [Backend Contract v1](technical/backend-contract-v1.md) — Supabase migration contract
-- [Database Schema](technical/database-schema.md) — PostgreSQL tables
+- [Database Schema](technical/database-schema.md) — Supabase table schema
 - [Supabase Schema](technical/supabase-schema.md) — Auth ownership + RLS
 - [API Reference](technical/api-reference.md) — REST endpoints
 - [Celery Tasks](technical/celery-tasks.md) — Background task processing
@@ -112,12 +112,12 @@ docs/
 | `product/roadmap.md` | Project phases, milestones, dependency graph |
 | `technical/architecture.md` | System architecture, layer diagram, module map |
 | `technical/api-reference.md` | REST API endpoints, Pydantic models, provider interfaces |
-| `technical/database-schema.md` | PostgreSQL schema, table definitions, CRUD operations |
+| `technical/database-schema.md` | Supabase table schema reference and CRUD-facing data contracts |
 | `technical/supabase-schema.md` | Supabase Auth ownership, RLS policies, Jira config metadata |
 | `technical/celery-tasks.md` | Celery background tasks, retry logic, monitoring |
 | `technical/data-flow.md` | End-to-end data pipeline, transformations, state management |
 | `technical/backend-contract-v1.md` | Supabase migration data/API contract for UI, backend, AI pipeline, and Jira sync |
-| `technical/frontend.md` | Flet desktop app structure, views, state management |
+| `technical/frontend.md` | Electron desktop app structure, views, state management |
 | `technical/security.md` | Security measures, credential vault, threat mitigations |
 | `technical/deployment.md` | Installation, Docker setup, production deployment |
 | `technical/workflows/audio-processing.md` | Audio capture, Whisper API, diarization |

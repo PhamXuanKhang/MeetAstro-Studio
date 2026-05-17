@@ -1,5 +1,6 @@
 # Environment
 .env
+.env.*
 
 # Python
 __pycache__/
@@ -12,53 +13,62 @@ build/
 .pytest_cache/
 .mypy_cache/
 
+# Node / frontend dependencies
+node_modules/
+electron-app/node_modules/
+website/node_modules/
+
+# Build and release outputs
+dist/
+electron-app/dist/
+electron-app/dist-electron/
+electron-app/release/
+electron-app/out/
+website/dist/
+downloads/
+*.blockmap
+*.exe
+*.msi
+
+# Local app data and generated outputs
+data/
+debug/
+.ai-log/*.jsonl
+electron-app/.ai-log/
+*.log
+result_*.json
+
 # OS
 .DS_Store
+Thumbs.db
 
-# Frontend dependencies/build output
-node_modules/
-dist/
-
-# AI logs — tracked structure, ignored content
-.ai-log/*.jsonl
-capture_system_audio_to_wav.py
-uv.lock
-data/meetings.db
-data/meetings.db
-data/
-MeetAstro_API_Spec_Phase1.1.md
-docs/thuc_tasks.md
-electron-app/.ai-log/
-debug/
-test_e2e.sh
-test_wlk_diarize.py
-docs/host_whisper.md
-Supabase Snippet List Public Table Columns.csv
-tongket.md
-electron-app/scripts/mock-data.sql
+# Local Claude artifacts
+.claude/worktrees/
 .claude/agents/
 .claude/specs/
-electron-app/scripts/mock-data.sql
-Supabase Snippet List Public Table Columns.csv
-electron-app/scripts/mock-data.sql
-test_jira_push.sh
-result_3bda1f8b-0c03-4ed3-9166-0f93a7d0377c.json
-result_8f8acc13-5e73-46da-9187-e90c8fd2f1ba.json
-stream-flow-analysis.md
-result_06685f3a-a239-4826-b99b-d67e0306a95f.json
-result_e9cb6c61-8e0d-4c94-99aa-62a45da9a152.json
+
+# Local scratch files
+capture_system_audio_to_wav.py
+MeetAstro_API_Spec_Phase1.1.md
+docs/thuc_tasks.md
+docs/host_whisper.md
 docs/evaluation/data-creation.md
 scripts/export_transcript.py
 scripts/generate_eval_samples.py
 scripts/merge_ami_segments.py
 scripts/merge_ami_words.py
-.gitignore
 scripts/parse_ami_segments.py
 scripts/parse_ami_words_xml.py
 scripts/run_parse.sh
-.gitignore
 scripts/run_segments.sh
 scripts/strip_speakers.py
-tests/test_wer_jiwer.py
-.gitignore
+electron-app/scripts/mock-data.sql
+test_e2e.sh
+test_wlk_diarize.py
+test_jira_push.sh
 tests/test_wer.py
+tests/test_wer_jiwer.py
+Supabase Snippet List Public Table Columns.csv
+tongket.md
+stream-flow-analysis.md
+uv.lock

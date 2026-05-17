@@ -130,7 +130,7 @@ def build_download_metadata() -> dict:
     if not available:
         try:
             available = get_download_file_path().is_file()
-            url = "/download/windows" if available else ""
+            url = "/downloads/windows" if available else ""
         except HTTPException:
             available = False
             url = ""

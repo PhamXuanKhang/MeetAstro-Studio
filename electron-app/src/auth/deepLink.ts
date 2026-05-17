@@ -18,11 +18,9 @@ function readParams(url: URL): URLSearchParams {
 }
 
 export function parseAuthDeepLink(rawUrl: string): DeepLinkResult {
-  console.log('[auth] parseAuthDeepLink input:', rawUrl)
   try {
     // Chromium does not parse authority for custom protocols — check by string prefix instead
     if (!rawUrl.startsWith('meetastro://auth')) {
-      console.log('[auth] parseAuthDeepLink: not a meetastro://auth URL')
       return { type: 'unknown' }
     }
     const url = new URL(rawUrl)
@@ -40,28 +38,19 @@ export function parseAuthDeepLink(rawUrl: string): DeepLinkResult {
 
     const code = params.get('code') ?? undefined
 
-    console.log('[auth] parseAuthDeepLink params — type:', supabaseType, 'code:', code ? 'present' : 'none', 'accessToken:', accessToken ? 'present' : 'none')
-
     if (supabaseType === 'recovery') {
-      const r = { type: 'password_recovery' as const, code, accessToken, refreshToken }
-      console.log('[auth] parseAuthDeepLink →', r.type)
-      return r
+      return { type: 'password_recovery', code, accessToken, refreshToken }
     }
     if (supabaseType === 'signup') {
-      const r = { type: 'email_verification' as const, code, accessToken, refreshToken }
-      console.log('[auth] parseAuthDeepLink →', r.type)
-      return r
+      return { type: 'email_verification', code, accessToken, refreshToken }
     }
     if (code) {
-      console.log('[auth] parseAuthDeepLink → oauth_pkce')
       return { type: 'oauth_pkce', code }
     }
     if (accessToken && refreshToken) {
-      console.log('[auth] parseAuthDeepLink → oauth (implicit)')
       return { type: 'oauth', accessToken, refreshToken }
     }
 
-    console.log('[auth] parseAuthDeepLink: unknown — params were', { supabaseType: params.get('type'), hasCode: !!params.get('code'), hasToken: !!params.get('access_token') })
     return { type: 'unknown' }
   } catch (e) {
     console.error('[auth] parseAuthDeepLink error:', e)

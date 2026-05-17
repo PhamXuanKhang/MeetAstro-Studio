@@ -142,6 +142,26 @@ Electron app
           -> Supabase database
 ```
 
+## Submit Scope
+
+Current MVP submission scope:
+- Electron desktop app for auth, recording/upload, transcript review, action-item review, Jira settings, and meeting history.
+- FastAPI backend with Celery/Redis jobs for transcription, analysis, Jira push, website runtime, and Windows EXE download metadata.
+- Supabase is the canonical database/auth runtime; local PostgreSQL/Alembic/Flet paths are legacy/prototype context only.
+- Windows distribution target is `MeetAstro-Setup-*.exe` published through GitHub Releases or mounted in `APP_DOWNLOADS_DIR`.
+
+Known limitations before production:
+- Jira assignee account mapping, advanced export templates, usage billing, and richer collaboration features are backlog items.
+- Production deployment should restrict `CORS_ORIGINS` and rotate any credentials that were ever shared in logs, screenshots, or committed files.
+- `.env` is local-only and must never be committed; use `.env.example` for placeholders.
+
+Local verification before submit:
+- `python -m pytest tests/test_website_runtime.py -v`
+- `pytest tests/ -v`
+- `cd electron-app && npm run typecheck`
+- `cd website && npm run build`
+- `git status --short` to confirm no secrets, `node_modules`, caches, or release artifacts are staged.
+
 ## Documentation
 
 | Document | Purpose |

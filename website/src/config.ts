@@ -17,7 +17,7 @@ export const fallbackDownloadMetadata: DownloadMetadata = {
   available: false,
   url: '',
   filename: '',
-  version: '0.1.0',
+  version: '',
   size: '',
   platform: 'Windows',
 }
