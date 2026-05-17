@@ -56,6 +56,7 @@ RUN useradd --create-home --uid 1000 --user-group --shell /usr/sbin/nologin app
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=app:app src/ ./src/
+COPY --chown=app:app pitch-deck.html ./pitch-deck.html
 COPY --from=website-builder --chown=app:app /website/dist ./website/dist/
 
 RUN mkdir -p data/recordings data/meeting-audio downloads \

@@ -7,6 +7,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$EnvFile = Join-Path $PSScriptRoot "..\.env.release.local"
+if (Test-Path $EnvFile) {
+    Get-Content $EnvFile | ForEach-Object {
+        $Line = $_.Trim()
+        if (-not $Line -or $Line.StartsWith("#") -or $Line -notmatch "^([^=]+)=(.*)$") {
+            return
+        }
+        $Name = $Matches[1].Trim()
+        $Value = $Matches[2].Trim().Trim('"').Trim("'")
+        [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+    }
+}
+
 if ($Tag -notmatch '^v\d+\.\d+\.\d+$') {
     throw "Tag must match vX.Y.Z, got '$Tag'."
 }
