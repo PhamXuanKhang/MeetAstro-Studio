@@ -60,6 +60,14 @@ jobs:
         run: npm ci
         working-directory: electron-app
 
+      - name: Install Wine for Windows installer build
+        shell: bash
+        run: |
+          if ! command -v wine >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y wine64
+          fi
+
       - name: Build Electron installer
         run: npm run build -- --win --publish never
         working-directory: electron-app
