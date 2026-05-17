@@ -55,6 +55,13 @@ docs/
 
 ## Quick Links
 
+### Submission Artifacts
+- [README.md](../README.md) — Product landing page, setup guide, and required submission links
+- [Architecture Diagram](diagrams/image/System%20Architecture_done.png) — PNG system architecture diagram and project thumbnail
+- [Weekly Journal](../JOURNAL.md) — Weekly development journal
+- [Worklog](../WORKLOG.md) — Technical decisions and team task assignment
+- [Product Spec](product/spec.md) — Product description, users, metrics, and failure modes
+
 ### Getting Started
 - [README.md](../README.md) — Quick start guide
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
