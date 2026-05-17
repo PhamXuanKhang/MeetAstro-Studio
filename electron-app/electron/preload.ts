@@ -16,6 +16,20 @@ interface LiveSegment {
   text: string
 }
 
+interface AudioLevelEvent {
+  source: string
+  chunk_index: number
+  bytes: number
+  sys_rms: number
+  sys_peak: number
+  mic_rms: number
+  mic_peak: number
+  mixed_rms: number
+  mixed_peak: number
+  mic_queue: number
+  mic_buffer: number
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // Audio recording
   startRecording: (config: Record<string, unknown>) =>
@@ -28,6 +42,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_event: Electron.IpcRendererEvent, segments: LiveSegment[]) => callback(segments)
     ipcRenderer.on('audio:streamPartial', listener)
     return () => ipcRenderer.removeListener('audio:streamPartial', listener)
+  },
+  onAudioLevel: (callback: (level: AudioLevelEvent) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, level: AudioLevelEvent) => callback(level)
+    ipcRenderer.on('audio:level', listener)
+    return () => ipcRenderer.removeListener('audio:level', listener)
   },
 
   // File dialogs

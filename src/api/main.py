@@ -4,7 +4,12 @@ FastAPI application factory for AI Meeting Assistant.
 Entry point: uvicorn src.api.main:app --reload --port 8000
 """
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
+import json
+import urllib.error
+import urllib.request
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,11 +32,14 @@ from src.db.supabase_client import get_supabase_client
 logger = get_logger(__name__)
 
 API_PREFIX = "/api/v1"
-WEB_STATIC_DIR = Path(__file__).resolve().parents[2] / "website" / "dist"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WEB_STATIC_DIR = PROJECT_ROOT / "website" / "dist"
+PITCH_DECK_PATH = PROJECT_ROOT / "pitch-deck.html"
 DOWNLOAD_DIR = Path("/app/downloads")
 INDEX_CACHE_CONTROL = "no-cache"
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-MSI_MEDIA_TYPE = "application/x-msi"
+EXE_MEDIA_TYPE = "application/vnd.microsoft.portable-executable"
+GITHUB_RELEASE_API_TIMEOUT_SECONDS = 5
 
 class CacheStaticFiles(StaticFiles):
     """Serve Vite assets with immutable cache headers."""
@@ -42,28 +50,95 @@ class CacheStaticFiles(StaticFiles):
         return response
 
 def get_download_filename() -> str:
-    """Return a safe MSI filename configured by environment."""
+    """Return a safe EXE filename configured by environment."""
     filename = get_settings().app_download_filename.strip()
-    if not filename or filename != Path(filename).name or not filename.lower().endswith(".msi"):
+    if not filename or filename != Path(filename).name or not filename.lower().endswith(".exe"):
         raise HTTPException(status_code=404, detail="Windows installer is not published.")
     return filename
 
 def get_download_file_path() -> Path:
-    """Resolve the configured MSI path inside the downloads directory."""
+    """Resolve the configured EXE path inside the downloads directory."""
     return DOWNLOAD_DIR / get_download_filename()
+
+def get_external_download_url() -> str:
+    """Return configured external EXE URL when it is safe to expose."""
+    download_url = get_settings().app_download_url.strip()
+    parsed = urlparse(download_url)
+    if parsed.scheme not in {"https", "http"} or not parsed.netloc:
+        return ""
+    if not parsed.path.lower().endswith(".exe"):
+        return ""
+    return download_url
+
+def format_file_size(size_bytes: int) -> str:
+    """Format release asset size for display."""
+    if size_bytes <= 0:
+        return ""
+    size_mb = size_bytes / (1024 * 1024)
+    if size_mb >= 10:
+        return f"{size_mb:.0f} MB"
+    return f"{size_mb:.1f} MB"
+
+def parse_release_version(tag_name: str) -> str:
+    """Parse semantic version from release tag."""
+    return tag_name[1:] if tag_name.startswith("v") else tag_name
+
+@lru_cache(maxsize=1)
+def get_github_release_metadata() -> dict:
+    """Fetch latest public GitHub Release metadata for the Windows installer."""
+    repo = get_settings().app_download_github_repo.strip()
+    if not repo or "/" not in repo:
+        return {}
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/releases/latest",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "MeetAstro"},
+    )
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=GITHUB_RELEASE_API_TIMEOUT_SECONDS,
+        ) as response:
+            release = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+        logger.warning("GitHub latest release metadata unavailable: %s", exc)
+        return {}
+
+    for asset in release.get("assets", []):
+        filename = str(asset.get("name", ""))
+        download_url = str(asset.get("browser_download_url", ""))
+        if filename.startswith("MeetAstro-Setup-") and filename.endswith(".exe") and download_url:
+            return {
+                "available": True,
+                "url": download_url,
+                "filename": filename,
+                "version": parse_release_version(str(release.get("tag_name", ""))),
+                "size": format_file_size(int(asset.get("size") or 0)),
+                "platform": "Windows",
+                "publishedAt": release.get("published_at") or "",
+            }
+    return {}
 
 def build_download_metadata() -> dict:
     """Build runtime metadata for the Windows installer."""
     app_settings = get_settings()
+    github_metadata = get_github_release_metadata()
+    if github_metadata:
+        return github_metadata
+
     filename = app_settings.app_download_filename.strip()
-    available = False
-    try:
-        available = get_download_file_path().is_file()
-    except HTTPException:
-        available = False
+    external_url = get_external_download_url()
+    available = bool(external_url)
+    url = external_url
+    if not available:
+        try:
+            available = get_download_file_path().is_file()
+            url = "/downloads/windows" if available else ""
+        except HTTPException:
+            available = False
+            url = ""
     return {
         "available": available,
-        "url": "/download/windows" if available else "",
+        "url": url,
         "filename": filename,
         "version": app_settings.app_download_version.strip(),
         "size": app_settings.app_download_size.strip(),
@@ -91,9 +166,20 @@ def setup_website_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=404, detail="Windows installer is not published.")
         return FileResponse(
             path=str(file_path),
-            media_type=MSI_MEDIA_TYPE,
+            media_type=EXE_MEDIA_TYPE,
             filename=get_download_filename(),
             headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.get("/pitchdeck", include_in_schema=False)
+    @app.get("/pitch-deck", include_in_schema=False)
+    async def serve_pitch_deck() -> FileResponse:
+        if not PITCH_DECK_PATH.is_file():
+            raise HTTPException(status_code=404, detail="Pitch deck is not available.")
+        return FileResponse(
+            path=str(PITCH_DECK_PATH),
+            media_type="text/html",
+            headers={"Cache-Control": INDEX_CACHE_CONTROL},
         )
 
     @app.get("/{path:path}", include_in_schema=False)
@@ -196,9 +282,9 @@ def setup_cors(app: FastAPI) -> None:
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
-        title="AI Meeting Assistant API",
+        title="MeetAstro API",
         version="1.0.0",
-        description="RESTful API for AI Meeting Assistant.",
+        description="RESTful API for MeetAstro-Studio.",
         lifespan=lifespan,
     )
 

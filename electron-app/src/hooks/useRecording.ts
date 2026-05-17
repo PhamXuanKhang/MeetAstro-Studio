@@ -9,7 +9,7 @@ interface RecordingStartResult {
 interface RecordingStopResult {
   outputPath: string | null
   streamError?: string | null
-  streamResult?: { job_id?: string; transcript_source?: string; persisted_segments?: number; status?: string }
+  streamResult?: { job_id?: string; transcript_source?: string; persisted_segments?: number; status?: string; no_transcript?: boolean }
 }
 
 type ElectronAPI = {

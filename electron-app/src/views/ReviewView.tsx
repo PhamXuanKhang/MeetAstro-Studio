@@ -131,8 +131,8 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
         priority: editPriority,
       },
       {
-        onSuccess: () => { onToast('Đã lưu chỉnh sửa.'); setIsEditing(false) },
-        onError: (e) => onToast(`Lỗi lưu: ${e.message}`, true),
+        onSuccess: () => { onToast('Changes saved.'); setIsEditing(false) },
+        onError: (e) => onToast(`Save failed: ${e.message}`, true),
       }
     )
   }, [isSynced, item.id, editTitle, editAssignee, editDeadline, editPriority, editItem, onToast])
@@ -140,14 +140,14 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
   const handleApprove = useCallback(() => {
     if (isSynced) return
     approve(item.id, {
-      onError: (e) => onToast(`Lỗi approve: ${e.message}`, true),
+      onError: (e) => onToast(`Approve failed: ${e.message}`, true),
     })
   }, [isSynced, item.id, approve, onToast])
 
   const handleReject = useCallback(() => {
     if (isSynced) return
     reject(item.id, {
-      onError: (e) => onToast(`Lỗi reject: ${e.message}`, true),
+      onError: (e) => onToast(`Reject failed: ${e.message}`, true),
     })
   }, [isSynced, item.id, reject, onToast])
 
@@ -185,9 +185,9 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
             variant="outline"
             onClick={() => setIsEditing(true)}
             disabled={isSynced}
-            title={isSynced ? 'Item đã synced lên Jira nên không thể chỉnh sửa.' : undefined}
+            title={isSynced ? 'This item is already synced to Jira and cannot be edited.' : undefined}
           >
-            <Icon name="edit" size={14} /> Sửa
+            <Icon name="edit" size={14} /> Edit
           </Button>
         )}
       </div>
@@ -228,9 +228,9 @@ const ReviewItemCard = memo(function ReviewItemCard({ item, onToast, syncOverrid
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Button size="sm" variant="primary" onClick={handleSave} disabled={isSaving || isSynced}>
-              <Icon name="save" size={14} /> {isSaving ? 'Đang lưu...' : 'Lưu'}
+              <Icon name="save" size={14} /> {isSaving ? 'Saving...' : 'Save'}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Hủy</Button>
+            <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
           </div>
         </div>
       )}
@@ -326,11 +326,11 @@ function AddManualItemModal({
   const handleSubmit = () => {
     const cleanTitle = title.trim()
     if (!cleanTitle) {
-      setError('Title là bắt buộc.')
+      setError('Title is required.')
       return
     }
     if (itemType === 'subtask' && !parentId) {
-      setError('Subtask cần chọn parent task.')
+      setError('Subtasks require a parent task.')
       return
     }
 
@@ -350,9 +350,9 @@ function AddManualItemModal({
       onClose={isSaving ? undefined : onClose}
       footer={(
         <>
-          <Button variant="outline" onClick={onClose} disabled={isSaving}>Hủy</Button>
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
           <Button variant="primary" onClick={handleSubmit} disabled={isSaving || (itemType === 'subtask' && tasks.length === 0)}>
-            <Icon name="add" size={16} /> {isSaving ? 'Đang thêm...' : 'Add'}
+            <Icon name="add" size={16} /> {isSaving ? 'Adding...' : 'Add'}
           </Button>
         </>
       )}
@@ -561,20 +561,20 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
 
   const handleApproveAll = useCallback(() => {
     bulkApprove(undefined, {
-      onSuccess: (result) => showToast(`Đã approve ${result.approved_count} items.`),
-      onError: (e) => showToast(`Lỗi: ${e.message}`, true),
+      onSuccess: (result) => showToast(`Approved ${result.approved_count} items.`),
+      onError: (e) => showToast(`Error: ${e.message}`, true),
     })
   }, [bulkApprove, showToast])
 
   const handlePushJira = useCallback(async () => {
     setPushing(true)
-    setBusy(true, 'Đang push lên Jira...')
+    setBusy(true, 'Pushing to Jira...')
     try {
       await pushToJira(currentMeetingId!)
       await refetch()
-      showToast('Đã hoàn tất push Jira. Kiểm tra trạng thái từng item.')
+      showToast('Jira push finished. Check each item status.')
     } catch (e) {
-      showToast(`Lỗi push Jira: ${e instanceof Error ? e.message : e}`, true)
+      showToast(`Jira push failed: ${e instanceof Error ? e.message : e}`, true)
     } finally {
       setPushing(false)
       setBusy(false)
@@ -602,9 +602,9 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
       {
         onSuccess: () => {
           setShowAddItemModal(false)
-          showToast('Đã thêm action item.')
+          showToast('Action item added.')
         },
-        onError: (e) => showToast(`Lỗi thêm item: ${e.message}`, true),
+        onError: (e) => showToast(`Add item failed: ${e.message}`, true),
       }
     )
   }, [addManualItem, currentMeetingId, showToast])
@@ -637,10 +637,10 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   }, [dismissStatusUpdate, showToast])
 
   const pushBlockReason = useMemo(() => {
-    if (!jiraStatus.data?.is_configured) return 'Chưa cấu hình Jira. Hãy vào Settings > Jira để lưu Base URL, email, API token và project key.'
-    if (summary.pending > 0) return `Còn ${summary.pending} item cần approve hoặc reject trước khi push.`
-    if (summary.approved === 0) return 'Cần approve ít nhất 1 item để push lên Jira.'
-    if (summary.pushableApproved === 0) return 'Tất cả item đã approve đã được sync lên Jira.'
+    if (!jiraStatus.data?.is_configured) return 'Jira is not configured. Go to Settings > Jira to save the Base URL, email, API token, and project key.'
+    if (summary.pending > 0) return `${summary.pending} items still need approval or rejection before pushing.`
+    if (summary.approved === 0) return 'Approve at least 1 item before pushing to Jira.'
+    if (summary.pushableApproved === 0) return 'All approved items are already synced to Jira.'
     return null
   }, [jiraStatus.data?.is_configured, summary.approved, summary.pending, summary.pushableApproved])
   const pushDisabled = Boolean(pushBlockReason) || pushing || jiraStatus.isLoading
@@ -651,7 +651,7 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
   )
 
   if (!currentMeetingId) {
-    return <Card><EmptyState icon="rule" title="Không có meeting nào được chọn" description="Chọn một meeting để review action items." /></Card>
+    return <Card><EmptyState icon="rule" title="No meeting selected" description="Select a meeting to review action items." /></Card>
   }
 
   return (
@@ -675,7 +675,7 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
             </h2>
           </div>
           <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>
-            Approve hoặc reject từng item trước khi push lên Jira.
+            Approve or reject each item before pushing to Jira.
           </p>
         </div>
         <Button variant="outline" onClick={() => onNavigate('results')}><Icon name="arrow_back" size={16} /> Back</Button>
@@ -683,11 +683,11 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
 
       <Card style={{ padding: 14, marginBottom: 12, background: 'color-mix(in srgb, var(--color-primary) 7%, var(--color-surface))' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: 'var(--color-primary)', fontWeight: 800 }}>
-          <span>Tổng: {summary.total}</span>
+          <span>Total: {summary.total}</span>
           <span>Approved: {summary.approved}</span>
           <span>Rejected: {summary.rejected}</span>
-          <span>Cần xem: {summary.flagged}</span>
-          <span>Chờ: {summary.pending}</span>
+          <span>Needs review: {summary.flagged}</span>
+          <span>Pending: {summary.pending}</span>
         </div>
       </Card>
 
@@ -704,8 +704,8 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
           <div>Synced: {summary.synced} | Ready: {summary.ready} | Failed: {summary.failed} | Syncing: {summary.syncing}</div>
           <div>
             {pushBlockReason
-              ? `Chưa thể push: ${pushBlockReason}`
-              : `Sẵn sàng push/retry ${summary.pushableApproved} item đã approve lên Jira.`}
+              ? `Cannot push yet: ${pushBlockReason}`
+              : `Ready to push/retry ${summary.pushableApproved} approved items to Jira.`}
           </div>
         </div>
       </Card>
@@ -720,18 +720,18 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button variant="outline" onClick={() => setShowAddItemModal(true)}><Icon name="add" size={16} /> Add Task</Button>
         <Button variant="success" onClick={handleApproveAll} disabled={approvingAll}>
-          <Icon name="done_all" size={16} /> {approvingAll ? 'Đang approve...' : 'Approve all'}
+          <Icon name="done_all" size={16} /> {approvingAll ? 'Approving...' : 'Approve all'}
         </Button>
         <Button variant="primary" onClick={handlePushJira} disabled={pushDisabled} title={pushBlockReason || undefined}>
           <Icon name={pushing ? 'progress_activity' : 'rocket_launch'} size={16} style={pushing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
-          {pushing ? 'Đang push...' : 'Push to Jira'}
+          {pushing ? 'Pushing...' : 'Push to Jira'}
         </Button>
       </div>
 
       {isLoading ? (
         <Card style={{ padding: 24, color: 'var(--color-text-muted)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Icon name="progress_activity" size={20} style={{ color: 'var(--color-primary)', animation: 'spin 0.8s linear infinite' }} />
-          Đang tải...
+          Loading...
         </Card>
       ) : treeNodes.length > 0 ? (
         <div>
@@ -745,7 +745,7 @@ export default function ReviewView({ onNavigate, setBusy }: Props) {
           ))}
         </div>
       ) : (
-        <Card><EmptyState icon="task_alt" title="Không có items để review" description="Action items sẽ xuất hiện sau khi meeting được phân tích." /></Card>
+        <Card><EmptyState icon="task_alt" title="No items to review" description="Action items will appear after the meeting is analyzed." /></Card>
       )}
     </div>
   )

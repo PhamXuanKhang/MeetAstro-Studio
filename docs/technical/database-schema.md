@@ -1,14 +1,14 @@
 # Database Schema
 
-PostgreSQL database schema via Supabase for AI Meeting Assistant.
+Supabase table schema reference for AI Meeting Assistant.
 
 ---
 
 ## Overview
 
-The database uses **Supabase** (PostgreSQL 16) with **Supabase SDK** for backend access. Migrations are managed by **Alembic**.
+The active runtime uses **Supabase** with the **Supabase SDK** for backend access.
 
-Database: `ai_meeting_db`
+Database: Supabase project tables
 Connection: `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` environment variables
 
 Supabase ownership/RLS foundation is documented in
@@ -271,21 +271,7 @@ Indexes:
 
 ## Migrations
 
-Migrations are managed by Alembic.
-
-```bash
-# Create new migration
-alembic revision --autogenerate -m "description"
-
-# Apply all migrations
-alembic upgrade head
-
-# Rollback one step
-alembic downgrade -1
-
-# View current state
-alembic current
-```
+The active submit runtime uses Supabase project tables. Historical Alembic notes are legacy/prototype context and are not part of the current local submit workflow.
 
 Migration files: `src/db/migrations/versions/`
 

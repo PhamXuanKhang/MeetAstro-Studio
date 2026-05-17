@@ -22,7 +22,7 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      WHLK_WEBSOCKET_URL: ${WHLK_WEBSOCKET_URL}
+      WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
     env_file:
       - path: .env
         required: false
@@ -44,7 +44,7 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      WHLK_WEBSOCKET_URL: ${WHLK_WEBSOCKET_URL}
+      WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
     env_file:
       - path: .env
         required: false

@@ -163,7 +163,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    title: 'AI Meeting Assistant',
+    title: 'MeetAstro-Studio',
     backgroundColor: '#f8fafc',
   })
   openWindowLinksExternally(mainWindow)
@@ -212,7 +212,8 @@ app.on('window-all-closed', () => {
 // IPC: Audio recording
 ipcMain.handle('audio:start', async (_event, config: Record<string, unknown>) => {
   if (!pythonRecorder) return { error: 'Recorder not initialized' }
-  return pythonRecorder.start(config)
+  const outputDir = path.join(app.getPath('userData'), 'recordings')
+  return pythonRecorder.start({ ...config, output_dir: outputDir })
 })
 
 ipcMain.handle('audio:stop', async () => {

@@ -10,7 +10,7 @@ AI Meeting Assistant uses **Celery** with **Redis** for asynchronous task proces
 
 Architecture:
 ```
-FastAPI API  ->  Redis Broker  ->  Celery Worker  ->  PostgreSQL
+FastAPI API  ->  Redis Broker  ->  Celery Worker  ->  Supabase
      |                                   |
      |<---- Poll task status ------------|
 ```
@@ -158,7 +158,7 @@ def transcribe_audio(
 - Retry 2 times with 5s delay on transient errors
 - WhisperLiveKit streaming when `WHISPER_LIVEKIT_URL` is configured
 - Fallback chain: WhisperLiveKit → OpenAIDiarizeTranscriber → OpenAITranscriber
-- Updates `Transcript` in PostgreSQL
+- Updates transcript data in Supabase
 
 ### analyze_transcript
 
@@ -397,26 +397,15 @@ def poll_job(self, job_id: str, interval: float = 1.0):
 
 ## Docker Configuration
 
-In `docker-compose.yml`:
+In `docker-compose.yml`, the active backend stack runs API, worker, and Redis. Supabase is external and configured through environment variables:
 
 ```yaml
 services:
-  migrate:
-    build: .
-    command: alembic upgrade head
-    depends_on:
-      - postgres
-    environment:
-      - POSTGRES_URL=postgresql+asyncpg://ai_meeting:password@postgres:5432/ai_meeting_db
-    restart: "no"
-
   api:
     build: .
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     depends_on:
-      migrate:
-        condition: service_completed_successfully
-      - postgres
+      - redis
       - redis
     environment:
       - SUPABASE_URL=http://postgres:5432

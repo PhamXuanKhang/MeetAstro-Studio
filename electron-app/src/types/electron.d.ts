@@ -11,11 +11,27 @@ export interface LiveSegment {
   text: string
 }
 
+export interface AudioLevelEvent {
+  source: string
+  chunk_index: number
+  bytes: number
+  sys_rms: number
+  sys_peak: number
+  mic_rms: number
+  mic_peak: number
+  mixed_rms: number
+  mixed_peak: number
+  mic_queue: number
+  mic_buffer: number
+}
+
 export interface RecordingStopStreamResult {
   job_id?: string
   transcript_source?: string
   persisted_segments?: number
   status?: string
+  no_transcript?: boolean
+  message?: string | null
 }
 
 export interface RecordingStopResponse {
@@ -31,6 +47,7 @@ export interface ElectronAPI {
   stopRecording: () => Promise<RecordingStopResponse>
   getRecordingStatus: () => Promise<unknown>
   onStreamPartial: (callback: (segments: LiveSegment[]) => void) => () => void
+  onAudioLevel: (callback: (level: AudioLevelEvent) => void) => () => void
   openFileDialog: (filters?: { name: string; extensions: string[] }[]) => Promise<string | null>
   saveFile: (opts: { content: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>
   readFileBytes: (filePath: string) => Promise<ArrayBuffer>

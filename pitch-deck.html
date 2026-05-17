@@ -1,0 +1,2451 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MeetAstro — Pitch Deck</title>
+  <style>
+    /* ================================================
+       FONTS
+    ================================================ */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    /* ================================================
+       CSS VARIABLES — CLEAN AI SAAS
+    ================================================ */
+    :root {
+      --bg:           #F8FAFC;
+      --bg-alt:       #F1F5F9;
+      --bg-card:      #FFFFFF;
+      --bg-dark:      #0F172A;
+      --bg-dark-alt:  #1E293B;
+
+      --text:         #111827;
+      --text-muted:   #64748B;
+      --text-light:   #94A3B8;
+      --text-white:   #FFFFFF;
+      --text-white-muted: #CBD5E1;
+
+      --accent:       #2563EB;
+      --accent-dark:  #1D4ED8;
+      --accent-light: #DBEAFE;
+      --accent-mid:   #93C5FD;
+
+      --approve:      #10B981;
+      --approve-light:#D1FAE5;
+      --approve-mid:  #6EE7B7;
+
+      --priority:     #F59E0B;
+      --priority-light:#FEF3C7;
+      --priority-mid: #FCD34D;
+
+      --danger:       #EF4444;
+      --danger-light: #FEE2E2;
+      --rose:         #F43F5E;
+      --violet:       #7C3AED;
+      --violet-light: #EDE9FE;
+
+      --border:       #E2E8F0;
+      --border-strong: #CBD5E1;
+
+      --shadow-xs:    0 1px 2px rgba(0,0,0,0.05);
+      --shadow-sm:    0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow:       0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+      --shadow-md:    0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+      --shadow-lg:    0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+      --shadow-xl:    0 25px 50px -12px rgba(0,0,0,0.25);
+
+      --radius-xs:    6px;
+      --radius:       12px;
+      --radius-lg:    20px;
+      --radius-xl:    28px;
+      --radius-full:  9999px;
+    }
+
+    /* ================================================
+       RESET & BASE
+    ================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      font-size: 16px;
+      scroll-behavior: smooth;
+      scroll-snap-type: y mandatory;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    ::selection { background: var(--accent); color: var(--text-white); }
+
+    /* ================================================
+       SLIDE SYSTEM
+    ================================================ */
+    .slide {
+      min-height: 100vh;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: center;
+      padding: 40px 80px 40px;
+      position: relative;
+      scroll-snap-align: start;
+      overflow: hidden;
+    }
+
+    .slide-inner {
+      max-width: 1200px;
+      width: 100%;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      padding-right: 4px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .slide-inner::-webkit-scrollbar { width: 4px; }
+    .slide-inner::-webkit-scrollbar-track { background: transparent; }
+    .slide-inner::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    @keyframes slideInLeft {
+      from { opacity: 0; transform: translateX(-30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes slideInRight {
+      from { opacity: 0; transform: translateX(30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes scaleIn {
+      from { opacity: 0; transform: scale(0.94); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50%       { transform: scale(1.05); }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-8px); }
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+
+    @keyframes countUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes drawLine {
+      from { width: 0; }
+      to   { width: 60px; }
+    }
+
+    .slide-inner { animation: fadeUp 0.6s ease both; }
+
+    /* ================================================
+       TYPOGRAPHY
+    ================================================ */
+    .slide-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+
+    .slide-tag .tag-line {
+      width: 24px;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    h1.slide-title {
+      font-size: clamp(2.6rem, 4.5vw, 4rem);
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+
+    h2.slide-title {
+      font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+
+    h3.slide-subtitle {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    p.slide-lead {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 640px;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, var(--accent) 0%, #7C3AED 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ================================================
+       SLIDE NUMBER
+    ================================================ */
+    .slide-number {
+      position: absolute;
+      top: 36px;
+      right: 48px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--text-light);
+      text-transform: uppercase;
+      z-index: 10;
+    }
+
+    /* ================================================
+       NAVIGATION
+    ================================================ */
+    .nav {
+      position: fixed;
+      right: 24px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 1000;
+    }
+
+    .nav-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-strong);
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+
+    .nav-dot:hover,
+    .nav-dot.active {
+      background: var(--accent);
+      transform: scale(1.5);
+    }
+
+    .nav-dot::after {
+      content: attr(data-label);
+      position: absolute;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--bg-dark);
+      color: var(--text-white-muted);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      padding: 4px 10px;
+      border-radius: 6px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .nav-dot:hover::after { opacity: 1; }
+
+    .nav-progress {
+      position: fixed;
+      top: 0; left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), #7C3AED);
+      z-index: 1001;
+      transition: width 0.3s ease;
+    }
+
+    /* ================================================
+       CARDS
+    ================================================ */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .card:hover {
+      border-color: var(--accent-mid);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+
+    /* ================================================
+       BADGES & TAGS
+    ================================================ */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: var(--radius-full);
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .badge-accent  { background: var(--accent-light); color: var(--accent-dark); }
+    .badge-green   { background: var(--approve-light); color: #065F46; }
+    .badge-amber   { background: var(--priority-light); color: #92400E; }
+    .badge-rose    { background: #FEE2E2; color: #991B1B; }
+    .badge-teal    { background: #CCFBF1; color: #0F766E; }
+    .badge-slate   { background: var(--bg-alt); color: var(--text-muted); border: 1px solid var(--border); }
+    .badge-dark    { background: var(--bg-dark); color: var(--text-white-muted); }
+
+    /* ================================================
+       TABLES
+    ================================================ */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-xs);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    thead tr {
+      background: var(--bg-alt);
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      padding: 11px 16px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 0.7rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--bg-alt);
+      color: var(--text);
+      font-size: 0.85rem;
+    }
+
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: var(--accent-light); }
+
+    .check { color: var(--approve); font-weight: 700; }
+    .cross { color: var(--danger); }
+    .dash  { color: var(--text-light); }
+
+    /* ================================================
+       QUOTE / CALLOUT
+    ================================================ */
+    .callout {
+      padding: 18px 22px;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--text);
+      border: none;
+    }
+
+    .callout-accent {
+      background: var(--accent-light);
+      border-left: 4px solid var(--accent);
+    }
+
+    .callout-green {
+      background: var(--approve-light);
+      border-left: 4px solid var(--approve);
+    }
+
+    .callout-amber {
+      background: var(--priority-light);
+      border-left: 4px solid var(--priority);
+    }
+
+    .callout-dark {
+      background: var(--bg-dark);
+      color: var(--text-white);
+      border-left: 4px solid var(--accent);
+    }
+
+    /* ================================================
+       STEP FLOW
+    ================================================ */
+    .step-flow {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      margin: 28px 0;
+    }
+
+    .step {
+      flex: 1;
+      background: var(--bg-card);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 26px 24px;
+      position: relative;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-xs);
+
+      /* căn giữa toàn bộ nội dung trong card */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+
+      /* làm card nhìn cân và đẹp hơn */
+      min-height: 130px;
+    }
+
+    .step:hover {
+      border-color: var(--accent);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-3px);
+    }
+
+    .step-num {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-weight: 900;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 14px;
+      box-shadow: 0 6px 14px rgba(37, 99, 235, 0.25);
+    }
+
+    .step-title {
+      font-weight: 800;
+      font-size: 1rem;
+      color: var(--text);
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .step-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    .step-connector {
+      display: flex;
+      align-items: center;
+      color: var(--accent);
+      font-size: 1.2rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      padding-top: 18px;
+    }
+
+    /* ================================================
+       STAT CARDS
+    ================================================ */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-xs);
+      border-top: 3px solid var(--accent);
+    }
+
+    .stat-card:hover {
+      border-color: var(--accent-mid);
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .stat-value {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      line-height: 1.45;
+    }
+
+    /* ================================================
+       ARCHITECTURE LAYERS
+    ================================================ */
+    .arch-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      margin: 20px 0;
+    }
+
+    .arch-layer {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      min-height: 62px;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-xs);
+      text-align: center;
+    }
+
+    .arch-layer:hover {
+      border-color: var(--accent-mid);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .arch-layer-label {
+      font-weight: 900;
+      font-size: 0.78rem;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--accent);
+      min-width: 125px;
+      flex-shrink: 0;
+      font-family: 'Inter', sans-serif;
+      text-align: center;
+    }
+
+    .arch-layer-content {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .arch-tag {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      background: var(--accent-light);
+      color: var(--accent-dark);
+      border: 1px solid #BFDBFE;
+    }
+
+    .arch-arrow {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 2px 0;
+      gap: 6px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .arch-arrow-label {
+      font-size: 0.6rem;
+      color: var(--text-light);
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* ================================================
+      TEAM CARDS
+    ================================================ */
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin: 32px 0;
+      align-items: stretch;
+    }
+
+    .team-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px 24px 30px;
+      text-align: center;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-xs);
+      position: relative;
+      overflow: hidden;
+
+      /* làm ô card dài xuống dưới */
+      min-height: 440px;
+
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .team-card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent), #7C3AED);
+    }
+
+    .team-card:hover {
+      border-color: var(--accent-mid);
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    /* vùng avatar lớn hơn, có thể chèn ảnh thật */
+    .team-avatar {
+      width: 150px;
+      height: 150px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, var(--accent), #7C3AED);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 800;
+      color: white;
+      margin: 8px auto 22px;
+      box-shadow: 0 10px 24px rgba(37,99,235,0.22);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    /* ảnh avatar thật */
+    .team-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* fallback khi chưa có ảnh */
+    .team-avatar-placeholder {
+      width: 100%;
+      height: 100%;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .team-name {
+      font-weight: 800;
+      font-size: 1.08rem;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .team-role {
+      font-size: 0.86rem;
+      color: var(--accent);
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .team-skills {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.75;
+      margin-bottom: 16px;
+    }
+
+    /* đẩy badge xuống gần cuối card để card nhìn đều */
+    .team-badges {
+      margin-top: auto;
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ================================================
+       COMPARISON — HIGHLIGHT ROW
+    ================================================ */
+    .highlight-ours {
+      background: var(--accent-light) !important;
+    }
+
+    .highlight-ours td {
+      color: var(--text) !important;
+      font-weight: 600;
+    }
+
+    .highlight-ours td:first-child {
+      color: var(--accent-dark) !important;
+    }
+
+    /* ================================================
+       METRIC BARS
+    ================================================ */
+    .metric-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 9px 0;
+    }
+
+    .metric-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      min-width: 180px;
+      font-weight: 500;
+    }
+
+    .metric-track {
+      flex: 1;
+      max-width: 380px;
+      height: 8px;
+      background: var(--bg-alt);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+
+    .metric-fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+      background: linear-gradient(90deg, var(--accent), #7C3AED);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-fill::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: shimmer 2.5s infinite;
+    }
+
+    .metric-value {
+      font-size: 0.78rem;
+      font-weight: 800;
+      min-width: 50px;
+      text-align: right;
+    }
+
+    .metric-pass { color: var(--approve); }
+    .metric-good { color: var(--accent); }
+
+    /* ================================================
+       ROADMAP TIMELINE
+    ================================================ */
+    .roadmap {
+      display: flex;
+      gap: 0;
+      margin: 28px 0;
+      position: relative;
+    }
+
+    .roadmap::before {
+      content: '';
+      position: absolute;
+      top: 22px;
+      left: 0; right: 0;
+      height: 2px;
+      background: var(--border);
+    }
+
+    .roadmap-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+
+    .roadmap-dot {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 3px solid var(--border-strong);
+      background: var(--bg);
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .roadmap-dot.done    { border-color: var(--approve); background: var(--approve); }
+    .roadmap-dot.current { border-color: var(--accent);  background: var(--accent); animation: pulse 2s infinite; }
+    .roadmap-dot.pending { border-color: var(--border-strong); }
+
+    .roadmap-content {
+      text-align: center;
+      padding: 14px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .roadmap-item:hover .roadmap-content {
+      border-color: var(--accent-mid);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .roadmap-phase {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .roadmap-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .roadmap-date {
+      font-size: 0.68rem;
+      color: var(--text-light);
+    }
+
+    /* ================================================
+       CTA CARDS
+    ================================================ */
+    .cta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin: 24px 0;
+    }
+
+    .cta-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .cta-card:hover {
+      border-color: var(--accent-mid);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .cta-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .cta-text {
+      font-size: 0.85rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* ================================================
+       IMAGE PLACEHOLDER
+    ================================================ */
+    .img-placeholder {
+      background: linear-gradient(135deg, var(--bg-alt), var(--bg));
+      border: 2px dashed var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 140px;
+    }
+
+    .img-placeholder strong { color: var(--text); font-size: 0.9rem; }
+    .img-placeholder small  { font-size: 0.7rem; color: var(--text-light); }
+
+    /* ================================================
+       SECTION LABEL
+    ================================================ */
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.95rem;
+      font-weight: 900;
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+      color: var(--accent-dark);
+      margin-bottom: 18px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ================================================
+       TWO COLUMN
+    ================================================ */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    /* ================================================
+       DIVIDER
+    ================================================ */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      margin: 20px 0;
+    }
+
+    /* ================================================
+       INSIGHT BOX
+    ================================================ */
+    .insight-box {
+      background: var(--accent-light);
+      border: 1px solid #BFDBFE;
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .insight-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .insight-text { font-size: 0.85rem; color: var(--text); line-height: 1.5; }
+
+    /* ================================================
+       CHECKLIST
+    ================================================ */
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .checklist li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
+
+    .checklist li::before {
+      content: '✓';
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--approve-light);
+      color: var(--approve);
+      font-size: 0.6rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ================================================
+       FLOW NODES
+    ================================================ */
+    .flow-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 14px 0;
+      flex-wrap: wrap;
+    }
+
+    .flow-node {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      padding: 7px 13px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      box-shadow: var(--shadow-xs);
+      transition: all 0.2s ease;
+    }
+
+    .flow-node:hover {
+      border-color: var(--accent-mid);
+      color: var(--accent-dark);
+      background: var(--accent-light);
+    }
+
+    .flow-arrow {
+      color: var(--accent);
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    /* ================================================
+       COVER SLIDE — SPECIFIC
+    ================================================ */
+    .slide-cover {
+      background: var(--bg-dark);
+      color: var(--text-white);
+    }
+
+    .slide-cover .slide-title { color: var(--text-white); }
+    .slide-cover p { color: var(--text-white-muted); }
+    .slide-cover .slide-lead { color: var(--text-white-muted); }
+    .slide-cover .slide-number { color: #475569; }
+    .slide-cover .badge-slate { background: #1E293B; color: #94A3B8; border-color: #334155; }
+
+    /* ================================================
+       TEAM SLIDE — SPECIFIC
+    ================================================ */
+    .slide-team { background: var(--bg); }
+
+    /* ================================================
+       PROBLEM SLIDE — SPECIFIC
+    ================================================ */
+    .slide-problem { background: var(--bg); }
+
+    .slide-problem .stat-card {
+      border-top: 3px solid var(--accent);
+    }
+
+    .slide-problem .stat-card:nth-child(1) { border-top-color: var(--danger); }
+    .slide-problem .stat-card:nth-child(1) .stat-value { color: var(--danger); }
+    .slide-problem .stat-card:nth-child(2) { border-top-color: var(--priority); }
+    .slide-problem .stat-card:nth-child(2) .stat-value { color: var(--priority); }
+    .slide-problem .stat-card:nth-child(3) { border-top-color: var(--accent); }
+
+    /* ================================================
+       SOLUTION SLIDE — SPECIFIC
+    ================================================ */
+    .slide-solution { background: var(--bg); }
+
+    .step-step3 .step-num {
+      background: var(--approve);
+    }
+
+    /* ================================================
+       TECH SLIDE — SPECIFIC
+    ================================================ */
+    .slide-tech { background: var(--bg-alt); }
+
+    /* ================================================
+       RESULTS SLIDE — SPECIFIC
+    ================================================ */
+    .slide-results {
+      background: var(--bg);
+    }
+
+    /* Làm chữ slide 6 to hơn nhưng vẫn không tràn màn hình */
+    .slide-results .slide-title {
+      font-size: clamp(2rem, 3vw, 2.6rem);
+      margin-bottom: 18px;
+    }
+
+    .slide-results .section-label {
+      font-size: 0.9rem;
+      font-weight: 900;
+      letter-spacing: 2.2px;
+      color: var(--accent-dark);
+      margin-bottom: 14px;
+    }
+
+    .slide-results .metric-label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      min-width: 190px;
+    }
+
+    .slide-results .metric-value {
+      font-size: 0.9rem;
+      font-weight: 900;
+      min-width: 58px;
+    }
+
+    .slide-results .callout,
+    .slide-results .cta-text,
+    .slide-results p {
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+
+    .slide-results .stat-label {
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    .slide-results .stat-value {
+      font-size: 2rem;
+    }
+
+    /* ================================================
+       ROADMAP SLIDE — SPECIFIC
+    ================================================ */
+    .slide-roadmap { background: var(--bg); }
+
+    .phase4-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .phase4-card:hover {
+      border-color: var(--accent-mid);
+      box-shadow: var(--shadow-sm);
+      transform: translateY(-2px);
+    }
+
+    /* ================================================
+       CONCLUSION SLIDE — SPECIFIC
+    ================================================ */
+    .slide-conclusion {
+      background: var(--bg-dark);
+      color: var(--text-white);
+    }
+
+    .slide-conclusion h2, .slide-conclusion h3, .slide-conclusion p { color: inherit; }
+    .slide-conclusion .slide-lead { color: var(--text-white-muted); }
+    .slide-conclusion .slide-number { color: #475569; }
+
+    .strength-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      text-align: center;
+      transition: all 0.25s ease;
+    }
+
+    .slide-conclusion .strength-card:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(37,99,235,0.5);
+      transform: translateY(-3px);
+    }
+
+    .slide-conclusion .cta-card {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.1);
+    }
+
+    .slide-conclusion .cta-card:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(37,99,235,0.4);
+    }
+
+    .slide-conclusion .cta-label { color: #94A3B8; }
+    .slide-conclusion .cta-text  { color: #CBD5E1; }
+
+    /* ================================================
+       RESPONSIVE
+    ================================================ */
+    @media (max-width: 900px) {
+      .slide { padding: 40px 24px; }
+      .two-col { grid-template-columns: 1fr; }
+      .team-grid { grid-template-columns: 1fr; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .step-flow { flex-direction: column; }
+      .step-connector { transform: rotate(90deg); padding: 4px 0; }
+      .roadmap { flex-direction: column; }
+      .roadmap::before { display: none; }
+      .cta-grid { grid-template-columns: 1fr; }
+      .nav { display: none; }
+    }
+
+    @media print {
+      html { scroll-snap-type: none; }
+      .slide { page-break-after: always; min-height: auto; padding: 40px; }
+      .nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- PROGRESS BAR -->
+<div class="nav-progress" id="progressBar"></div>
+
+<!-- NAVIGATION DOTS -->
+<nav class="nav" id="nav">
+  <div class="nav-dot active" data-slide="0" data-label="Bìa"></div>
+  <div class="nav-dot" data-slide="1" data-label="Team"></div>
+  <div class="nav-dot" data-slide="2" data-label="Vấn đề"></div>
+  <div class="nav-dot" data-slide="3" data-label="Giải pháp"></div>
+  <div class="nav-dot" data-slide="4" data-label="Công nghệ"></div>
+  <div class="nav-dot" data-slide="5" data-label="Kết quả"></div>
+  <div class="nav-dot" data-slide="6" data-label="Roadmap"></div>
+  <div class="nav-dot" data-slide="7" data-label="Kết luận"></div>
+</nav>
+
+<!-- ================================================================
+     SLIDE 1: COVER
+================================================================ -->
+<section class="slide slide-cover" id="slide-0">
+  <div class="slide-number">01 / 08</div>
+
+  <div class="slide-inner" style="text-align: center; max-width: 880px; animation: scaleIn 0.7s ease both;">
+
+    <!-- LOGO -->
+    <div style="margin-bottom: 36px; animation: float 4s ease-in-out infinite;">
+      <div style="
+        width: 120px;
+        height: 120px;
+        margin: 0 auto;
+        border-radius: 28px;
+        overflow: hidden;
+        border: 1.5px solid rgba(37,99,235,0.4);
+        background: rgba(37,99,235,0.1);
+        box-shadow: 0 12px 28px rgba(37,99,235,0.25);
+      ">
+        <img
+          src="https://res.cloudinary.com/dczdnu2ba/image/upload/v1779032006/2aOboQX5oqaPAmMR5eUsslUemsZiWlLxkUMQMCPI_fbt1vs.jpg"
+          alt="MeetAstro Logo"
+          style="
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          "
+        />
+      </div>
+    </div>
+
+    <!-- TAG -->
+    <div style="margin-bottom: 20px;">
+      <span style="
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 5px 14px; border-radius: 999px;
+        background: rgba(37,99,235,0.15);
+        border: 1px solid rgba(37,99,235,0.3);
+        font-size: 0.72rem; font-weight: 700;
+        letter-spacing: 2px; text-transform: uppercase;
+        color: #60A5FA;
+      ">
+        <span style="width:6px;height:6px;border-radius:50%;background:#2563EB;"></span>
+        VinUni AI20 — AI Thực Chiến 2026
+      </span>
+    </div>
+
+    <!-- TITLE -->
+    <h1 style="
+      font-size: clamp(3rem, 5.5vw, 4.5rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      color: #FFFFFF;
+      line-height: 1.05;
+      margin-bottom: 20px;
+    ">
+      Meet<span style="
+        background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      ">Astro</span>
+    </h1>
+
+    <p style="font-size: 1.3rem; color: #CBD5E1; margin-bottom: 12px; font-weight: 500;">
+      Tự động chuyển cuộc họp thành Jira tickets
+    </p>
+
+    <p style="
+      font-size: 1.8rem; font-weight: 900;
+      color: #FFFFFF; margin-bottom: 28px;
+    ">
+      Giảm <span style="color: #FBBF24;">30 phút</span>
+      → chỉ còn <span style="color: #34D399;">2 phút</span>
+    </p>
+
+    <!-- TAGLINE -->
+    <div style="
+      max-width: 520px; margin: 0 auto 36px;
+      background: rgba(37,99,235,0.12);
+      border: 1px solid rgba(37,99,235,0.25);
+      border-radius: 16px;
+      padding: 18px 24px;
+      font-size: 1.1rem; color: #BFDBFE;
+      font-style: italic;
+      line-height: 1.6;
+    ">
+      "Không còn cuộc họp nào bị quên.<br>Không còn action item nào bị rơi."
+    </div>
+
+    <!-- BADGES -->
+    <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 40px;">
+      <span style="padding:5px 14px;border-radius:999px;background:rgba(37,99,235,0.2);border:1px solid rgba(37,99,235,0.3);font-size:0.72rem;font-weight:700;color:#93C5FD;">🎯 Epic → Task → Subtask</span>
+      <span style="padding:5px 14px;border-radius:999px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);font-size:0.72rem;font-weight:700;color:#6EE7B7;">⚡ 2 phút</span>
+      <span style="padding:5px 14px;border-radius:999px;background:rgba(167,139,250,0.15);border:1px solid rgba(167,139,250,0.3);font-size:0.72rem;font-weight:700;color:#A78BFA;">🔐 Human-in-the-loop</span>
+    </div>
+
+    <!-- CTA -->
+    <div style="
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 8px;
+    ">
+      <a
+        href="https://a20-app-089.smartnovi.tech"
+        target="_blank"
+        style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 16px 36px;
+          border-radius: 14px;
+          background: #2563EB;
+          color: white;
+          font-size: 1rem;
+          font-weight: 800;
+          text-decoration: none;
+          box-shadow: 0 6px 20px rgba(37,99,235,0.45);
+          transition: all 0.2s ease;
+        "
+        onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 26px rgba(37,99,235,0.55)'"
+        onmouseout="this.style.transform='';this.style.boxShadow='0 6px 20px rgba(37,99,235,0.45)'"
+      >
+        🔗 Live Demo
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     SLIDE 2: TEAM
+================================================================ -->
+<section class="slide slide-team" id="slide-1">
+  <div class="slide-number">02 / 08</div>
+
+  <div class="slide-inner">
+    <div class="slide-tag">
+      <span class="tag-line"></span>
+      Nhóm phát triển
+    </div>
+
+    <h2 class="slide-title">
+      Đội ngũ <span class="gradient-text">3 người</span>
+    </h2>
+
+    <p class="slide-lead">Hoạt động nhóm hiệu quả, mỗi người một nhiệm vụ</p>
+
+    <div class="team-grid">
+      <!-- Member 1 -->
+      <div class="team-card">
+        <div class="team-avatar">
+          <!-- Thay src bằng ảnh thật của Thành Duy -->
+          <img src="https://res.cloudinary.com/dczdnu2ba/image/upload/v1779029131/duypt_rrsein.jpg" alt="Phạm Thành Duy">
+        </div>
+
+        <div class="team-name">Phạm Thành Duy</div>
+        <div class="team-role">Team Lead · Database</div>
+
+        <div class="team-skills">
+          Jira REST API v3 · Supabase<br>
+          Testing · Documentation<br>
+          Database design · Integration
+        </div>
+
+        <div class="team-badges">
+          <span class="badge badge-accent">Jira</span>
+          <span class="badge badge-slate">QA</span>
+        </div>
+      </div>
+
+      <!-- Member 2 -->
+      <div class="team-card">
+        <div class="team-avatar">
+          <!-- Thay src bằng ảnh thật của Xuân Khang -->
+          <img src="https://res.cloudinary.com/dczdnu2ba/image/upload/v1779029132/khangpx_dmmami.jpg" alt="Phạm Xuân Khang">
+        </div>
+
+        <div class="team-name">Phạm Xuân Khang</div>
+        <div class="team-role">Frontend + Deployment</div>
+
+        <div class="team-skills">
+          Electron · TypeScript · React<br>
+          Github Action<br>
+          Desktop App · Audio Recording
+        </div>
+
+        <div class="team-badges">
+          <span class="badge badge-rose">Desktop App</span>
+          <span class="badge badge-slate">Audio</span>
+        </div>
+      </div>
+
+      <!-- Member 3 -->
+      <div class="team-card">
+        <div class="team-avatar">
+          <!-- Thay src bằng ảnh thật của Văn Thức -->
+          <img src="https://res.cloudinary.com/dczdnu2ba/image/upload/v1779029144/thucnv_vi9pq5.png" alt="Nguyễn Văn Thức">
+        </div>
+
+        <div class="team-name">Nguyễn Văn Thức</div>
+        <div class="team-role">Docs + Backend</div>
+
+        <div class="team-skills">
+          Python · FastAPI · Celery<br>
+          OpenAI API · Redis<br>
+          AI Integration · Task Queue
+        </div>
+
+        <div class="team-badges">
+          <span class="badge badge-teal">AI Integration</span>
+          <span class="badge badge-slate">Task Queue</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ================================================================
+     SLIDE 3: PROBLEM
+================================================================ -->
+<section class="slide slide-problem" id="slide-2">
+  <div class="slide-number">03 / 08</div>
+
+  <div class="slide-inner">
+    <div class="slide-tag">
+      <span class="tag-line" style="background: var(--danger);"></span>
+      Problem Statement
+    </div>
+    <h2 class="slide-title">Sau cuộc họp là <span style="color: var(--danger);">cuộc chiến thứ hai</span></h2>
+
+    <!-- Stats -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-value">20–40'</div>
+        <div class="stat-label">Sau mỗi cuộc họp để viết biên bản</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">6–13h</div>
+        <div class="stat-label">Mỗi tuần chỉ để ghi chép biên bản</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--accent);">25%</div>
+        <div class="stat-label">Thời gian làm việc bị "nuốt chửng"</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--text-muted);">80%</div>
+        <div class="stat-label">Action items bị quên hoặc sai người</div>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top: 16px; gap: 20px;">
+      <div>
+        <h3 class="slide-subtitle">Ba pain points cốt lõi</h3>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+
+          <div class="card" style="
+            border-left: 4px solid var(--danger);
+            padding: 22px 24px;
+            min-height: 120px;
+          ">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+              <span style="font-size: 1.2rem;"></span>
+              <strong style="color: var(--danger); font-size:1rem;">Pain Point #1 — Thời gian</strong>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.65;">
+              Nhân viên họp 3–5 cuộc/ngày. Sau mỗi cuộc: 20–40 phút nghe lại, ghi chép, tạo Jira tickets. 20 cuộc/tuần = <strong>6–13 giờ chỉ để viết biên bản.</strong>
+            </p>
+          </div>
+
+          <div class="card" style="
+            border-left: 4px solid var(--priority);
+            padding: 22px 24px;
+            min-height: 120px;
+          ">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+              <span style="font-size: 1.2rem;"></span>
+              <strong style="color: #B45309; font-size:1rem;">Pain Point #2 — Ngôn ngữ</strong>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.65;">
+              Tool AI quốc tế (Otter.ai, Fireflies) tối ưu tiếng Anh. WER tiếng Việt cao hơn 2–3x. Không tool nào có Jira Epic→Task→Subtask.
+            </p>
+          </div>
+
+          <div class="card" style="
+            border-left: 4px solid var(--text-light);
+            padding: 22px 24px;
+            min-height: 120px;
+          ">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+              <span style="font-size: 1.2rem;"></span>
+              <strong style="color: var(--text); font-size:1rem;">Pain Point #3 — Giải pháp hiện tại</strong>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.65;">
+              Ghi chép tay (tốn time), Zoom/Meet (không push Jira), tool quốc tế (tiếng Việt kém), tool nội bộ (đắt + tự vận hành).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <!-- IMG PLACEHOLDER: Problem illustration — compact -->
+        <div class="img-placeholder" style="
+          height: 450px;
+          margin-bottom: 12px;
+          padding: 0;
+          overflow: hidden;
+        ">
+          <img
+            src="https://www.wikihow.com/images/thumb/e/e5/Take-Notes-at-a-Meeting-Step-6.jpg/v4-460px-Take-Notes-at-a-Meeting-Step-6.jpg"
+            alt="Ảnh minh họa pain point"
+            style="
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+              display: block;
+              border-radius: var(--radius-lg);
+            "
+          />
+        </div>
+        <div class="callout callout-accent" style="padding: 12px 14px; font-size: 0.82rem;">
+          "Chúng tôi đã khảo sát <strong>10 đồng nghiệp</strong> — tất cả xác nhận. Đây là vấn đề <strong style="color: var(--danger);">cấp thiết thực tế</strong>, không phải viễn vông."
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     SLIDE 4: SOLUTION
+================================================================ -->
+<section class="slide slide-solution" id="slide-3">
+  <div class="slide-number">04 / 08</div>
+
+  <div class="slide-inner">
+    <div class="slide-tag">
+      <span class="tag-line" style="background: var(--approve);"></span>
+      Our Solution
+    </div>
+    <h2 class="slide-title">
+      Từ cuộc họp đến Jira tickets
+      <span class="gradient-text" style="font-size: 0.65em;">chỉ trong 2 phút</span>
+    </h2>
+
+    <!-- Step Flow — compact -->
+    <div class="step-flow" style="margin: 16px 0 20px;">
+      <div class="step" style="padding: 16px;">
+        <div class="step-num" style="width:28px;height:28px;font-size:0.8rem;margin-bottom:8px;">1</div>
+        <div class="step-title" style="font-size:0.85rem;">Ghi âm / Upload</div>
+      </div>
+      <div class="step-connector" style="padding-top: 12px;">→</div>
+      <div class="step" style="padding: 16px;">
+        <div class="step-num" style="width:28px;height:28px;font-size:0.8rem;margin-bottom:8px;">2</div>
+        <div class="step-title" style="font-size:0.85rem;">AI xử lý (tự động)</div>
+      </div>
+      <div class="step-connector" style="padding-top: 12px;">→</div>
+      <div class="step" style="padding: 16px; border-color: #A7F3D0; background: #F0FDF4;">
+        <div class="step-num" style="width:28px;height:28px;font-size:0.8rem;margin-bottom:8px;background:var(--approve);">3</div>
+        <div class="step-title" style="font-size:0.85rem;">Review & Push Jira</div>
+      </div>
+    </div>
+
+    <!-- Two col: comparison + value props -->
+    <div class="two-col" style="gap: 24px;">
+      <div>
+        <div class="section-label">So sánh với đối thủ</div>
+        <div class="table-wrap">
+          <table style="height: 380px;">
+            <thead>
+              <tr>
+                <th>Tính năng</th>
+                <th style="color:var(--accent-dark);">AI Meeting<br>Assistant</th>
+                <th>Otter.ai</th>
+                <th>Fireflies</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="highlight-ours"><td>Ghi âm hệ thống + mic</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
+              <tr class="highlight-ours"><td>Tiếng Việt tối ưu</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
+              <tr class="highlight-ours"><td>Jira Epic→Task→Subtask</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
+              <tr class="highlight-ours"><td>Human-approve trước push</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
+              <tr class="highlight-ours"><td>Self-hosted possible</td><td><span class="check">✓</span></td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td></tr>
+              <tr><td>Chi phí</td><td style="color:var(--approve);font-weight:800;">~$0.03/họp</td><td>$10–20/tháng</td><td>$10–20/tháng</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Core Value Proposition</div>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
+          <div class="callout callout-green" style="
+            padding:18px 20px;
+            font-size:0.95rem;
+            line-height:1.65;
+            min-height:64px;
+            display:flex;
+            align-items:center;
+          ">
+            <strong style="color:#065F46;">Core Value:</strong>&nbsp;
+            Giảm <strong>30 phút</strong> xuống <strong>2 phút</strong> cho mỗi cuộc họp
+          </div>
+
+          <div class="callout callout-accent" style="
+            padding:18px 20px;
+            font-size:0.95rem;
+            line-height:1.65;
+            min-height:64px;
+            display:flex;
+            align-items:center;
+          ">
+            <strong style="color:var(--accent-dark);">Trust Mechanism:</strong>&nbsp;
+            Human-in-the-loop — không AI nào push thẳng lên Jira
+          </div>
+
+          <div class="callout callout-amber" style="
+            padding:18px 20px;
+            font-size:0.95rem;
+            line-height:1.65;
+            min-height:64px;
+            display:flex;
+            align-items:center;
+          ">
+            <strong style="color:#92400E;">Feasibility:</strong>&nbsp;
+            Chỉ ~$0.03/meeting.
+          </div>
+        </div>
+
+        <!-- Ảnh sản phẩm / App screenshot -->
+        <div style="
+          background: linear-gradient(135deg, #EFF6FF, #F8FAFC);
+          border: 1.5px solid #BFDBFE;
+          border-radius: 12px;
+          padding: 16px;
+          text-align: center;
+          color: #64748B;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 230px;
+          box-shadow: 0 2px 8px rgba(37,99,235,0.06);
+        ">
+          <img
+            src="https://res.cloudinary.com/dczdnu2ba/image/upload/v1779032633/2aOboQX5wmta7IbOZmaLSFGCKS2JlN4NF7zvJdaK_qchivj.jpg"
+            alt="MeetAstro — App Screenshot"
+            style="
+              width:100%;
+              height:200px;
+              object-fit:cover;
+              border-radius:8px;
+              border:1px solid #CBD5E1;
+              display:block;
+            "
+          />
+
+          <span style="font-size:0.75rem;color:#94A3B8;">
+            Giao diện: ghi âm → AI xử lý → Review → Push Jira
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     SLIDE 5: TECHNOLOGY
+================================================================ -->
+<section class="slide slide-tech" id="slide-4">
+  <div class="slide-number">05 / 08</div>
+
+  <div class="slide-inner">
+    <div class="slide-tag">
+      <span class="tag-line"></span>
+      Technical Architecture
+    </div>
+    <h2 class="slide-title">Stack <span class="gradient-text">production-ready</span></h2>
+    <!-- Architecture — compact 2-column grid -->
+    <div style="
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    ">
+      <!-- Left column: Client + API + Workers -->
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div class="arch-layer">
+          <span class="arch-layer-label">🎛️ Client</span>
+          <div class="arch-layer-content">
+            <span class="arch-tag">Electron</span>
+            <span class="arch-tag">React + TS</span>
+            <span class="arch-tag">Vite</span>
+            <span class="arch-tag">pysysaudio</span>
+          </div>
+        </div>
+        <div style="
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap:6px;
+          padding:4px 0;
+          font-size:0.78rem;
+          color:var(--accent);
+          font-weight:800;
+          text-align:center;
+        ">
+          ↓ HTTPS REST API + SSE + WebSocket
+        </div>
+        <div class="arch-layer">
+          <span class="arch-layer-label">⚡ API Server</span>
+          <div class="arch-layer-content">
+            <span class="arch-tag">FastAPI</span>
+            <span class="arch-tag">20+ endpoints</span>
+            <span class="arch-tag">slowapi</span>
+            <span class="arch-tag">SSE + WS</span>
+          </div>
+        </div>
+        <div style="
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap:6px;
+          padding:4px 0;
+          font-size:0.78rem;
+          color:var(--accent);
+          font-weight:800;
+          text-align:center;
+        ">
+          ↓ Celery + Redis
+        </div>
+        <div class="arch-layer">
+          <span class="arch-layer-label">🔄 Workers</span>
+          <div class="arch-layer-content">
+            <span class="arch-tag">transcribe</span>
+            <span class="arch-tag">analyze</span>
+            <span class="arch-tag">jira_push</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: Data + AI + Integrations -->
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div class="arch-layer">
+          <span class="arch-layer-label">🗄️ Data</span>
+          <div class="arch-layer-content">
+            <span class="arch-tag">Supabase</span>
+            <span class="arch-tag">Fernet enc.</span>
+            <span class="arch-tag">Redis</span>
+          </div>
+        </div>
+        <div style="
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap:6px;
+          padding:4px 0;
+          font-size:0.78rem;
+          color:var(--accent);
+          font-weight:800;
+          text-align:center;
+        ">
+          ↓
+        </div>
+        <div class="arch-layer">
+          <span class="arch-layer-label">🤖 AI Providers</span>
+          <div class="arch-layer-content">
+            <span class="arch-tag">Whisper API</span>
+            <span class="arch-tag">GPT-4o JSON</span>
+            <span class="arch-tag">LiveKit WS</span>
+          </div>
+        </div>
+        <div style="
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap:6px;
+          padding:4px 0;
+          font-size:0.78rem;
+          color:var(--accent);
+          font-weight:800;
+          text-align:center;
+        ">
+          ↓
+        </div>
+        <div class="arch-layer">
+          <span class="arch-layer-label">🔌 Integrations</span>
+          <div class="arch-layer-content">
+            <span class="arch-tag">Jira REST v3</span>
+            <span class="arch-tag">Epic→Task→Sub</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two col: Key Decisions + Security/Deployment -->
+    <div class="two-col" style="
+      gap: 16px;
+      margin-top: 10px;
+      align-items: stretch;
+    ">
+      <!-- Key Decisions -->
+      <div>
+        <div class="section-label" style="
+          font-size:0.9rem;
+          margin-bottom:12px;
+          color:var(--accent-dark);
+        ">
+          Key Engineering Decisions
+        </div>
+
+        <div style="
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        ">
+          <div class="card" style="padding:16px; min-height:92px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <span style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:white;font-size:0.72rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</span>
+              <strong style="font-size:0.9rem;">Strategy Pattern</strong>
+            </div>
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.55;">
+              Swap Whisper ↔ LiveKit ↔ OpenAI dễ dàng qua ABC
+            </p>
+          </div>
+
+          <div class="card" style="padding:16px; min-height:92px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <span style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:white;font-size:0.72rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</span>
+              <strong style="font-size:0.9rem;">Celery Pipeline</strong>
+            </div>
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.55;">
+              transcribe→analyze sequential, retry 2x exponential backoff
+            </p>
+          </div>
+
+          <div class="card" style="padding:16px; min-height:92px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <span style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:white;font-size:0.72rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</span>
+              <strong style="font-size:0.9rem;">Human-in-the-loop</strong>
+            </div>
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.55;">
+              draft→approved→rejected. Confidence&lt;0.4 → auto-flag
+            </p>
+          </div>
+
+          <div class="card" style="padding:16px; min-height:92px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <span style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:white;font-size:0.72rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</span>
+              <strong style="font-size:0.9rem;">Cross-Validation</strong>
+            </div>
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.55;">
+              AI vs regex → Jaccard similarity. Recall≥85%, Prec≥75%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security + Deployment -->
+      <div>
+        <div class="section-label" style="
+          font-size:0.9rem;
+          margin-bottom:12px;
+          color:var(--accent-dark);
+        ">
+          Security & Deployment
+        </div>
+
+        <div style="
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:10px;
+        ">
+          <div class="table-wrap">
+            <table style="font-size:0.86rem;">
+              <thead>
+                <tr>
+                  <th style="
+                    padding:14px 16px;
+                    font-size:0.9rem;
+                    font-weight:900;
+                    letter-spacing:1.6px;
+                    color:var(--accent-dark);
+                    background:var(--accent-light);
+                  ">
+                    Security
+                  </th>
+                  <th style="padding:12px 16px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:14px 16px;">Encryption</td>
+                  <td style="padding:14px 16px;color:var(--approve);font-weight:800;">Fernet</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 16px;">Rate limit</td>
+                  <td style="padding:14px 16px;color:var(--accent-dark);font-weight:800;">Per-endpoint</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 16px;">Audio retain</td>
+                  <td style="padding:14px 16px;color:var(--accent-dark);font-weight:800;">Auto-del 24h</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="table-wrap">
+            <table style="font-size:0.86rem;">
+              <thead>
+                <tr>
+                  <th style="
+                    padding:14px 16px;
+                    font-size:0.9rem;
+                    font-weight:900;
+                    letter-spacing:1.6px;
+                    color:var(--accent-dark);
+                    background:var(--accent-light);
+                  ">
+                    Deploy
+                  </th>
+                  <th style="padding:12px 16px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:14px 16px;">Backend</td>
+                  <td style="padding:14px 16px;">FastAPI + Pydantic v2</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 16px;">Workers</td>
+                  <td style="padding:14px 16px;">Celery 5.x + Redis</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 16px;">CI/CD</td>
+                  <td style="padding:14px 16px;">GitHub → Coolify</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     SLIDE 6: RESULTS
+================================================================ -->
+<section class="slide slide-results" id="slide-5">
+  <div class="slide-number">06 / 08</div>
+
+  <div class="slide-inner">
+    <div class="slide-tag">
+      <span class="tag-line" style="background: var(--approve);"></span>
+      Evaluation Results
+    </div>
+    <h2 class="slide-title">Pass toàn bộ <span class="gradient-text">kill criteria</span></h2>
+
+    <!-- Left: Metrics + Sprint | Right: ROI + Test Coverage -->
+    <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:24px;align-items:start;">
+
+      <!-- LEFT: Metrics + Roadmap -->
+      <div>
+        <!-- Metric Bars -->
+        <div style="margin-bottom: 16px;">
+          <div class="section-label">Kill Criteria — All Passed</div>
+          <div style="display:flex;flex-direction:column;gap:7px;">
+            <div class="metric-bar">
+              <div class="metric-label">Recall</div>
+              <div class="metric-track" style="max-width:260px;"><div class="metric-fill" style="width:88%;"></div></div>
+              <div class="metric-value metric-pass">≥ 85%</div>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-label">Precision</div>
+              <div class="metric-track" style="max-width:260px;"><div class="metric-fill" style="width:78%;"></div></div>
+              <div class="metric-value metric-pass">≥ 75%</div>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-label">Field Completeness</div>
+              <div class="metric-track" style="max-width:260px;"><div class="metric-fill" style="width:65%;"></div></div>
+              <div class="metric-value metric-pass">≥ 60%</div>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-label">Overall Confidence</div>
+              <div class="metric-track" style="max-width:260px;"><div class="metric-fill" style="width:73%;"></div></div>
+              <div class="metric-value metric-pass">≥ 70%</div>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-label">WER (Tiếng Việt)</div>
+              <div class="metric-track" style="max-width:260px;background:var(--approve-light);"><div class="metric-fill" style="width:18%;background:linear-gradient(90deg,var(--priority),var(--approve));"></div></div>
+              <div class="metric-value metric-pass">&lt; 20%</div>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-label">Structured Output Validity</div>
+              <div class="metric-track" style="max-width:260px;"><div class="metric-fill" style="width:97%;"></div></div>
+              <div class="metric-value metric-pass">≥ 95%</div>
+            </div>
+            <div class="metric-bar">
+              <div class="metric-label">E2E Latency (≤10 min audio)</div>
+              <div class="metric-track" style="max-width:260px;"><div class="metric-fill" style="width:55%;"></div></div>
+              <div class="metric-value metric-pass">&lt; 60s</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sprint Roadmap -->
+        <div style="margin-top:10px;">
+          <a href="https://a20-app-089.smartnovi.tech" target="_blank" style="
+            display:inline-flex;align-items:center;gap:6px;
+            padding:7px 16px;border-radius:8px;
+            background:var(--accent);color:white;
+            font-size:0.78rem;font-weight:700;
+            text-decoration:none;box-shadow:var(--shadow-xs);
+          ">🔗 a20-app-089.smartnovi.tech</a>
+        </div>
+      </div>
+
+      <!-- RIGHT: ROI + Test Coverage -->
+      <div>
+        <!-- ROI -->
+        <div class="section-label">ROI Analysis</div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px;">
+          <div class="card" style="padding:12px;border-left:3px solid var(--approve);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:0.65rem;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;font-weight:600;">Conservative</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);">~$0.50/tuần · ~1.5h tiết kiệm</div>
+              </div>
+              <div style="font-size:1.2rem;font-weight:900;color:var(--approve);">+30x</div>
+            </div>
+          </div>
+          <div class="card" style="padding:12px;border-left:3px solid var(--accent);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:0.65rem;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;font-weight:600;">Realistic</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);">~$3+$5/tháng · ~5h/tuần</div>
+              </div>
+              <div style="font-size:1.2rem;font-weight:900;color:var(--accent);">+47x</div>
+            </div>
+          </div>
+          <div class="card" style="padding:12px;border-left:3px solid var(--violet);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:0.65rem;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;font-weight:600;">Optimistic</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);">~$10+$20/tháng · ~15h/tuần</div>
+              </div>
+              <div style="font-size:1.2rem;font-weight:900;color:var(--violet);">+130x</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Test Coverage -->
+        <div class="section-label">Test Coverage</div>
+        <div class="checklist" style="gap:5px;">
+          <li style="font-size:0.78rem;">19 test files (unit + integration + WER)</li>
+          <li style="font-size:0.78rem;">4 transcriber providers</li>
+          <li style="font-size:0.78rem;">2 analyzer providers</li>
+          <li style="font-size:0.78rem;">Jira client (stub mode), exporter, audio</li>
+          <li style="font-size:0.78rem;">WER benchmark trên AMI Meeting Corpus</li>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     SLIDE 7: ROADMAP
+================================================================ -->
+<section class="slide slide-roadmap" id="slide-6">
+  <div class="slide-number">07 / 08</div>
+
+  <div class="slide-inner">
+    <div class="slide-tag">
+      <span class="tag-line" style="background: var(--violet);"></span>
+      Roadmap & Vision
+    </div>
+
+    <h2 class="slide-title">
+      Mở rộng từ <span class="gradient-text">MVP đã chứng minh</span>
+      thành <span style="color: var(--violet);">sản phẩm cho nhiều khách hàng</span>
+    </h2>
+
+    <p class="slide-lead" style="font-size:1rem; margin-bottom: 24px;">
+      Sau khi slide 6 đã chứng minh hệ thống đạt các tiêu chí đánh giá, bước tiếp theo là mở rộng sản phẩm cho nhiều nhóm, nhiều công ty và nhiều workflow meeting khác nhau.
+    </p>
+
+    <div class="two-col" style="gap: 24px; align-items: stretch;">
+      <!-- Roadmap -->
+      <div>
+        <div class="section-label">Roadmap — mở rộng khách hàng</div>
+
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="phase4-card" style="border-left: 4px solid var(--accent); padding:18px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-size:1.2rem;"></span>
+              <strong style="font-size:0.98rem;">Multi-customer onboarding</strong>
+            </div>
+            <p style="font-size:0.86rem; color:var(--text-muted); line-height:1.6;">
+              Chuẩn hóa quy trình đăng ký, cấu hình workspace, kết nối Jira và bắt đầu xử lý meeting trong vài phút.
+            </p>
+          </div>
+
+          <div class="phase4-card" style="border-left: 4px solid var(--approve); padding:18px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-size:1.2rem;"></span>
+              <strong style="font-size:0.98rem;">Team & organization workspace</strong>
+            </div>
+            <p style="font-size:0.86rem; color:var(--text-muted); line-height:1.6;">
+              Hỗ trợ nhiều team trong cùng một công ty, phân quyền theo vai trò, quản lý meeting notes và action items tập trung.
+            </p>
+          </div>
+
+          <div class="phase4-card" style="border-left: 4px solid var(--priority); padding:18px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-size:1.2rem;"></span>
+              <strong style="font-size:0.98rem;">More integrations</strong>
+            </div>
+            <p style="font-size:0.86rem; color:var(--text-muted); line-height:1.6;">
+              Mở rộng từ Jira sang Slack, Microsoft Teams, Google Calendar, Notion và các hệ thống quản lý công việc phổ biến.
+            </p>
+          </div>
+
+          <div class="phase4-card" style="border-left: 4px solid var(--violet); padding:18px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <span style="font-size:1.2rem;"></span>
+              <strong style="font-size:0.98rem;">Customer analytics dashboard</strong>
+            </div>
+            <p style="font-size:0.86rem; color:var(--text-muted); line-height:1.6;">
+              Theo dõi số cuộc họp đã xử lý, số action items được tạo, thời gian tiết kiệm và chất lượng extraction theo từng khách hàng.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vision -->
+      <div>
+        <div class="section-label">Vision</div>
+
+        <div class="callout callout-dark" style="
+          padding: 28px 30px;
+          border-radius: 20px;
+          min-height: 230px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          margin-bottom: 16px;
+        ">
+          <div style="
+            font-size: 0.8rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #93C5FD;
+            margin-bottom: 14px;
+          ">
+            Product Vision
+          </div>
+
+          <div style="
+            font-size: 1.45rem;
+            font-weight: 900;
+            line-height: 1.35;
+            color: white;
+            letter-spacing: -0.02em;
+          ">
+            Trở thành app hàng đầu trong lĩnh vực
+            <span style="color:#60A5FA;">meeting notes</span>
+            và
+            <span style="color:#34D399;">action items extraction</span>.
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="card" style="padding:18px; min-height:120px;">
+            <div style="font-size:1.4rem; margin-bottom:8px;"></div>
+            <strong style="font-size:0.95rem; color:var(--text);">Focus</strong>
+            <p style="font-size:0.82rem; color:var(--text-muted); line-height:1.55; margin-top:6px;">
+              Tập trung vào meeting notes, action items và workflow sau cuộc họp.
+            </p>
+          </div>
+
+          <div class="card" style="padding:18px; min-height:120px;">
+            <div style="font-size:1.4rem; margin-bottom:8px;">⚡</div>
+            <strong style="font-size:0.95rem; color:var(--text);">Speed</strong>
+            <p style="font-size:0.82rem; color:var(--text-muted); line-height:1.55; margin-top:6px;">
+              Biến cuộc họp thành output có thể hành động trong vài phút.
+            </p>
+          </div>
+
+          <div class="card" style="padding:18px; min-height:120px;">
+            <div style="font-size:1.4rem; margin-bottom:8px;"></div>
+            <strong style="font-size:0.95rem; color:var(--text);">Trust</strong>
+            <p style="font-size:0.82rem; color:var(--text-muted); line-height:1.55; margin-top:6px;">
+              Human-in-the-loop giúp người dùng kiểm soát trước khi push task.
+            </p>
+          </div>
+
+          <div class="card" style="padding:18px; min-height:120px;">
+            <div style="font-size:1.4rem; margin-bottom:8px;"></div>
+            <strong style="font-size:0.95rem; color:var(--text);">Scale</strong>
+            <p style="font-size:0.82rem; color:var(--text-muted); line-height:1.55; margin-top:6px;">
+              Thiết kế để phục vụ nhiều khách hàng, nhiều team và nhiều integration.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     SLIDE 8: CONCLUSION
+================================================================ -->
+<section class="slide slide-conclusion" id="slide-7">
+  <div class="slide-number">08 / 08</div>
+
+  <div class="slide-inner" style="
+    min-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  ">
+
+    <div class="slide-tag" style="justify-content:center; margin-bottom: 28px;">
+      <span class="tag-line"></span>
+      Kết luận
+    </div>
+
+    <h2 style="
+      font-size: clamp(2.8rem, 6vw, 5.2rem);
+      font-weight: 900;
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      color: #FFFFFF;
+      margin-bottom: 48px;
+    ">
+      Ba điểm mạnh chốt
+    </h2>
+
+    <div style="
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      flex-wrap: wrap;
+    ">
+      <div style="
+        padding: 26px 34px;
+        border-radius: 24px;
+        background: rgba(239,68,68,0.16);
+        border: 1.5px solid rgba(239,68,68,0.35);
+        color: #FCA5A5;
+        font-size: clamp(1.6rem, 3vw, 2.4rem);
+        font-weight: 900;
+        letter-spacing: -0.02em;
+      ">
+        Đau thật
+      </div>
+
+      <div style="
+        color: #475569;
+        font-size: clamp(1.8rem, 3vw, 2.6rem);
+        font-weight: 900;
+      ">
+        ·
+      </div>
+
+      <div style="
+        padding: 26px 34px;
+        border-radius: 24px;
+        background: rgba(37,99,235,0.18);
+        border: 1.5px solid rgba(37,99,235,0.38);
+        color: #93C5FD;
+        font-size: clamp(1.6rem, 3vw, 2.4rem);
+        font-weight: 900;
+        letter-spacing: -0.02em;
+      ">
+        Công nghệ thật
+      </div>
+
+      <div style="
+        color: #475569;
+        font-size: clamp(1.8rem, 3vw, 2.6rem);
+        font-weight: 900;
+      ">
+        ·
+      </div>
+
+      <div style="
+        padding: 26px 34px;
+        border-radius: 24px;
+        background: rgba(16,185,129,0.16);
+        border: 1.5px solid rgba(16,185,129,0.35);
+        color: #6EE7B7;
+        font-size: clamp(1.6rem, 3vw, 2.4rem);
+        font-weight: 900;
+        letter-spacing: -0.02em;
+      ">
+        Chất lượng thật
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     JAVASCRIPT
+================================================================ -->
+<script>
+  const slides    = document.querySelectorAll('.slide');
+  const navDots   = document.querySelectorAll('.nav-dot');
+  const progressBar = document.getElementById('progressBar');
+  const nav       = document.getElementById('nav');
+
+  function updateNav() {
+    const scrollY   = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const progress   = (scrollY / docHeight) * 100;
+    progressBar.style.width = progress + '%';
+
+    let current = 0;
+    slides.forEach((slide, i) => {
+      const rect = slide.getBoundingClientRect();
+      if (rect.top <= window.innerHeight / 2) current = i;
+    });
+
+    navDots.forEach((dot, i) => dot.classList.toggle('active', i === current));
+    nav.style.opacity   = scrollY > 80 ? '1' : '0';
+    nav.style.pointerEvents = scrollY > 80 ? 'auto' : 'none';
+  }
+
+  navDots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      slides[parseInt(dot.dataset.slide)].scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const cur = [...navDots].findIndex(d => d.classList.contains('active'));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'PageDown') {
+      e.preventDefault();
+      const next = Math.min(cur + 1, slides.length - 1);
+      slides[next].scrollIntoView({ behavior: 'smooth' });
+    }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      const prev = Math.max(cur - 1, 0);
+      slides[prev].scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+
+  window.addEventListener('scroll', updateNav, { passive: true });
+  updateNav();
+
+  // Animate metric bars
+  const barObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.querySelectorAll('.metric-fill').forEach(bar => {
+          const target = bar.style.width;
+          bar.style.width = '0%';
+          requestAnimationFrame(() => setTimeout(() => { bar.style.width = target; }, 80));
+        });
+        barObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.25 });
+
+  slides.forEach(s => barObserver.observe(s));
+</script>
+
+</body>
+</html>

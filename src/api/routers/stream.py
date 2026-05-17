@@ -15,6 +15,7 @@ Hidden legacy aliases:
 """
 import asyncio
 import json
+import math
 import uuid
 from typing import Optional
 
@@ -37,6 +38,19 @@ _chunk_debug_counts: dict[str, int] = {}
 _chunk_debug_bytes: dict[str, int] = {}
 
 router = APIRouter(tags=["streaming"])
+
+
+def _pcm_stats(chunk: bytes) -> tuple[int, int]:
+    if len(chunk) < 2:
+        return 0, 0
+    samples = memoryview(chunk).cast("h")
+    peak = 0
+    total_sq = 0
+    for sample in samples:
+        value = abs(int(sample))
+        peak = max(peak, value)
+        total_sq += value * value
+    return int(math.sqrt(total_sq / len(samples))), peak
 
 
 def _parse_server_time(t: str) -> float:
@@ -325,6 +339,8 @@ async def stream_websocket(websocket: WebSocket, meeting_id: uuid.UUID) -> None:
             pending_payload = None
 
     partial_task = asyncio.create_task(forward_partials())
+    received_chunks = 0
+    received_bytes = 0
     try:
         while True:
             message = await websocket.receive()
@@ -332,7 +348,21 @@ async def stream_websocket(websocket: WebSocket, meeting_id: uuid.UUID) -> None:
                 logger.info("[%s] Canonical stream WS disconnect message received.", meeting_id)
                 break
             if "bytes" in message and message["bytes"] is not None:
-                await session.send_audio_chunk(message["bytes"])
+                chunk = message["bytes"]
+                received_chunks += 1
+                received_bytes += len(chunk)
+                if received_chunks == 1 or received_chunks % 25 == 0:
+                    rms, peak = _pcm_stats(chunk)
+                    logger.info(
+                        "[%s] Received WS chunk #%d (%d bytes, total=%d, rms=%d, peak=%d).",
+                        meeting_id,
+                        received_chunks,
+                        len(chunk),
+                        received_bytes,
+                        rms,
+                        peak,
+                    )
+                await session.send_audio_chunk(chunk)
             elif "text" in message and message["text"]:
                 try:
                     payload = json.loads(message["text"])
@@ -354,7 +384,7 @@ async def stream_websocket(websocket: WebSocket, meeting_id: uuid.UUID) -> None:
                         update_meeting_status(str(meeting_id), status="processing")
                     task = finalize_stream_recording.delay(
                         str(meeting_id),
-                        audio_path=payload.get("audio_path"),
+                        audio_path=None,
                         language=language.strip() if language else None,
                     )
                     await websocket.send_json({
@@ -363,6 +393,8 @@ async def stream_websocket(websocket: WebSocket, meeting_id: uuid.UUID) -> None:
                         "job_id": task.id,
                         "persisted_segments": len(final_segments),
                         "transcript_source": transcript_source,
+                        "no_transcript": len(final_segments) == 0,
+                        "message": None if final_segments else "No transcript segments were produced from the live stream.",
                         "segments": final_segments,
                         "lines": final_lines,
                         "buffer_transcription": final_buffer,

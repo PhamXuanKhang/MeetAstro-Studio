@@ -17,13 +17,13 @@ export const fallbackDownloadMetadata: DownloadMetadata = {
   available: false,
   url: '',
   filename: '',
-  version: '0.1.0',
+  version: '',
   size: '',
   platform: 'Windows',
 }
 
 export const siteMedia: SiteMedia = {
-  heroImageUrl: import.meta.env.VITE_HERO_IMAGE_URL || '/og-image.svg',
+  heroImageUrl: '/hero-preview.png',
   demoEmbedUrl: import.meta.env.VITE_DEMO_EMBED_URL || '',
 }
 
