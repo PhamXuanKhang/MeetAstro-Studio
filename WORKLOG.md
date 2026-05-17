@@ -79,7 +79,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 
 ---
 
-### [ADR-5] Jira stub client thay vì bỏ Jira hoàn toàn — 11/04/2026
+### [ADR-3] Jira stub client thay vì bỏ Jira hoàn toàn — 11/04/2026
 
 **Bối cảnh:** Không có Jira sandbox để test. Spec yêu cầu Jira integration (Epic → Task → Subtask).
 
@@ -93,7 +93,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 
 ---
 
-### [ADR-3] pyproject.toml + editable install cho package resolution — 12/04/2026
+### [ADR-4] pyproject.toml + editable install cho package resolution — 12/04/2026
 
 **Bối cảnh:** `streamlit run src/app.py` gây `ModuleNotFoundError: No module named 'src'` vì Streamlit chạy file như script độc lập, không có project root trong `sys.path`.
 
@@ -123,7 +123,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 | Setup pyproject.toml + fix imports | Khang (+ Claude Code) | 12/04 | ✅ Xong |
 | Fix pre-push hook (python3 → python) | Khang (+ Claude Code Opus) | 12/04 | ✅ Xong |
 | Submit conversation logs lên server | Khang (+ Claude Code Opus) | 12/04 | ✅ Xong |
-| Cập nhật JOURNAL.md + WORKLOG.md | Khang (+ Claude Code Opus) | 12/04 | ✅ Xong |
+| Cập nhật JOURNAL.md + WORKLOG.md | Khang | 12/04 | ✅ Xong |
 
 ---
 
@@ -145,7 +145,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 
 ---
 
-### [ADR-6] Pydantic thay dataclasses cho schema — 18/04/2026
+### [ADR-5] Pydantic thay dataclasses cho schema — 18/04/2026
 
 **Bối cảnh:** Schema dùng `dataclasses` không có validation built-in. Khi parse JSON từ GPT-4o, cần validate fields (deadline format, priority enum) thủ công.
 
@@ -159,7 +159,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 
 ---
 
-### [ADR-7] Validation service với cross-validation scoring — 18/04/2026
+### [ADR-6] Validation service với cross-validation scoring — 18/04/2026
 
 **Bối cảnh:** AI có thể hallucinate action items. Cần mechanism để phát hiện và đánh giá confidence.
 
@@ -178,7 +178,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 
 ---
 
-### [ADR-8] Credential vault cho provider configs — 18/04/2026
+### [ADR-7] Credential vault cho provider configs — 18/04/2026
 
 **Bối cảnh:** Chuẩn bị multi-provider support (Gemini, Claude, etc.). API keys cần lưu trong database nhưng không plaintext.
 
@@ -192,7 +192,7 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 
 ---
 
-### [ADR-9] Audio recording với chunk rotation — 18/04/2026
+### [ADR-8] Audio recording với chunk rotation — 18/04/2026
 
 **Bối cảnh:** Transcription real-time cần audio chunks thay vì đợi cả file. System audio capture cần mix với mic.
 
@@ -227,6 +227,109 @@ Ghi lại các quyết định kỹ thuật, phân công, và brainstorming củ
 | MockAnalyzer cho testing | Khang | 18/04 | ✅ Xong |
 | Jira upload flow documentation | Duypt | 18/04 | ✅ Xong |
 | Update docs (architecture, api-reference, etc.) | Khang | 19/04 | ✅ Xong |
-| Smoke test E2E | Khang | 26/04 | ⬜ |
-| Test Jira với sandbox | Khang | 26/04 | ⬜ |
-| Deploy cloud | [TBD] | 26/04 | ⬜ |
+
+---
+
+### [ADR-9] FastAPI + Celery/Redis cho pipeline xử lý dài — 24/04/2026
+
+**Bối cảnh:** Transcription, analysis, Jira push và cleanup đều có thể mất nhiều thời gian. Nếu chạy trực tiếp trong HTTP request, UI dễ timeout và khó theo dõi trạng thái.
+
+**Các lựa chọn đã xem xét:**
+- **Synchronous API request**: Dễ implement, ít moving parts. Nhược: request lâu, dễ timeout, UX kém.
+- **Background jobs với Celery/Redis**: API chỉ enqueue job, worker xử lý, UI poll job status. Nhược: cần thêm Redis/worker runtime.
+
+**Quyết định:** Dùng FastAPI làm API layer, Celery worker cho tác vụ nền và Redis làm broker/result backend.
+
+**Hệ quả:** Cần Docker Compose cho Redis + API + worker, cần job polling endpoint và retry/error state rõ ràng. Đổi lại pipeline scale tốt hơn và phù hợp với Electron UI.
+
+---
+
+### Sprint 3 — 22/04 → 30/04/2026
+
+| Task | Người làm | Deadline | Trạng thái |
+|---|---|---|---|
+| Thiết kế FastAPI app và API routers chính | Khang | 24/04 | ✅ Xong |
+| Tách transcription/analyze/Jira push sang Celery tasks | Khang | 25/04 | ✅ Xong |
+| Cấu hình Redis broker/result backend qua Docker Compose | Khang | 25/04 | ✅ Xong |
+| Bổ sung job polling, health check, retry/error status | Khang | 26/04 | ✅ Xong |
+| Cập nhật review flow cho approve/edit/reject action items | Khang, Duypt | 28/04 | ✅ Xong |
+| Cải thiện upload/audio processing docs | Vthuc, Duypt | 28/04 | ✅ Xong |
+| Bổ sung rate limiting, CORS, security/deployment docs | Khang | 30/04 | ✅ Xong |
+| Cập nhật architecture, data-flow, API reference, Celery docs | Khang | 30/04 | ✅ Xong |
+
+---
+
+### [ADR-10] Supabase là database/auth runtime chính — 03/05/2026
+
+**Bối cảnh:** Prototype ban đầu dùng SQLite/local DB và sau đó có thử nghiệm PostgreSQL/Alembic. Khi chuyển sang desktop app có auth và dữ liệu người dùng, cần runtime có Auth, ownership, RLS và cloud database rõ ràng.
+
+**Các lựa chọn đã xem xét:**
+- **Giữ SQLite/local DB**: Rất đơn giản cho demo local nhưng không phù hợp multi-user/auth.
+- **Tự vận hành PostgreSQL + custom auth**: Kiểm soát cao nhưng tăng effort backend/security.
+- **Supabase Auth + Postgres managed tables**: Có Auth, service-role backend access, RLS và SDK frontend.
+
+**Quyết định:** Chọn Supabase làm database/auth runtime chính. Backend dùng `SUPABASE_SERVICE_ROLE_KEY` qua Supabase client/CRUD helpers; Electron dùng Supabase SDK cho auth và data views.
+
+**Hệ quả:** Docs phải ghi rõ SQLite/PostgreSQL/Alembic/Flet là prototype/legacy context. Env vars cần `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, Electron cần `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+
+---
+
+### [ADR-11] Electron + React/TypeScript là desktop frontend chính — 05/05/2026
+
+**Bối cảnh:** Streamlit/Flet giúp prototype nhanh nhưng không đủ tốt cho desktop UX cần auth, routing, IPC recording, native packaging và Windows installer.
+
+**Các lựa chọn đã xem xét:**
+- **Streamlit tiếp tục làm UI chính**: Nhanh cho data app, nhưng khó đóng gói desktop và UX hạn chế.
+- **Flet desktop**: Có hướng desktop nhưng ecosystem/frontend control hạn chế hơn React.
+- **Electron + React/TypeScript**: Phù hợp desktop app, dễ xây UI phức tạp, có IPC và electron-builder.
+
+**Quyết định:** Chọn `electron-app/` làm frontend chính cho submission và release.
+
+**Hệ quả:** Cần Node.js/Electron toolchain, TypeScript checks, Vite dev server và electron-builder. README/docs phải hướng người đọc vào Electron, không vào prototype cũ.
+
+---
+
+### Sprint 4 — 01/05 → 11/05/2026
+
+| Task | Người làm | Deadline | Trạng thái |
+|---|---|---|---|
+| Khởi tạo Electron + React + TypeScript app structure | Khang | 03/05 | ✅ Xong |
+| Xây auth, routing, meeting history, settings views | Khang, Duypt | 06/05 | ✅ Xong |
+| Tích hợp Supabase SDK/API layer và domain models | Duypt | 07/05 | ✅ Xong |
+| Viết backend contract v1 cho Supabase migration | Duypt, Khang | 07/05 | ✅ Xong |
+| Chuyển data flow meeting/transcript/action items sang Supabase-first | Vthuc, Duypt | 09/05 | ✅ Xong |
+| Kết nối upload, job polling, review, Jira settings với FastAPI | Khang, Duypt | 10/05 | ✅ Xong |
+| Cập nhật frontend, Supabase schema, deployment docs | Khang, Duypt | 11/05 | ✅ Xong |
+| Chuẩn bị workflow build/release Electron | Khang | 11/05 | ✅ Xong |
+
+---
+
+### [ADR-12] Human review bắt buộc trước khi push Jira — 13/05/2026
+
+**Bối cảnh:** GPT-4o có thể trích xuất sai assignee, deadline hoặc priority. Jira là hệ thống bên ngoài, nếu tự động push ngay sẽ tạo issue sai và gây nhiễu team workflow.
+
+**Các lựa chọn đã xem xét:**
+- **Auto-push toàn bộ AI output**: Nhanh nhưng rủi ro tạo Jira issue sai.
+- **Review gate trước Jira push**: Người dùng approve/edit/reject action items trước khi sync.
+
+**Quyết định:** Giữ human-in-the-loop review là bước bắt buộc trước Jira push.
+
+**Hệ quả:** UI cần action item tree, trạng thái approve/reject/edit, re-analysis và error handling. Pipeline chậm hơn auto-push nhưng đáng tin cậy hơn cho sản phẩm thực tế.
+
+---
+
+### Sprint 5 — 13/05 → 17/05/2026
+
+| Task | Người làm | Deadline | Trạng thái |
+|---|---|---|---|
+| Kết nối live audio streaming/realtime transcription path | Khang | 15/05 | ✅ Xong |
+| Hoàn thiện Electron recording/upload/provider flow | Khang, Duypt | 15/05 | ✅ Xong |
+| Cải thiện transcript review, speaker workflow, action item tree | Duypt | 16/05 | ✅ Xong |
+| Bổ sung create/edit/re-analyze action item flow | Duypt | 16/05 | ✅ Xong |
+| Tinh chỉnh Jira credential/error handling | Vthuc | 16/05 | ✅ Xong |
+| Polish UI theo design system và website/download pages | Khang | 17/05 | ✅ Xong |
+| Chuẩn bị Windows installer/release workflow | Khang | 17/05 | ✅ Xong |
+| Cập nhật README và kiểm tra tính nhất quán docs cho submission | Khang (+ Claude Code) | 17/05 | ✅ Xong |
+| Smoke test E2E | Khang | 17/05 | ✅ Xong |
+| Test Jira với sandbox | Khang | 17/05 | ✅ Xong |
+| Deploy cloud | Khang | 17/05 | ✅ Xong |

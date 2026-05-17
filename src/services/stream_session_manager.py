@@ -18,6 +18,19 @@ from src.config import get_logger, get_settings
 logger = get_logger(__name__)
 
 
+def _pcm_stats(chunk: bytes) -> tuple[int, int]:
+    if len(chunk) < 2:
+        return 0, 0
+    samples = memoryview(chunk).cast("h")
+    peak = 0
+    total_sq = 0
+    for sample in samples:
+        value = abs(int(sample))
+        peak = max(peak, value)
+        total_sq += value * value
+    return int((total_sq / len(samples)) ** 0.5), peak
+
+
 def _with_language_query(url: str, language: Optional[str]) -> str:
     cleaned = (language or "").strip()
     if not cleaned or cleaned == "auto":
@@ -156,14 +169,17 @@ class StreamSession:
                         self._sent_bytes,
                         self._send_queue.qsize(),
                     )
-                elif self._sent_chunks == 1 or self._sent_chunks % 100 == 0:
-                    logger.debug(
-                        "[%s] Sent WS chunk #%d (%d bytes, total=%d, queue=%d).",
+                elif self._sent_chunks == 1 or self._sent_chunks % 25 == 0:
+                    rms, peak = _pcm_stats(chunk)
+                    logger.info(
+                        "[%s] Sent WS chunk #%d (%d bytes, total=%d, queue=%d, rms=%d, peak=%d).",
                         self.meeting_id,
                         self._sent_chunks,
                         len(chunk),
                         self._sent_bytes,
                         self._send_queue.qsize(),
+                        rms,
+                        peak,
                     )
             except Exception as exc:
                 logger.error("[%s] Error sending chunk: %s", self.meeting_id, exc)

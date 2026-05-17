@@ -138,4 +138,5 @@ def fetch_all(
         query = query.order(order_by, ascending=ascending)
     if limit:
         query = query.limit(limit)
-    return client.table(table).select("*").execute().data
+    result = query.execute()
+    return result.data or []

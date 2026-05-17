@@ -354,7 +354,7 @@ async def stream_websocket(websocket: WebSocket, meeting_id: uuid.UUID) -> None:
                         update_meeting_status(str(meeting_id), status="processing")
                     task = finalize_stream_recording.delay(
                         str(meeting_id),
-                        audio_path=payload.get("audio_path"),
+                        audio_path=None,
                         language=language.strip() if language else None,
                     )
                     await websocket.send_json({

@@ -51,10 +51,8 @@ export default function App() {
   useEffect(() => {
     if (!window.electronAPI?.onAuthDeepLink) return undefined
     return window.electronAPI.onAuthDeepLink(async (url) => {
-      console.log('[auth] renderer received deep-link:', url)
       setDeepLinkError(null)
       const result = await handleAuthCallback(url)
-      console.log('[auth] handleAuthCallback result:', result)
       if (result.route === 'reset') {
         setAuthRoute('reset')
         return

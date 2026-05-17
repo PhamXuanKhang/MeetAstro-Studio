@@ -41,21 +41,19 @@ Có. Model GPT-4o biết extract action items tổng quát, nhưng **không bi�
 
 ### ✅ Completed
 
-- Full pipeline: Audio upload → Transcribe → Analyze → Export
-- 14 unit test files with mocked external APIs
-- E2E test script (`test_e2e.sh`)
-- Flet desktop app with HTTP client
-- Electron app (React + TypeScript, in progress)
+- Full pipeline: Audio upload/record → Transcribe → Analyze → Review → Jira push
+- Unit/integration tests with mocked external APIs
+- Electron app (React + TypeScript) as the submit frontend
 - Jira integration (stub mode + real API support)
-- PostgreSQL async with Alembic migrations
-- Docker Compose deployment
-- GitHub Actions CI/CD (deploy)
+- Supabase database/auth via Supabase SDK
+- Docker Compose backend deployment
+- GitHub Actions release/deploy support
 
 ### ⬜ In Progress
 
-- Phase 3: Eval pipeline, prompt tuning
-- Electron app completion
-- CI/CD pipeline (lint + test)
+- Submit verification evidence and final polish
+- CI quality gate beyond local verification
+- Evaluation pipeline and prompt tuning
 
 ### ⬜ Backlog
 

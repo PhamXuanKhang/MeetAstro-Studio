@@ -46,7 +46,7 @@ const faqs = [
   ['MeetAstro có phải meeting bot không?', 'Không. MeetAstro là desktop app để ghi âm hoặc tải file cuộc họp, sau đó tạo transcript, summary và action items.'],
   ['Có thể sửa trước khi đẩy sang Jira không?', 'Có. Bạn có thể chỉnh transcript, sửa từng action item, approve hoặc reject trước khi đồng bộ.'],
   ['Version tải về được cập nhật như thế nào?', 'Trang web đọc metadata release từ `/downloads/metadata.json`, còn backend tự đọc GitHub Release mới nhất nên version và link tải sẽ tự đổi sau mỗi release.'],
-  ['Tôi có thể gắn video demo ở đâu?', 'Đặt `VITE_DEMO_EMBED_URL` bằng link embed YouTube. Nếu chưa cấu hình, trang sẽ hiển thị khung demo chờ nội dung.'],
+  ['Tôi có thể gắn video demo ở đâu?', 'Đặt `VITE_DEMO_EMBED_URL` bằng link embed YouTube. Nếu chưa cấu hình, trang vẫn hiển thị khung demo mô tả workflow sản phẩm.'],
 ]
 
 function formatReleaseDate(value?: string) {
@@ -102,9 +102,9 @@ function ProductDemo() {
           <span className="material-symbols-outlined" aria-hidden="true">play_arrow</span>
         </div>
         <div>
-          <p className="eyebrow">Video demo</p>
+          <p className="eyebrow">Product walkthrough</p>
           <h3>Quy trình từ audio cuộc họp đến Jira-ready action items</h3>
-          <p>Video demo sẽ hiển thị tại đây khi link YouTube embed được cấu hình.</p>
+          <p>Khung demo tóm tắt workflow chính; có thể thay bằng video embed khi bản demo quay sẵn được publish.</p>
         </div>
       </div>
     </div>
@@ -121,12 +121,12 @@ export default function App() {
   }, [])
 
   const releaseDate = formatReleaseDate(downloadMetadata.publishedAt)
-  const releaseMeta = [
+  const releaseMeta = downloadMetadata.available ? [
     downloadMetadata.platform ? `Bản ${downloadMetadata.platform}` : 'Bản Windows',
-    `v${downloadMetadata.version}`,
+    downloadMetadata.version ? `v${downloadMetadata.version}` : '',
     downloadMetadata.size,
     releaseDate ? `phát hành ${releaseDate}` : '',
-  ].filter(Boolean).join(' · ')
+  ].filter(Boolean).join(' · ') : 'Bản tải sẽ hiển thị khi release EXE được publish.'
 
   return (
     <div className="site-shell">
