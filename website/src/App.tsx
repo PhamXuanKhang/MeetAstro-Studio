@@ -45,7 +45,7 @@ const metrics = [
 const faqs = [
   ['MeetAstro có phải meeting bot không?', 'Không. MeetAstro là desktop app để ghi âm hoặc tải file cuộc họp, sau đó tạo transcript, summary và action items.'],
   ['Có thể sửa trước khi đẩy sang Jira không?', 'Có. Bạn có thể chỉnh transcript, sửa từng action item, approve hoặc reject trước khi đồng bộ.'],
-  ['Version tải về được cập nhật như thế nào?', 'Trang web đọc metadata release từ `/downloads/metadata.json`, nên khi pipeline release cập nhật file này thì version và link tải sẽ tự đổi.'],
+  ['Version tải về được cập nhật như thế nào?', 'Trang web đọc metadata release từ `/downloads/metadata.json`, còn backend tự đọc GitHub Release mới nhất nên version và link tải sẽ tự đổi sau mỗi release.'],
   ['Tôi có thể gắn video demo ở đâu?', 'Đặt `VITE_DEMO_EMBED_URL` bằng link embed YouTube. Nếu chưa cấu hình, trang sẽ hiển thị khung demo chờ nội dung.'],
 ]
 
@@ -235,14 +235,14 @@ export default function App() {
             <p className="eyebrow">Tải ứng dụng</p>
             <h2 id="download-title">Cài desktop app để chạy workflow đầy đủ</h2>
             <p>
-              Bản desktop hỗ trợ ghi âm, nhập file, kiểm duyệt transcript, tạo action items và đồng bộ Jira. Thông tin version và link tải được lấy từ metadata release.
+              Bản desktop hỗ trợ ghi âm, nhập file, kiểm duyệt transcript, tạo action items và đồng bộ Jira. Thông tin version và link tải được lấy từ backend metadata.
             </p>
             <DownloadButton metadata={downloadMetadata} />
             <span className="release-meta dark">{releaseMeta}</span>
           </div>
           <div className="download-card">
             <span className="material-symbols-outlined" aria-hidden="true">desktop_windows</span>
-            <h3>{downloadMetadata.platform || 'Windows'} installer</h3>
+            <h3>{downloadMetadata.platform || 'Windows'} setup</h3>
             <p>{downloadMetadata.filename || 'Bản cài đặt sẽ hiển thị khi release được publish.'}</p>
             <ul>
               <li>Desktop app trên Electron</li>

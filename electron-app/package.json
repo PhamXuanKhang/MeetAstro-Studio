@@ -1,7 +1,7 @@
 {
-  "name": "ai-meeting-assistant",
+  "name": "meetastro",
   "version": "0.1.0",
-  "description": "AI Meeting Assistant - Electron Desktop App",
+  "description": "MeetAstro - Electron Desktop App",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -36,11 +36,12 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.a20.ai-meeting-assistant",
-    "productName": "AI Meeting Assistant",
+    "appId": "com.a20.meetastro",
+    "productName": "MeetAstro",
     "directories": {
       "output": "release"
     },
+    "artifactName": "MeetAstro-Setup-${version}.${ext}",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
