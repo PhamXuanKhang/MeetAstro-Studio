@@ -23,8 +23,8 @@ export const fallbackDownloadMetadata: DownloadMetadata = {
 }
 
 export const siteMedia: SiteMedia = {
-  heroImageUrl: '/hero-preview.png',
-  demoEmbedUrl: import.meta.env.VITE_DEMO_EMBED_URL || '',
+  heroImageUrl: '/banner.png',
+  demoEmbedUrl: import.meta.env.VITE_DEMO_EMBED_URL || 'https://www.youtube.com/embed/P8OAuSqKbho?si=yMzhcDnSgBks1mFE',
 }
 
 export async function fetchDownloadMetadata(): Promise<DownloadMetadata> {
