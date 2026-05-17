@@ -23,7 +23,7 @@ export const fallbackDownloadMetadata: DownloadMetadata = {
 }
 
 export const siteMedia: SiteMedia = {
-  heroImageUrl: import.meta.env.VITE_HERO_IMAGE_URL || '/hero-preview.png',
+  heroImageUrl: '/hero-preview.png',
   demoEmbedUrl: import.meta.env.VITE_DEMO_EMBED_URL || '',
 }
 
