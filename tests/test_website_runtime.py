@@ -25,11 +25,17 @@ def client(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     (assets_dir / "index-abcd1234.js").write_text("console.log('ok')", encoding="utf-8")
+    pitch_deck_path = tmp_path / "pitch-deck.html"
+    pitch_deck_path.write_text(
+        '<!doctype html><html><head><title>MeetAstro — Pitch Deck</title></head></html>',
+        encoding="utf-8",
+    )
 
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
 
     monkeypatch.setattr(main, "WEB_STATIC_DIR", dist_dir)
+    monkeypatch.setattr(main, "PITCH_DECK_PATH", pitch_deck_path)
     monkeypatch.setattr(main, "DOWNLOAD_DIR", downloads_dir)
     monkeypatch.setenv("APP_DOWNLOAD_GITHUB_REPO", "")
     monkeypatch.setenv("APP_DOWNLOAD_FILENAME", "MeetAstro-Setup.exe")
@@ -60,6 +66,15 @@ def test_vite_asset_uses_immutable_cache(client):
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_pitch_deck_routes_serve_static_html(client):
+    for path in ("/pitchdeck", "/pitch-deck"):
+        response = client.get(path)
+
+        assert response.status_code == 200
+        assert "MeetAstro — Pitch Deck" in response.text
+        assert response.headers["cache-control"] == "no-cache"
 
 
 def test_api_and_docs_routes_are_not_swallowed(client):
