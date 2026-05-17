@@ -113,6 +113,24 @@ function registerProtocol() {
   app.setAsDefaultProtocolClient('meetastro')
 }
 
+function openExternalUrl(url: string) {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      void shell.openExternal(url)
+    }
+  } catch {
+    console.warn('[window] blocked invalid external URL:', url)
+  }
+}
+
+function openWindowLinksExternally(window: BrowserWindow) {
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalUrl(url)
+    return { action: 'deny' }
+  })
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
   app.exit(0)
@@ -148,6 +166,7 @@ function createWindow() {
     title: 'AI Meeting Assistant',
     backgroundColor: '#f8fafc',
   })
+  openWindowLinksExternally(mainWindow)
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
@@ -265,6 +284,7 @@ function createPipWindow(initialState?: PipState) {
       additionalArguments: ['--pip-mode'],
     },
   })
+  openWindowLinksExternally(pipWindow)
 
   if (isDev) {
     pipWindow.loadURL('http://localhost:5173')

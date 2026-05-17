@@ -15,6 +15,7 @@ import type {
   ApproveActionItemPayload,
   RejectActionItemPayload,
   AddManualActionItemPayload,
+  WorkStatus,
 } from '../../types/supabase-models';
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -189,5 +190,28 @@ export async function addManualActionItem(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[F8] Thêm action item thủ công thất bại: ${message}`);
+  }
+}
+
+// ─── F9 – Apply Suggested Work Status Update ────────────
+
+/**
+ * Apply an AI-suggested work_status update after explicit user approval.
+ */
+export async function applyWorkStatusUpdate(
+  meetingId: string,
+  itemId: string,
+  payload: { work_status: WorkStatus; note?: string }
+): Promise<{ action_item: Pick<ActionItem, 'id' | 'work_status'> }> {
+  try {
+    const { data } = await getClient().patch<{ id: string; work_status: WorkStatus }>(
+      `/meetings/${meetingId}/review/${itemId}/work-status`,
+      payload
+    );
+
+    return { action_item: { id: data.id, work_status: data.work_status } };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`[F9] Cập nhật tiến độ thất bại: ${message}`);
   }
 }

@@ -18,10 +18,17 @@ from src.db.crud.meeting_crud import (
 )
 from src.db.crud.review_crud import (
     bulk_create_review_items,
+    delete_non_synced_review_items_except,
     delete_non_synced_review_items_for_meeting,
+    list_work_status_candidates_for_meeting,
     list_review_items,
     list_synced_review_items,
     update_review_item_parent,
+)
+from src.services.status_update_service import (
+    filter_status_updates,
+    rank_status_candidates,
+    status_update_item_ids,
 )
 from src.workers.celery_app import celery_app
 
@@ -58,8 +65,18 @@ def analyze_transcript(self, meeting_id: str, transcript_id: str) -> dict:
         logger.info(
             "[analyze_task] Starting analysis for meeting %s", meeting_id
         )
+        raw_candidates = list_work_status_candidates_for_meeting(meeting_id)
+        status_candidates = rank_status_candidates(
+            transcript_text,
+            raw_candidates,
+            current_meeting_id=meeting_id,
+        )
         from src.services.analysis_service import analyze
-        meeting_analysis = analyze(transcript_text)
+        meeting_analysis = analyze(transcript_text, status_candidates=status_candidates)
+        meeting_analysis.status_updates = filter_status_updates(
+            meeting_analysis.status_updates,
+            status_candidates,
+        )
     except Exception as exc:
         update_meeting_status(
             meeting_id, status="failed", error_message=str(exc)
@@ -85,8 +102,15 @@ def analyze_transcript(self, meeting_id: str, transcript_id: str) -> dict:
         synced_items=synced_items,
     )
 
-    # Delete only non-synced review items. Synced Jira items stay immutable.
-    delete_non_synced_review_items_for_meeting(meeting_id)
+    # Delete only non-synced review items. Preserve rows referenced by status updates.
+    preserved_status_item_ids = status_update_item_ids(meeting_analysis.status_updates)
+    if preserved_status_item_ids:
+        delete_non_synced_review_items_except(
+            meeting_id,
+            exclude_ids=preserved_status_item_ids,
+        )
+    else:
+        delete_non_synced_review_items_for_meeting(meeting_id)
 
     inserted: list[dict] = []
     if review_items_data:
@@ -155,7 +179,21 @@ def regenerate_action_items_from_note(self, meeting_id: str) -> dict:
 
     try:
         from src.services.analysis_service import analyze_note_actions
-        meeting_analysis = analyze_note_actions(note_text, synced_items=synced_items)
+        raw_candidates = list_work_status_candidates_for_meeting(meeting_id)
+        status_candidates = rank_status_candidates(
+            note_text,
+            raw_candidates,
+            current_meeting_id=meeting_id,
+        )
+        meeting_analysis = analyze_note_actions(
+            note_text,
+            synced_items=synced_items,
+            status_candidates=status_candidates,
+        )
+        meeting_analysis.status_updates = filter_status_updates(
+            meeting_analysis.status_updates,
+            status_candidates,
+        )
     except Exception as exc:
         update_meeting_status(meeting_id, status="failed", error_message=str(exc))
         raise self.retry(exc=exc)
@@ -167,7 +205,14 @@ def regenerate_action_items_from_note(self, meeting_id: str) -> dict:
         synced_items=synced_items,
     )
 
-    delete_non_synced_review_items_for_meeting(meeting_id)
+    preserved_status_item_ids = status_update_item_ids(meeting_analysis.status_updates)
+    if preserved_status_item_ids:
+        delete_non_synced_review_items_except(
+            meeting_id,
+            exclude_ids=preserved_status_item_ids,
+        )
+    else:
+        delete_non_synced_review_items_for_meeting(meeting_id)
     inserted = _insert_review_items_with_parents(review_items_data)
     update_meeting_status(meeting_id, status="draft")
 
