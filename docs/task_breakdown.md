@@ -380,9 +380,9 @@
 - **Nội dung bắt buộc:** Hero section, CTA tải app, product mockup, problem/solution, feature grid, workflow “Record/Upload → Transcript → Action Items → Jira”, trust/security section, target users, FAQ, final CTA, footer
 - **Ghi chú:** Có thể lấy cảm hứng layout từ Cursor/Notion nhưng copy/content phải là của MeetAstro; landing page ưu tiên rõ ràng, đẹp, deploy được hơn là nhiều interaction phức tạp
 
-**[Extra-1.2] Download MSI flow** 🟥 P0
-- **Input:** File build `.msi` của Electron app, version/release metadata nếu có
-- **Output:** Nút “Download for Windows” tải trực tiếp file `.msi`; hiển thị version, file size nếu có, platform Windows; có fallback message nếu MSI chưa được publish
+**[Extra-1.2] Download EXE flow** 🟥 P0
+- **Input:** File build `.exe` của Electron app, version/release metadata nếu có
+- **Output:** Nút “Download for Windows” tải trực tiếp file `.exe`; hiển thị version, file size nếu có, platform Windows; có fallback message nếu EXE chưa được publish
 - **Ghi chú:** Đường dẫn download phải cấu hình qua env/config, không hardcode secret hoặc URL tạm; nếu backend serve static file thì cần cache/header hợp lý
 
 **[Extra-1.3] Landing page content & SEO baseline** 🟧 P1
@@ -412,10 +412,10 @@
 - **Output:** Domain root (`/`) hiển thị landing page; API vẫn hoạt động dưới `/api/v1/*`; health/docs endpoints không bị ảnh hưởng; refresh trực tiếp trên route website không 404
 - **Ghi chú:** Có thể serve static build qua FastAPI hoặc reverse proxy tùy deploy hiện tại; không phá Docker backend stack Redis/API/Worker
 
-**[Extra-2.2] Static MSI hosting endpoint/path** 🟥 P0
-- **Input:** Electron `.msi` artifact, download route hoặc static folder
+**[Extra-2.2] Static EXE hosting endpoint/path** 🟥 P0
+- **Input:** Electron `.exe` artifact, download route hoặc static folder
 - **Output:** Stable download URL cho CTA landing page; hỗ trợ content-type/download filename đúng; có verify bằng browser/curl tải được file
-- **Ghi chú:** File `.msi` không commit vào repo nếu quá lớn; ưu tiên artifact/release/static volume được mount khi deploy
+- **Ghi chú:** File `.exe` không commit vào repo nếu quá lớn; ưu tiên GitHub Release artifact hoặc static volume được mount khi deploy
 
 **[Extra-2.3] Docker/deploy config update** 🟧 P1
 - **Input:** Dockerfile/docker-compose/deploy workflow hiện tại
@@ -424,7 +424,7 @@
 
 **[Extra-2.4] End-to-end website verification** 🟧 P1
 - **Input:** Domain production/staging
-- **Output:** Checklist verify: landing page load tại `/`, CTA download `.msi` hoạt động, `/api/v1/health` vẫn OK, mobile responsive cơ bản, no console errors nghiêm trọng
+- **Output:** Checklist verify: landing page load tại `/`, CTA download `.exe` hoạt động, `/api/v1/health` vẫn OK, mobile responsive cơ bản, no console errors nghiêm trọng
 - **Ghi chú:** Sau frontend change phải test bằng browser trước khi báo hoàn thành
 
 **Trích dẫn:**

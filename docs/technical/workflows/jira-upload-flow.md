@@ -6,7 +6,7 @@ Detailed flow for pushing action items from the app to Jira, including UI entry 
 
 ## 1. Entry point in the app
 
-The Jira flow is triggered from the Flet UI via the API:
+The Jira flow is triggered from the Electron UI via the API:
 
 - Action bar is available after analysis completes.
 - User clicks `Push to Jira`.
@@ -20,11 +20,11 @@ The Jira flow is triggered from the Flet UI via the API:
 
 ```text
 User clicks "Push to Jira"
-  -> Flet shows progress: "Pushing to Jira..."
+  -> Electron shows progress: "Pushing to Jira..."
   -> API checks meeting exists
   -> API blocks if any ReviewItem is still draft
   -> API queues Celery task and returns job_id
-  -> Flet polls /api/v1/jobs/{job_id}
+  -> Electron polls /api/v1/jobs/{job_id}
   -> worker reconstructs MeetingAnalysis from approved ReviewItem[]
   -> jira_service creates JiraClient()
   -> jira_service for each epic in analysis.epics:
@@ -143,10 +143,10 @@ Trong `JiraClient._post`:
 - Nếu response không OK: log status code + response text
 - Sau đó `raise_for_status()` để ném exception
 
-Ở API/Flet:
+Ở API/Electron:
 - API trả `409` nếu còn pending review items.
 - API trả `400` nếu không có approved items.
-- Flet bắt HTTP/job errors và hiển thị error message rõ ràng trong desktop UI.
+- Electron bắt HTTP/job errors và hiển thị error message rõ ràng trong desktop UI.
 
 Lưu ý quan trọng:
 - Không có rollback khi fail giữa chừng

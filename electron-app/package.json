@@ -1,11 +1,12 @@
 {
-  "name": "ai-meeting-assistant",
+  "name": "meetastro",
   "version": "0.1.0",
-  "description": "AI Meeting Assistant - Electron Desktop App",
+  "description": "MeetAstro - Electron Desktop App",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:sidecar": "powershell -ExecutionPolicy Bypass -File ./scripts/build_python_sidecar.ps1",
     "build:renderer": "vite build",
     "build:main": "vite build",
     "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
@@ -36,19 +37,20 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.a20.ai-meeting-assistant",
-    "productName": "AI Meeting Assistant",
+    "appId": "com.a20.meetastro",
+    "productName": "MeetAstro",
     "directories": {
       "output": "release"
     },
+    "artifactName": "MeetAstro-Setup-${version}.${ext}",
     "files": [
       "dist/**/*",
-      "dist-electron/**/*",
-      "python/**/*"
+      "dist-electron/**/*"
     ],
     "win": {
       "target": "nsis",
-      "icon": "public/icon.ico"
+      "icon": "public/logo.ico",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
@@ -56,20 +58,8 @@
     },
     "extraResources": [
       {
-        "from": "python",
+        "from": "python-dist",
         "to": "python"
-      },
-      {
-        "from": "../src/modules/audio_recorder.py",
-        "to": "python/src/modules/audio_recorder.py"
-      },
-      {
-        "from": "../src/config.py",
-        "to": "python/src/config.py"
-      },
-      {
-        "from": "../src/__init__.py",
-        "to": "python/src/__init__.py"
       }
     ]
   }

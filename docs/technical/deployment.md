@@ -1,202 +1,127 @@
 # Deployment & Setup
 
-Stack: Flet desktop app (HTTP client) + FastAPI server + Celery worker + PostgreSQL + Redis.
+Current submit runtime: Electron desktop app + FastAPI server + Celery worker + Redis + Supabase.
 
 ---
 
 ## Prerequisites
 
-- Python 3.9+ (frontend), Python 3.11+ (server/Docker)
-- [uv](https://docs.astral.sh/uv/) — package manager
-- Docker Desktop — chạy PostgreSQL + Redis locally
-- Git
+- Python 3.11+ for backend
+- Node.js 20+ for Electron and website builds
+- Docker Desktop for the backend stack
+- Supabase project with app tables/auth configured
+- `uv` or `pip`
 
 ---
 
 ## Local Development Setup
 
-### 1) Clone repo
-
-```bash
-git clone https://github.com/a20-ai-thuc-chien/A20-App-089.git
-cd A20-App-089
-```
-
-### 2) Tạo virtual environment
-
 ```bash
 uv venv
-# Windows
 source .venv/Scripts/activate
-# Linux/Mac
-source .venv/bin/activate
-```
-
-### 3) Cài dependencies
-
-```bash
-# Cài tất cả (local dev — server + frontend + dev tools)
 uv pip install -e ".[all]"
-
-# Hoặc chỉ cài từng group cần thiết:
-uv pip install -e ".[server]"    # Backend API + Celery + PostgreSQL
-uv pip install -e ".[frontend]"  # Flet desktop app + audio recording
-uv pip install -e ".[dev]"       # pytest + flake8 + mypy
-```
-
-### 4) Cấu hình environment
-
-```bash
 cp .env.example .env
 ```
 
-Điền vào `.env`:
-- `OPENAI_API_KEY` — bắt buộc
-- `POSTGRES_URL` — URL PostgreSQL (để trống nếu dùng Docker compose mặc định)
-- `APP_SECRET_KEY` — generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+Fill at least:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY`
+- `APP_SECRET_KEY`
 
-### 5) Setup git hooks (tùy chọn)
-
-```bash
-bash scripts/setup_hooks.sh
-```
+Optional:
+- `SUPABASE_ANON_KEY` for Electron auth
+- `JIRA_*` for real Jira push
+- `WHISPER_LIVEKIT_URL` for self-hosted streaming/diarization
 
 ---
 
-## Chạy Backend (Docker — Recommended)
-
-Khởi động toàn bộ stack (PostgreSQL + Redis + API server + Celery worker):
+## Backend with Docker
 
 ```bash
 docker compose up --build
 ```
 
 Services:
-- **PostgreSQL**: `localhost:5432` (db=ai_meeting_db, user=ai_meeting)
-- **Redis**: `localhost:6379`
-- **API server**: `http://localhost:8000`
-- **Celery worker**: tự khởi động, listen queue `default`
-- **migrate**: tự chạy `alembic upgrade head` trước khi API start
+- **Redis**: broker/result backend
+- **FastAPI**: `/api/v1/*`, health at `/api/v1/health`, landing page at `/`
+- **Celery worker**: queue `default`
 
-### Supabase database mode
+Supabase is external; Docker Compose does not start PostgreSQL or Alembic migrations for the active runtime.
 
-Revision `0003_supabase_rls_foundation.py` changes user-owned database rows to
-Supabase Auth ownership (`user_id uuid references auth.users(id)`) and enables
-RLS. Backend uses `SERVICE_ROLE_KEY` for all operations; Electron frontend uses `ANON_KEY` for auth.
-
-To apply migrations against Supabase:
+For local hot reload:
 
 ```bash
-alembic upgrade head
-```
-
-For local development with Docker Compose, PostgreSQL runs locally instead of Supabase.
-
-### Chỉ khởi động infrastructure (không build app)
-
-```bash
-docker compose up postgres redis -d
-```
-
-Sau đó chạy API và worker thủ công (dev mode với hot reload):
-
-```bash
+docker compose up redis -d
 uvicorn src.api.main:app --reload --port 8000
 celery -A src.workers.celery_app worker -Q default --loglevel=info
 ```
 
 ---
 
-## Chạy Flet Desktop App
+## Electron Desktop App
 
 ```bash
-python frontend/main.py
+cd electron-app
+npm install
+npm run dev
 ```
 
-App kết nối tới `API_BASE_URL` (mặc định `http://localhost:8000`). Đảm bảo backend đang chạy.
+Production Windows build:
+
+```bash
+cd electron-app
+npm run build
+```
+
+The submission artifact is `MeetAstro-Setup-*.exe`. Release metadata is served through `/downloads/metadata.json`; the backend reads the latest GitHub Release first and can fall back to `APP_DOWNLOAD_URL` or a file mounted in `APP_DOWNLOADS_DIR`.
 
 ---
 
-## Tests & Verification
+## Website / Landing Page
+
+The backend Docker image builds `website/` and serves `website/dist` from FastAPI.
+
+```bash
+cd website
+npm install
+npm run build
+```
+
+Website media env vars:
+- `VITE_HERO_IMAGE_URL` defaults to `/hero-preview.png`
+- `VITE_DEMO_EMBED_URL` is optional; when empty the page shows the built-in product walkthrough placeholder
+
+---
+
+## Verification
 
 ```bash
 pytest tests/ -v
-flake8 . --max-line-length=100 && mypy . --ignore-missing-imports && pytest tests/ -v
+cd electron-app && npm run typecheck
+cd website && npm run build
 ```
 
----
-
-## Production Deploy (VPS)
-
-### Backend (Docker trên VPS)
-
-```bash
-# Trên VPS
-git clone ... && cd A20-App-089
-cp .env.example .env  # fill production values
-docker compose up -d --build
-```
-
-Cần cấu hình thêm:
-- Reverse proxy (nginx) để expose port 8000
-- SSL/TLS certificate
-- Persistent volumes cho PostgreSQL data
-
-### Frontend (Desktop .exe)
-
-Build Flet app thành `.exe` bằng [flet pack](https://flet.dev/docs/publish):
-
-```bash
-uv pip install -e ".[frontend]"
-flet pack frontend/main.py --name "AI Meeting Assistant"
-```
-
-Distribute file `.exe` cho người dùng. Cấu hình `API_BASE_URL` trong `.env` để trỏ về VPS.
+Use sanitized environment values before sharing `docker compose config` output because Compose expands `.env` secrets.
 
 ---
 
 ## Environment Variables
 
-Xem `.env.example` để biết đầy đủ. Các biến quan trọng:
+See `.env.example` for the full list. Key variables:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `SUPABASE_URL` | Yes | — | Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes (backend) | — | Backend database access |
-| `SUPABASE_ANON_KEY` | Yes (Electron) | — | Frontend auth |
-| `OPENAI_API_KEY` | Yes | — | GPT-4o + Whisper API |
-| `APP_SECRET_KEY` | Yes | — | Fernet key cho credential encryption |
-| `CELERY_BROKER_URL` | No | `redis://localhost:6379/0` | Redis broker |
-| `CELERY_RESULT_BACKEND` | No | `redis://localhost:6379/1` | Redis result backend |
-| `WHISPER_LIVEKIT_URL` | No | — | LiveKit WebSocket URL |
-| `JIRA_BASE_URL` | No | — | Jira instance URL (stub mode nếu thiếu) |
-| `JIRA_EMAIL` | No | — | Jira Basic Auth email |
-| `JIRA_API_TOKEN` | No | — | Jira API token |
-| `JIRA_PROJECT_KEY` | No | — | Jira project key |
-| `CONFIDENCE_LOW_THRESHOLD` | No | `0.4` | Threshold để flag review items |
-| `LOG_LEVEL` | No | `INFO` | Logging level |
-
----
-
-## Dual Frontend Deployment
-
-### Flet Desktop App
-
-Build standalone `.exe` using [flet pack](https://flet.dev/docs/publish):
-
-```bash
-uv pip install -e ".[frontend]"
-flet pack frontend/main.py --name "AI Meeting Assistant"
-```
-
-Configure `API_BASE_URL` in `.env` to point to production server.
-
-### Electron Desktop App
-
-```bash
-cd electron-app
-npm install
-npm run build  # Production build (.exe via electron-builder)
-```
-
-Electron uses Supabase JS SDK for auth and user queries. Backend is called via axios for heavy operations.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Backend service-role database access |
+| `SUPABASE_ANON_KEY` | Electron | Frontend auth key |
+| `OPENAI_API_KEY` | Yes | GPT-4o + Whisper API fallback |
+| `APP_SECRET_KEY` | Yes | Fernet key for provider credential encryption |
+| `CELERY_BROKER_URL` | No | Redis broker URL |
+| `CELERY_RESULT_BACKEND` | No | Redis result backend URL |
+| `WHISPER_LIVEKIT_URL` | No | Optional WhisperLiveKit WebSocket URL |
+| `APP_DOWNLOAD_GITHUB_REPO` | No | GitHub repo used for latest EXE release metadata |
+| `APP_DOWNLOAD_URL` | No | Explicit EXE download URL fallback |
+| `APP_DOWNLOAD_FILENAME` | No | Local EXE filename fallback |
+| `APP_DOWNLOADS_DIR` | No | Host folder mounted read-only to `/app/downloads` |
+| `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` / `JIRA_PROJECT_KEY` | No | Jira integration; missing credentials keep Jira in stub mode |

@@ -10,7 +10,7 @@ Chiến lược testing cho AI Meeting Assistant.
 |-----------|----------|--------|
 | **Unit tests** | 14 test files trong `tests/` | Đã chạy thành công với dev deps |
 | **Integration tests** | `tests/test_integration.py`, mock external APIs | E2E script `test_e2e.sh` sẵn sàng |
-| **Manual smoke test** | Flet UI + FastAPI + worker + real audio | Cần chạy định kỳ |
+| **Manual smoke test** | Electron UI + FastAPI + worker + real audio | Cần chạy định kỳ |
 | **Eval test** | AI quality: recall, precision, WER | Chưa tự động hóa |
 
 ---
@@ -59,7 +59,7 @@ pytest tests/ -v --cov=src --cov-report=term-missing
 ### Lưu ý quan trọng
 
 - **External APIs:** Tất cả OpenAI, Whisper, Jira calls phải được mock trong unit test.
-- **Database:** Dự án chỉ dùng PostgreSQL qua `src/db/`; không thêm SQLite test path mới.
+- **Database:** Runtime dùng Supabase qua `src/db/supabase_client.py`; không thêm SQLite/local PostgreSQL test path mới.
 - **Transcription fallback:** Chỉ cho phép fallback từ diarization sang plain OpenAI Whisper transcription. Không dùng Local Whisper.
 - **Prompt changes:** Sau khi sửa prompt/analyzer, verify output parse được thành `MeetingAnalysis` và match Jira schema Epic/Task/Subtask.
 
@@ -80,7 +80,7 @@ Audio file (<= 2 phút)
     -> export JSON
 ```
 
-**Cần:** audio file mẫu tại `data/recordings/test_audio.mp3`, PostgreSQL + Redis + worker đang chạy, `OPENAI_API_KEY`.
+**Cần:** audio file mẫu tại `data/recordings/test_audio.mp3`, Supabase env, Redis + worker đang chạy, `OPENAI_API_KEY`.
 
 ```bash
 # Chạy E2E test

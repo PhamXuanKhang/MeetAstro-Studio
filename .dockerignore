@@ -1,4 +1,5 @@
 .venv
+venv
 __pycache__
 *.pyc
 *.pyo
@@ -6,17 +7,35 @@ __pycache__
 .mypy_cache
 .git
 .gitignore
-data/recordings
-data/*.db
-docs/
-tests/
-# frontend/
-*.md
-*.log
 .env
 .env.*
+.ai-log
+.claude
+
+# Local/generated app data
+data/recordings
+data/*.db
+downloads
+*.log
+*.blockmap
+*.exe
+*.msi
+
+# Runtime image does not need docs/tests
+_docs_placeholder_
+docs/
+tests/
+*.md
 uv.lock
 a20_app_089.egg-info/
 
+# Frontend/Electron artifacts not needed by backend image
+electron-app/node_modules
+electron-app/dist
+electron-app/dist-electron
+electron-app/release
+electron-app/out
+
+# Website source is required by Dockerfile; only ignore generated deps/build output
 website/node_modules
 website/dist

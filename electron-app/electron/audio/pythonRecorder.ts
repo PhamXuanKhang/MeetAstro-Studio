@@ -1,6 +1,21 @@
 import { spawn, ChildProcess } from 'child_process'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, app } from 'electron'
+import fs from 'fs'
 import path from 'path'
+
+interface AudioLevelEvent {
+  source: string
+  chunk_index: number
+  bytes: number
+  sys_rms: number
+  sys_peak: number
+  mic_rms: number
+  mic_peak: number
+  mixed_rms: number
+  mixed_peak: number
+  mic_queue: number
+  mic_buffer: number
+}
 
 interface RecorderResponse {
   status: string
@@ -8,6 +23,17 @@ interface RecorderResponse {
   output_path?: string
   error?: string
   is_recording?: boolean
+  source?: string
+  chunk_index?: number
+  bytes?: number
+  sys_rms?: number
+  sys_peak?: number
+  mic_rms?: number
+  mic_peak?: number
+  mixed_rms?: number
+  mixed_peak?: number
+  mic_queue?: number
+  mic_buffer?: number
 }
 
 export class PythonRecorder {
@@ -22,11 +48,16 @@ export class PythonRecorder {
   }
 
   private spawnProcess() {
-    const scriptPath = this.resolveScriptPath()
+    const command = this.resolveCommand()
 
     try {
-      this.process = spawn('python', [scriptPath], {
+      const env = {
+        ...process.env,
+        MEETASTRO_RECORDER_LOG_DIR: path.join(app.getPath('userData'), 'logs'),
+      }
+      this.process = spawn(command.executable, command.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        env,
       })
 
       this.process.stdout?.on('data', (data: Buffer) => {
@@ -42,6 +73,25 @@ export class PythonRecorder {
             if (msg.status === 'stream_partial') {
               BrowserWindow.getAllWindows().forEach((window) => {
                 window.webContents.send('audio:streamPartial', msg.segments ?? [])
+              })
+              continue
+            }
+            if (msg.status === 'audio_level') {
+              const level: AudioLevelEvent = {
+                source: String(msg.source ?? 'capture'),
+                chunk_index: Number(msg.chunk_index ?? 0),
+                bytes: Number(msg.bytes ?? 0),
+                sys_rms: Number(msg.sys_rms ?? 0),
+                sys_peak: Number(msg.sys_peak ?? 0),
+                mic_rms: Number(msg.mic_rms ?? 0),
+                mic_peak: Number(msg.mic_peak ?? 0),
+                mixed_rms: Number(msg.mixed_rms ?? 0),
+                mixed_peak: Number(msg.mixed_peak ?? 0),
+                mic_queue: Number(msg.mic_queue ?? 0),
+                mic_buffer: Number(msg.mic_buffer ?? 0),
+              }
+              BrowserWindow.getAllWindows().forEach((window) => {
+                window.webContents.send('audio:level', level)
               })
               continue
             }
@@ -67,21 +117,27 @@ export class PythonRecorder {
       })
     } catch (err) {
       console.error('[PythonRecorder] Failed to spawn Python process:', err)
+      this.process = null
     }
   }
 
-  private resolveScriptPath(): string {
-    const fs = require('fs')
+  private resolveCommand(): { executable: string; args: string[] } {
+    if (app.isPackaged) {
+      const executable = path.join(process.resourcesPath, 'python', 'recorder_server', 'recorder_server.exe')
+      if (!fs.existsSync(executable)) {
+        throw new Error(`Bundled recorder sidecar not found at ${executable}`)
+      }
+      return { executable, args: [] }
+    }
 
-    // In packaged app, extraResources lands next to app.asar.
-    const packaged = path.join(process.resourcesPath, 'python', 'recorder_server.py')
-    if (fs.existsSync(packaged)) return packaged
+    const scriptPath = this.resolveDevScriptPath()
+    return { executable: 'python', args: [scriptPath] }
+  }
 
-    // Dev build output lives at electron-app/dist-electron.
+  private resolveDevScriptPath(): string {
     const devFromDist = path.join(__dirname, '../python/recorder_server.py')
     if (fs.existsSync(devFromDist)) return devFromDist
 
-    // Fallback for direct ts-node-style execution from electron/audio.
     return path.join(__dirname, '../../python/recorder_server.py')
   }
 

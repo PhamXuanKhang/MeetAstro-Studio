@@ -1,4 +1,4 @@
-# AI Meeting Assistant — Electron App
+# MeetAstro-Studio — Electron App
 
 Electron + React + TypeScript frontend thay thế Flet, giữ nguyên FastAPI backend.
 

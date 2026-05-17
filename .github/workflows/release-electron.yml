@@ -1,0 +1,54 @@
+name: Validate Electron Release Tag
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to validate, e.g. v0.1.0'
+        required: true
+        type: string
+
+jobs:
+  validate-release-tag:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          tag="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vX.Y.Z, got '$tag'." >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package version matches tag
+        shell: bash
+        run: |
+          package_version=$(python3 -c "import json; print(json.load(open('electron-app/package.json'))['version'])")
+          expected="${{ steps.release_tag.outputs.version }}"
+          if [ "$package_version" != "$expected" ]; then
+            echo "Tag version $expected does not match electron-app/package.json version $package_version." >&2
+            exit 1
+          fi
+
+      - name: Print local release command
+        shell: bash
+        run: |
+          echo "Tag is valid. Build and upload the EXE from a Windows dev machine with:"
+          echo "  \$env:RELEASE_REPO_TOKEN='<token-with-contents-write>'"
+          echo "  .\\scripts\\release_electron.ps1 -Tag ${{ steps.release_tag.outputs.tag }}"

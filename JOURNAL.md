@@ -63,7 +63,7 @@ Ghi lại hành trình xây dựng sản phẩm mỗi tuần — những gì đ�
 |---|---|---|
 | Claude Code (Opus) | Survey codebase vs spec, tạo refactor plan chi tiết (Bước 1-4) | Plan chính xác, phát hiện 100% gap giữa code hiện tại và spec |
 | Claude Code (Sonnet) | Implement toàn bộ plan: tạo 20+ files, viết 85 tests | Build thành công trong 1 session, 85/85 tests pass |
-| Claude Code (Opus) | Debug submit_log, trích xuất conversation history, viết JOURNAL/WORKLOG | Phát hiện root cause python3 Windows issue, submit 49 entries thành công |
+| Claude Code (Opus) | Debug submit_log, trích xuất conversation history, tổng hợp worklog entries | Phát hiện root cause python3 Windows issue, submit 49 entries thành công |
 
 #### Học được
 - Strategy Pattern (ABC) giúp swap provider dễ dàng — chỉ cần implement `analyze()` hoặc `transcribe()` theo interface
@@ -73,8 +73,8 @@ Ghi lại hành trình xây dựng sản phẩm mỗi tuần — những gì đ�
 - Git hook trên Windows phải dùng `python` (không phải `python3`) — luôn kiểm tra `which python3` trước khi dùng
 
 #### Nếu làm lại, sẽ làm khác
-- Chạy `setup_hooks.sh` và test submit log ngay từ ngày đầu, không để đến đầu tuần 2 mới phát hiện lỗi
-- Setup `pyproject.toml` trước khi bắt đầu code, thay vì sau khi gặp import error
+- Chạy setup_hooks.sh và test submit log ngay khi setup môi trường, trước khi bắt đầu code
+- Setup pyproject.toml và package structure ngay từ đầu để tránh import issues về sau
 - Dùng `tmp_path` fixture cho SQLite tests ngay từ đầu thay vì thử `:memory:` rồi debug
 
 #### Kế hoạch tuần tới
@@ -138,3 +138,148 @@ Ghi lại hành trình xây dựng sản phẩm mỗi tuần — những gì đ�
 - Integrate validation scores vào UI
 - Test Jira với Atlassian sandbox
 - Deploy lên cloud
+
+---
+
+### Tuần 3 — 26/04/2026
+
+**Thành viên:** Phạm Xuân Khang, Vthuc, Duypt
+
+#### Đã làm
+- **Backend API & Worker Pipeline (Khang):**
+  - Mở rộng FastAPI routers cho meetings, transcriptions, analysis, reviews, Jira, exports, settings, stream
+  - Thiết kế job polling qua `/api/v1/jobs/{job_id}` và health endpoint `/api/v1/health`
+  - Tách các tác vụ dài sang Celery worker với Redis broker/result backend
+  - Chuẩn hóa service layer cho audio ingestion, transcription, analysis, validation, summarization, cleanup
+- **Database & Security (Khang, Duypt):**
+  - Chuẩn bị hướng chuyển từ prototype local DB sang runtime có auth/ownership rõ hơn
+  - Bổ sung rate limiting, CORS config, credential handling và tài liệu security
+  - Cập nhật schema/docs để phản ánh review flow và trạng thái xử lý meeting
+- **Frontend / Prototype Evolution (Vthuc, Duypt):**
+  - Thử nghiệm desktop UI và upload/review flow trước khi chốt hướng Electron
+  - Cải thiện tài liệu luồng audio/Jira để frontend và backend cùng bám contract
+- **Docs & QA:**
+  - Cập nhật architecture, API reference, data flow, Celery task docs, evaluation/test plan
+  - Bổ sung kiểm thử cho service/provider/API paths quan trọng
+
+#### Khó nhất tuần này
+- Chuyển từ app prototype chạy đồng bộ sang kiến trúc API + worker async khiến state management phức tạp hơn
+- Cần phân biệt rõ việc nào chạy qua Supabase/direct data view, việc nào phải đi qua FastAPI job pipeline
+- Review flow cần giữ đúng schema Epic → Task → Subtask nhưng vẫn cho phép người dùng sửa trước khi push Jira
+
+#### AI tool đã dùng
+| Tool | Dùng để làm gì | Kết quả |
+|---|---|---|
+| Claude Code | Refactor backend API/service/worker theo từng bước nhỏ | Tách được pipeline rõ ràng, dễ test hơn |
+| Claude Code | Viết và rà soát docs kỹ thuật | Architecture và API docs đồng bộ hơn với code |
+| Claude Code | Debug test failures khi đổi schema/config | Giữ được test suite cho các module quan trọng |
+
+#### Học được
+- Với tác vụ AI/audio dài, job queue + polling an toàn hơn HTTP request chạy lâu
+- API contract cần được viết sớm để frontend không phụ thuộc vào chi tiết service nội bộ
+- Security docs phải đi cùng thay đổi auth/credential, không để đến cuối dự án mới bổ sung
+
+#### Nếu làm lại, sẽ làm khác
+- Chốt contract API/job status sớm hơn trước khi mở rộng nhiều router
+- Viết migration note song song với thay đổi database runtime để docs luôn đồng bộ
+
+#### Kế hoạch tuần tới
+- Chốt frontend desktop chính bằng Electron + React/TypeScript
+- Hoàn thiện Supabase Auth/DB integration
+- Kết nối review/action item flow từ UI đến backend pipeline
+
+---
+
+### Tuần 4 — 11/05/2026
+
+**Thành viên:** Phạm Xuân Khang, Vthuc, Duypt
+
+#### Đã làm
+- **Electron Desktop App (Khang, Duypt):**
+  - Chuyển trọng tâm frontend sang `electron-app/` với React, TypeScript, Vite và Electron
+  - Xây dựng các màn hình auth, meeting history, upload/recording, transcript review, action item review, settings
+  - Thêm Supabase email/password auth, routing, store/state management và Axios API client
+- **Supabase Migration (Duypt, Vthuc, Khang):**
+  - Chuẩn hóa Supabase SDK/API layer, domain models và backend contract v1
+  - Chuyển dữ liệu meeting/transcript/analysis/action items sang Supabase-first runtime
+  - Ghi rõ local DB/Flet/Streamlit là prototype/legacy context trong docs
+- **Backend Contract & Integration:**
+  - Đồng bộ FastAPI endpoints với Electron UI cho upload, job polling, analysis, review, Jira push
+  - Cập nhật settings/Jira config flow và error handling
+  - Bổ sung deploy/release workflow nền tảng cho backend và desktop app
+- **Docs:**
+  - Cập nhật frontend docs, Supabase schema, architecture và deployment notes
+
+#### Khó nhất tuần này
+- Supabase Auth chạy ở frontend nhưng backend vẫn cần service-role access an toàn, nên phải tách rõ trách nhiệm client/server
+- Electron IPC, recording sidecar và API polling cần phối hợp để UX không bị treo khi job chạy lâu
+- Migration từ nhiều prototype UI sang một frontend chính làm docs dễ bị mâu thuẫn nếu không cập nhật kỹ
+
+#### AI tool đã dùng
+| Tool | Dùng để làm gì | Kết quả |
+|---|---|---|
+| Claude Code | Rà soát Electron app structure và backend contract | Xác định rõ boundary Electron ↔ FastAPI ↔ Supabase |
+| Claude Code | Cập nhật docs migration và Supabase schema | Giảm mâu thuẫn giữa prototype cũ và runtime hiện tại |
+| Claude Code | Debug TypeScript/API integration issues | UI kết nối backend ổn định hơn |
+
+#### Học được
+- Electron phù hợp hơn Streamlit/Flet cho desktop app cần auth, IPC recording và release installer
+- Supabase SDK nên xử lý auth/data view ở client, còn AI processing/upload/Jira push nên đi qua backend
+- Tài liệu phải gọi rõ cái gì là current runtime, cái gì là prototype history
+
+#### Nếu làm lại, sẽ làm khác
+- Định nghĩa naming convention cho meeting/action item models giữa frontend và backend sớm hơn
+- Chuẩn bị migration checklist trước khi chuyển frontend/database runtime để đảm bảo docs nhất quán
+
+#### Kế hoạch tuần tới
+- Hoàn thiện live recording/realtime transcription path
+- Polish UI theo design system
+- Kiểm tra release packaging và tài liệu nộp bài
+
+---
+
+### Tuần 5 — 17/05/2026
+
+**Thành viên:** Phạm Xuân Khang, Vthuc, Duypt
+
+#### Đã làm
+- **Live Streaming & Recording (Khang):**
+  - Hoàn thiện realtime audio streaming/live transcription path cho Electron + FastAPI
+  - Kết nối WebSocket/recording flow với transcript update và job status
+  - Cải thiện xử lý audio chunk, upload và fallback provider behavior
+- **Analysis, Review & Jira Flow (Duypt, Vthuc, Khang):**
+  - Kết nối upload/provider/push-to-Jira từ UI đến backend
+  - Cải thiện transcript review, speaker workflow, action item tree, create/edit/re-analyze flow
+  - Tinh chỉnh phân tích tiếng Việt/tiếng Anh và Jira credential/error handling
+- **UI Polish & Release (Khang):**
+  - Áp dụng design-system polish cho Electron views và website/download pages
+  - Chuẩn bị Windows installer `MeetAstro-Setup-*.exe` qua release workflow/local release script
+  - Làm rõ submit scope, limitations và verification checklist
+- **Submission Docs:**
+  - Tổng hợp git log toàn nhóm để kiểm tra tính đầy đủ và cập nhật README
+  - Liên kết architecture diagram, journal, worklog, product spec và evaluation docs từ README
+
+#### Khó nhất tuần này
+- Live audio path có nhiều boundary: Electron IPC, Python sidecar/recording, FastAPI stream, worker/provider, Supabase persistence
+- Jira flow cần vừa hỗ trợ stub/missing credentials vừa hiển thị lỗi đủ rõ cho người dùng
+- Tài liệu cuối kỳ phải phản ánh toàn bộ lịch sử project nhưng không làm người đọc nhầm prototype cũ với kiến trúc hiện tại
+
+#### AI tool đã dùng
+| Tool | Dùng để làm gì | Kết quả |
+|---|---|---|
+| Claude Code | Rà soát git log và tài liệu hiện có | Xác nhận docs đồng bộ với code thực tế |
+| Claude Code | Cập nhật README theo phong cách landing page | README có thumbnail, badges, deliverables links |
+| Claude Code | Kiểm tra consistency giữa docs và architecture hiện tại | Giảm link thiếu và mâu thuẫn runtime |
+
+#### Học được
+- Realtime UX cần observable status rõ ràng, không chỉ xử lý backend đúng
+- Release packaging nên được xem là một phần sản phẩm, không phải bước phụ cuối cùng
+- README cho submission cần đóng vai trò landing page: người chấm phải thấy ngay sản phẩm, kiến trúc, tài liệu và cách chạy
+
+#### Nếu làm lại, sẽ làm khác
+- Tạo screenshot/thumbnail UI sớm hơn thay vì dùng architecture diagram làm ảnh đại diện tạm thời
+
+#### Kế hoạch tuần tới
+- Thu thập feedback demo và cập nhật backlog production
+- Nếu có thời gian, bổ sung screenshot UI thật cho thumbnail
+- Theo dõi feedback demo và cập nhật backlog cho giai đoạn production tiếp theo

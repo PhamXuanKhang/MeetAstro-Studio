@@ -148,9 +148,9 @@ Data flywheel hiện chưa có — hướng phát triển: log user corrections 
 - [x] Jira stub mode (no credentials)
 
 ### Infrastructure
-- [x] PostgreSQL 16 with async SQLAlchemy
+- [x] Supabase database/auth via Supabase SDK
 - [x] Celery + Redis for background tasks
-- [x] Alembic migrations
+- [x] Docker Compose backend stack without local PostgreSQL runtime
 - [x] Docker Compose deployment
 - [x] GitHub Actions CI/CD (deploy only)
 
@@ -160,10 +160,10 @@ Data flywheel hiện chưa có — hướng phát triển: log user corrections 
 
 | Decision | Rationale |
 |----------|-----------|
-| PostgreSQL over SQLite | Multi-user support, production-ready, async via SQLAlchemy |
+| Supabase over local database runtime | Auth, hosted Postgres, RLS, and service-role backend access without local DB operations |
 | Celery + Redis over threading | Resilient job queue, retry on failure, separate worker process |
 | FastAPI over Flask | Auto OpenAPI docs, Pydantic validation, async native |
-| Flet + Electron dual frontend | Flet for rapid Python dev, Electron for native features |
+| Electron as target frontend | Native desktop app with React/TypeScript and Supabase client auth |
 | MockAnalyzer when no API key | Developer-friendly, no OpenAI key needed for testing |
 
 ---

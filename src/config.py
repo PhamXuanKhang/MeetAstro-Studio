@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv(override=True)
+load_dotenv(override=False)
 
 
 class Settings(BaseSettings):
@@ -112,11 +112,15 @@ class Settings(BaseSettings):
     api_base_url: str = Field(default="http://localhost:8000", alias="API_BASE_URL")
 
     # Windows Installer Download
+    app_download_url: str = Field(default="", alias="APP_DOWNLOAD_URL")
     app_download_filename: str = Field(
-        default="MeetAstro-Setup.msi", alias="APP_DOWNLOAD_FILENAME"
+        default="MeetAstro-Setup-0.1.0.exe", alias="APP_DOWNLOAD_FILENAME"
     )
     app_download_version: str = Field(default="0.1.0", alias="APP_DOWNLOAD_VERSION")
     app_download_size: str = Field(default="", alias="APP_DOWNLOAD_SIZE")
+    app_download_github_repo: str = Field(
+        default="PhamXuanKhang/MeetAstro-Studio", alias="APP_DOWNLOAD_GITHUB_REPO"
+    )
 
     # ── CORS Configuration ──
     cors_origins: str = Field(
