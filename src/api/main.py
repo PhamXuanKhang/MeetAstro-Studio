@@ -32,7 +32,9 @@ from src.db.supabase_client import get_supabase_client
 logger = get_logger(__name__)
 
 API_PREFIX = "/api/v1"
-WEB_STATIC_DIR = Path(__file__).resolve().parents[2] / "website" / "dist"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WEB_STATIC_DIR = PROJECT_ROOT / "website" / "dist"
+PITCH_DECK_PATH = PROJECT_ROOT / "pitch-deck.html"
 DOWNLOAD_DIR = Path("/app/downloads")
 INDEX_CACHE_CONTROL = "no-cache"
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
@@ -167,6 +169,17 @@ def setup_website_routes(app: FastAPI) -> None:
             media_type=EXE_MEDIA_TYPE,
             filename=get_download_filename(),
             headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.get("/pitchdeck", include_in_schema=False)
+    @app.get("/pitch-deck", include_in_schema=False)
+    async def serve_pitch_deck() -> FileResponse:
+        if not PITCH_DECK_PATH.is_file():
+            raise HTTPException(status_code=404, detail="Pitch deck is not available.")
+        return FileResponse(
+            path=str(PITCH_DECK_PATH),
+            media_type="text/html",
+            headers={"Cache-Control": INDEX_CACHE_CONTROL},
         )
 
     @app.get("/{path:path}", include_in_schema=False)
