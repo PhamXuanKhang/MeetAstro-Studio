@@ -4,3 +4,6 @@ dist-electron/
 release/
 .env
 *.log
+.venv-sidecar/
+python-build/
+python-dist/

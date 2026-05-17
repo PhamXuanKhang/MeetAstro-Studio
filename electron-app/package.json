@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:sidecar": "powershell -ExecutionPolicy Bypass -File ./scripts/build_python_sidecar.ps1",
     "build:renderer": "vite build",
     "build:main": "vite build",
     "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
@@ -44,8 +45,7 @@
     "artifactName": "MeetAstro-Setup-${version}.${ext}",
     "files": [
       "dist/**/*",
-      "dist-electron/**/*",
-      "python/**/*"
+      "dist-electron/**/*"
     ],
     "win": {
       "target": "nsis",
@@ -58,20 +58,8 @@
     },
     "extraResources": [
       {
-        "from": "python",
+        "from": "python-dist",
         "to": "python"
-      },
-      {
-        "from": "../src/modules/audio_recorder.py",
-        "to": "python/src/modules/audio_recorder.py"
-      },
-      {
-        "from": "../src/config.py",
-        "to": "python/src/config.py"
-      },
-      {
-        "from": "../src/__init__.py",
-        "to": "python/src/__init__.py"
       }
     ]
   }
