@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "name": "log-prompt",
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/log_hook.ps1 codex",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "name": "log-stop",
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/log_hook.ps1 codex",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,104 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - coolify
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8000"
+    restart: unless-stopped
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      API_BASE_URL: ${API_BASE_URL:-https://a20-app-089.smartnovi.tech}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
+      APP_DOWNLOAD_GITHUB_REPO: ${APP_DOWNLOAD_GITHUB_REPO:-PhamXuanKhang/MeetAstro-Studio}
+      APP_DOWNLOAD_URL: ${APP_DOWNLOAD_URL:-}
+      APP_DOWNLOAD_FILENAME: ${APP_DOWNLOAD_FILENAME:-MeetAstro-Setup-0.1.0.exe}
+      APP_DOWNLOAD_VERSION: ${APP_DOWNLOAD_VERSION:-0.1.0}
+      APP_DOWNLOAD_SIZE: ${APP_DOWNLOAD_SIZE:-}
+      COOLIFY_DEPLOYMENT: "true"
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - app_data:/app/data
+      - ${APP_DOWNLOADS_DIR:-./downloads}:/app/downloads:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5).read()"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.routers.a20-app-089-api-https.rule=Host(`a20-app-089.smartnovi.tech`)
+      - traefik.http.routers.a20-app-089-api-https.entrypoints=https
+      - traefik.http.routers.a20-app-089-api-https.tls=true
+      - traefik.http.routers.a20-app-089-api-https.tls.certresolver=letsencrypt
+      - traefik.http.services.a20-app-089-api.loadbalancer.server.port=8000
+      - traefik.http.routers.a20-app-089-api-http.rule=Host(`a20-app-089.smartnovi.tech`)
+      - traefik.http.routers.a20-app-089-api-http.entrypoints=http
+      - traefik.http.middlewares.a20-app-089-api-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.a20-app-089-api-redirect.redirectscheme.permanent=true
+      - traefik.http.routers.a20-app-089-api-http.middlewares=a20-app-089-api-redirect@docker
+    networks:
+      - coolify
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: >
+      celery -A src.workers.celery_app worker
+      -Q default --loglevel=info --concurrency=2
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      API_BASE_URL: ${API_BASE_URL:-https://a20-app-089.smartnovi.tech}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      WHISPER_LIVEKIT_URL: ${WHISPER_LIVEKIT_URL:-}
+      COOLIFY_DEPLOYMENT: "true"
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - app_data:/app/data
+    networks:
+      - coolify
+
+volumes:
+  redis_data:
+  app_data:
+
+networks:
+  coolify:
+    external: true

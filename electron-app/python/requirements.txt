@@ -1,0 +1,7 @@
+pysysaudio
+sounddevice
+numpy
+python-dotenv
+pydantic>=2
+pydantic-settings>=2
+websocket-client>=1.8.0

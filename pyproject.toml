@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "a20-app-089"
+version = "0.1.0"
+requires-python = ">=3.9"
+# Shared core (cả server lẫn frontend đều cần)
+dependencies = [
+    "openai>=1.50.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "cryptography>=42.0.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "websockets>=15.0.1",
+    "websocket-client>=1.8.0",
+]
+
+[project.optional-dependencies]
+# Backend: FastAPI server + Celery worker + Supabase + Redis
+server = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+    "celery>=5.3",
+    "redis>=5.0",
+    "slowapi>=0.1.9",
+    "ffmpeg-python>=0.2.0",
+    "supabase>=2.5.0",
+]
+
+# Dev: testing + linting + type checking
+dev = [
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "pytest-asyncio>=0.23",
+]
+
+# All-in-one cho local dev environment
+all = [
+    "a20-app-089[server]",
+    "a20-app-089[dev]",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+no_site_packages = true
+
+[tool.flake8]
+max-line-length = 100
+
