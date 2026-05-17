@@ -13,7 +13,9 @@ COPY website/ ./
 RUN npm run build
 
 # Stage 2: install Python deps into a dedicated venv
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -35,7 +37,9 @@ RUN pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir ".[server]"
 
 # Stage 3: minimal runtime ? no compilers; ffmpeg for audio ingestion
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim-bookworm AS runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -52,6 +56,7 @@ RUN useradd --create-home --uid 1000 --user-group --shell /usr/sbin/nologin app
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=app:app src/ ./src/
+COPY --chown=app:app pitch-deck.html ./pitch-deck.html
 COPY --from=website-builder --chown=app:app /website/dist ./website/dist/
 
 RUN mkdir -p data/recordings data/meeting-audio downloads \

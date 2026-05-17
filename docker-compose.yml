@@ -16,6 +16,7 @@ services:
       - coolify
 
   api:
+    image: meetastro-backend:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -42,7 +43,6 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/app/data
-      - ${APP_DOWNLOADS_DIR:-./downloads}:/app/downloads:ro
     healthcheck:
       test:
         - CMD
@@ -70,9 +70,7 @@ services:
       - coolify
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: meetastro-backend:latest
     restart: unless-stopped
     command: >
       celery -A src.workers.celery_app worker

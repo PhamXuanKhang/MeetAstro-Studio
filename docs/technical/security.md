@@ -30,7 +30,7 @@ This document outlines the security measures implemented.
 
 ### Credential Vault (Fernet Encryption)
 
-Provider credentials (OpenAI API keys, Jira tokens, etc.) are encrypted at rest using **Fernet symmetric encryption** before storing in PostgreSQL.
+Provider credentials (OpenAI API keys, Jira tokens, etc.) are encrypted at rest using **Fernet symmetric encryption** before storing in Supabase.
 
 **Implementation:** `src/modules/credential_vault.py`
 
@@ -106,7 +106,7 @@ APP_SECRET_KEY=your_fernet_key_here
 | HTTPS | Deployment-dependent | Use nginx/reverse proxy |
 | Authentication | Supabase Auth | Email/password + OAuth |
 | Rate Limiting | Basic | Per-IP limiting available |
-| CORS | Configured | For Flet/Electron desktop clients |
+| CORS | Configured | For Electron desktop and website clients |
 | Input Validation | Pydantic | All API inputs validated |
 
 ### Rate Limiting
@@ -151,14 +151,14 @@ class MeetingCreate(BaseModel):
 
 ### Database
 
-- PostgreSQL with asyncpg
-- Connection via environment variable (not hardcoded)
+- Supabase project tables accessed via Supabase SDK
+- Connection via environment variables (not hardcoded)
 - Credentials stored encrypted in `provider_configs`
 
 ### Transcript & Analysis
 
-- Stored in PostgreSQL (not encrypted at rest by default)
-- Consider: PostgreSQL TDE (Transparent Data Encryption) for production
+- Stored in Supabase tables
+- Consider: Supabase project security controls and retention policies for production
 
 ---
 
@@ -200,7 +200,7 @@ if not all([base_url, email, token, project_key]):
 **Risk:** Database queries with user input.
 
 **Mitigation:**
-- SQLAlchemy ORM (parameterized queries)
+- Supabase SDK query builder
 - No raw SQL with string interpolation
 - Pydantic validation on all inputs
 

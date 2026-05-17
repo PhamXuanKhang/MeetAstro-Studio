@@ -29,6 +29,8 @@ export type ActionItemReviewStatus = 'draft' | 'edited' | 'approved' | 'rejected
 
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 
+export type WorkStatus = 'todo' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
+
 // ─── Domain Models (Table Rows) ─────────────────────────
 
 /** Mirrors `meetings` table in Supabase. */
@@ -88,8 +90,21 @@ export interface ActionItem {
   sync_error: string | null;
   jira_issue_key: string | null;
   jira_issue_url: string | null;
+  work_status?: WorkStatus;
+  work_status_note?: string | null;
+  work_status_updated_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface StatusUpdateProposal {
+  matched_action_item_id: string;
+  matched_title: string;
+  old_status: WorkStatus;
+  new_status: WorkStatus;
+  evidence: string;
+  reason: string;
+  confidence: number;
 }
 
 // ─── Request DTOs ────────────────────────────────────────

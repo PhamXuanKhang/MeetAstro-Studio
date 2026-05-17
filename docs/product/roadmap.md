@@ -24,11 +24,11 @@
 | Pydantic models (Priority, ActionItem, Task, Epic, MeetingAnalysis, MeetingRecord) | ✅ |
 | Strategy Pattern: ABC base + providers (OpenAI Analyzer, Mock Analyzer, OpenAI Transcriber, OpenAI Diarize Transcriber) | ✅ |
 | OpenAI Whisper API transcription + diarization fallback về plain OpenAI transcription | ✅ |
-| PostgreSQL async CRUD + provider_configs encrypted | ✅ |
+| Supabase CRUD + provider_configs encrypted | ✅ |
 | Export Markdown / JSON / CSV (exporter.py) | ✅ |
 | Jira stub client (mock mode khi thiếu credentials) | ✅ |
 | Vietnamese prompt cho GPT-4o structured output | ✅ |
-| Flet desktop app HTTP client | ✅ |
+| Electron desktop app HTTP client | ✅ |
 | Unit tests (14 test files), mock external APIs | ✅ |
 | pyproject.toml + editable install | ✅ |
 | Config với pydantic-settings | ✅ |
@@ -45,7 +45,7 @@
 | Deliverable | Owner | Status |
 |-------------|-------|--------|
 | Audio recording (system audio + mic mixing) | Vthuc | ✅ |
-| Recording service orchestration cho Flet desktop | Vthuc | ✅ |
+| Recording service orchestration cho Electron desktop | Vthuc | ✅ |
 | Chunked transcription (chunk rotation mỗi N giây) | Vthuc | ✅ |
 | Rule-based extraction service (cross-validate với AI) | Khang | ✅ |
 | Validation service (confidence scores) | Khang | ✅ |
@@ -54,10 +54,10 @@
 | Provider configs CRUD | Khang | ✅ |
 | Schema mở rộng (key_decisions, discussion_points, parking_lot) | Khang | ✅ |
 | Jira upload flow documentation | Duypt | ✅ |
-| Smoke test Flet app E2E với audio thật | Khang | ✅ |
+| Smoke test Electron app E2E với audio thật | Khang | ✅ |
 | Test Jira integration với Atlassian sandbox | Khang | ✅ |
 | Chạy flake8 + mypy clean | Khang | ✅ |
-| Deploy backend lên VPS/Docker, distribute Flet desktop build | [TBD] | ⬜ |
+| Deploy backend lên VPS/Docker, distribute Electron EXE build | [TBD] | ⬜ |
 | CI/CD pipeline (GitHub Actions: lint + test + deploy) | [TBD] | ⬜ |
 
 ---
@@ -111,23 +111,23 @@ Phase 4 (Scale) ←── cần user feedback data
 
 ## Current Architecture
 
-### Dual Frontends
+### Submit Frontend
 
 | Frontend | Tech Stack | Status |
 |----------|------------|--------|
-| **Flet Desktop** | Python 3.9+, Flet framework, httpx | ✅ Active development |
-| **Electron Desktop** | TypeScript + React + Vite + Electron | 🔄 In Progress |
+| **Electron Desktop** | TypeScript + React + Vite + Electron | ✅ Submit frontend |
+
+Flet was an early prototype path and is not the active submission frontend.
 
 ### Backend Stack
 
 | Component | Technology |
 |-----------|------------|
 | API | FastAPI + Pydantic |
-| Database | PostgreSQL 16 (async via SQLAlchemy + asyncpg) |
+| Database/Auth | Supabase SDK + Supabase Auth |
 | Task Queue | Celery + Redis |
-| Migrations | Alembic |
-| AI Providers | OpenAI Whisper, GPT-4o |
-| Storage | Local filesystem (file:// URI) |
+| AI Providers | OpenAI Whisper, GPT-4o, optional WhisperLiveKit |
+| Storage | Local filesystem for uploaded/normalized audio |
 
 ### Key Features Implemented
 

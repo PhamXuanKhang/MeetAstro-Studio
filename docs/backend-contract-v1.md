@@ -482,7 +482,7 @@ GET /api/v1/meetings/{meeting_id}/transcribe/stream
 ```
 
 Query parameters:
-- `ws_url` (optional): Custom WhisperLiveKit WebSocket URL. Default: `WHLK_WEBSOCKET_URL` env var.
+- `ws_url` (optional): Custom WhisperLiveKit WebSocket URL. Default: `WHISPER_LIVEKIT_URL` env var.
 
 ### SSE Response Format
 

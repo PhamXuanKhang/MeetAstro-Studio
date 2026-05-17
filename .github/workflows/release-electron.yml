@@ -1,4 +1,4 @@
-name: Release Electron Windows EXE
+name: Validate Electron Release Tag
 
 on:
   push:
@@ -7,18 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish, e.g. v0.1.0'
+        description: 'Release tag to validate, e.g. v0.1.0'
         required: true
         type: string
 
 jobs:
-  release-windows:
-    runs-on: windows-latest
+  validate-release-tag:
+    runs-on: self-hosted
     permissions:
       contents: read
-
-    env:
-      RELEASE_REPO: PhamXuanKhang/MeetAstro-Studio
 
     steps:
       - name: Checkout source repository
@@ -26,78 +23,32 @@ jobs:
 
       - name: Resolve release tag
         id: release_tag
-        shell: pwsh
+        shell: bash
         run: |
-          $tag = "${{ github.ref_name }}"
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $tag = "${{ inputs.tag }}"
-          }
-          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
-            throw "Release tag must match vX.Y.Z, got '$tag'."
-          }
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          "version=$($tag.Substring(1))" >> $env:GITHUB_OUTPUT
+          tag="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vX.Y.Z, got '$tag'." >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Verify package version matches tag
-        shell: pwsh
+        shell: bash
         run: |
-          $package = Get-Content "electron-app/package.json" -Raw | ConvertFrom-Json
-          $expected = "${{ steps.release_tag.outputs.version }}"
-          if ($package.version -ne $expected) {
-            throw "Tag version $expected does not match electron-app/package.json version $($package.version)."
-          }
+          package_version=$(python3 -c "import json; print(json.load(open('electron-app/package.json'))['version'])")
+          expected="${{ steps.release_tag.outputs.version }}"
+          if [ "$package_version" != "$expected" ]; then
+            echo "Tag version $expected does not match electron-app/package.json version $package_version." >&2
+            exit 1
+          fi
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: electron-app/package-lock.json
-
-      - name: Install Electron dependencies
-        run: npm ci
-        working-directory: electron-app
-
-      - name: Build Electron installer
-        run: npm run build
-        working-directory: electron-app
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-
-      - name: Resolve installer artifact
-        id: artifact
-        shell: pwsh
+      - name: Print local release command
+        shell: bash
         run: |
-          $version = "${{ steps.release_tag.outputs.version }}"
-          $installer = "electron-app/release/MeetAstro-Setup-$version.exe"
-          if (!(Test-Path $installer)) {
-            throw "Installer not found at $installer."
-          }
-          $sizeBytes = (Get-Item $installer).Length
-          "path=$installer" >> $env:GITHUB_OUTPUT
-          "name=MeetAstro-Setup-$version.exe" >> $env:GITHUB_OUTPUT
-          "size_bytes=$sizeBytes" >> $env:GITHUB_OUTPUT
-
-      - name: Create or update release in public repository
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-        run: |
-          $tag = "${{ steps.release_tag.outputs.tag }}"
-          $repo = "$env:RELEASE_REPO"
-          gh release view $tag --repo $repo *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag `
-              --repo $repo `
-              --title "MeetAstro $tag" `
-              --generate-notes
-          }
-
-      - name: Upload EXE release asset
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-        run: |
-          gh release upload "${{ steps.release_tag.outputs.tag }}" "${{ steps.artifact.outputs.path }}" `
-            --repo "$env:RELEASE_REPO" `
-            --clobber
+          echo "Tag is valid. Build and upload the EXE from a Windows dev machine with:"
+          echo "  \$env:RELEASE_REPO_TOKEN='<token-with-contents-write>'"
+          echo "  .\\scripts\\release_electron.ps1 -Tag ${{ steps.release_tag.outputs.tag }}"

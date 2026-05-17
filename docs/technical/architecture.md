@@ -8,13 +8,11 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                   Dual Frontend                               │
-├────────────────────┬─────────────────────────────────────────┤
-│ Flet Desktop App   │ Electron Desktop App (React + TypeScript)│
-│ (Python + httpx)   │ (Supabase SDK + Zustand)               │
-└─────────┬──────────┴──────────────────────┬─────────────────┘
-          │ HTTP / Supabase SDK             │
-          ▼                                 ▼
+│                 Electron Desktop App                         │
+│              React + TypeScript + Supabase SDK               │
+└──────────────────────────────┬───────────────────────────────┘
+                               │ HTTP / Supabase SDK
+                               ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                  FastAPI Server (src/api/)                   │
 │  /meetings  /audio  /transcript  /analysis  /review  /jira │
@@ -23,7 +21,7 @@
        ▼                                       ▼
 ┌─────────────────────┐               ┌──────────────────────┐
 │   Celery Workers    │               │     Supabase          │
-│  (src/workers/)    │               │  (PostgreSQL 16)      │
+│  (src/workers/)    │               │  (Supabase tables)    │
 │                     │               │                       │
 │  run_pipeline      │───────────────│  meetings            │
 │  transcribe_task   │               │  transcript_segments  │
@@ -44,17 +42,12 @@
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Infrastructure:** PostgreSQL 16 (Supabase) + Redis 7 + FastAPI + Celery Worker
-**Frontend:** Flet desktop app (`.exe`) + Electron desktop app
+**Infrastructure:** Supabase + Redis 7 + FastAPI + Celery Worker
+**Frontend:** Electron desktop app (`MeetAstro-Setup-*.exe`)
 
 ---
 
-## Dual Frontend Architecture
-
-### Flet Desktop App
-- **Tech:** Python 3.9+, Flet framework, httpx client
-- **Entry:** `python -m frontend.main`
-- **Build:** `flet pack frontend/main.py`
+## Frontend Architecture
 
 ### Electron Desktop App
 - **Tech:** TypeScript + React + Vite + Electron
@@ -63,13 +56,14 @@
 - **Auth:** Supabase JS SDK (email/password + Google OAuth)
 - **State:** Zustand store
 
+Flet was an early prototype path and is not the active submission frontend.
+
 ---
 
 ## Layer Architecture
 
 | Layer | Path | Vai trò | Phụ thuộc |
 |-------|------|---------|-----------|
-| **Frontend (Flet)** | `frontend/` | Flet HTTP client — UI + local audio recording | FastAPI server |
 | **Frontend (Electron)** | `electron-app/` | React + TypeScript — UI + Supabase auth | FastAPI + Supabase |
 | **API** | `src/api/` | FastAPI routers + request validation | Services, Supabase |
 | **Worker** | `src/workers/` | Celery tasks — transcribe, analyze, jira push | Services, Supabase |

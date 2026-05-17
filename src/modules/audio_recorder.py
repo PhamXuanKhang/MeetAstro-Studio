@@ -6,18 +6,42 @@ writes the result to a single WAV file. Designed to be started / stopped
 programmatically from the desktop UI.
 """
 import datetime as dt
+import math
 import os
 import queue
 import threading
 import time
 import wave
-from typing import Callable, Optional
+from typing import Callable, Optional, TypedDict
 
 import numpy as np
 
 from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
+
+
+def _pcm_stats(samples: np.ndarray) -> tuple[int, int]:
+    if samples.size == 0:
+        return 0, 0
+    values = samples.astype(np.int32)
+    peak = int(np.max(np.abs(values)))
+    rms = int(math.sqrt(float(np.mean(values.astype(np.float64) ** 2))))
+    return rms, peak
+
+
+class AudioLevelStats(TypedDict):
+    source: str
+    chunk_index: int
+    bytes: int
+    sys_rms: int
+    sys_peak: int
+    mic_rms: int
+    mic_peak: int
+    mixed_rms: int
+    mixed_peak: int
+    mic_queue: int
+    mic_buffer: int
 
 
 class AudioRecorder:
@@ -32,6 +56,7 @@ class AudioRecorder:
         sys_gain: Optional[float] = None,
         output_dir: Optional[str] = None,
         on_chunk: Optional[Callable[[bytes], None]] = None,
+        on_level: Optional[Callable[[AudioLevelStats], None]] = None,
     ) -> None:
         """
         Initialize audio recorder.
@@ -44,6 +69,7 @@ class AudioRecorder:
             sys_gain: System audio gain multiplier. If None, loads from settings.
             output_dir: Output directory for recordings. If None, loads from settings.
             on_chunk: Optional callback receiving each mixed PCM chunk.
+            on_level: Optional callback receiving per-source audio level stats.
         """
         settings = get_settings()
         self._sample_rate = sample_rate if sample_rate is not None else settings.audio_sample_rate
@@ -53,12 +79,16 @@ class AudioRecorder:
         self._sys_gain = sys_gain if sys_gain is not None else settings.audio_sys_gain
         self._output_dir = output_dir if output_dir is not None else settings.audio_output_dir
         self._on_chunk = on_chunk
+        self._on_level = on_level
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._output_path: Optional[str] = None
         self._start_time: Optional[float] = None
         self._error: Optional[str] = None
+        self._mic_error: Optional[str] = None
+        self._mic_started = threading.Event()
+        self._mic_failed = threading.Event()
         self._total_frames: int = 0
         self._lock = threading.Lock()
 
@@ -76,6 +106,16 @@ class AudioRecorder:
     def error(self) -> Optional[str]:
         """Return any error that occurred during recording."""
         return self._error
+
+    @property
+    def mic_error(self) -> Optional[str]:
+        """Return any microphone capture error."""
+        return self._mic_error
+
+    @property
+    def mic_active(self) -> bool:
+        """Return True when microphone capture started successfully."""
+        return self._mic_started.is_set() and not self._mic_failed.is_set()
 
     def start(self, output_path: Optional[str] = None) -> str:
         """
@@ -103,6 +143,9 @@ class AudioRecorder:
 
         self._stop_event.clear()
         self._error = None
+        self._mic_error = None
+        self._mic_started.clear()
+        self._mic_failed.clear()
         self._total_frames = 0
 
         self._thread = threading.Thread(target=self._record_loop, daemon=True)
@@ -187,10 +230,14 @@ class AudioRecorder:
 
             if self._mic_enabled:
                 mic_thread = self._start_mic_capture(mic_q)
+                self._mic_started.wait(timeout=2.0)
+                if self._mic_failed.is_set():
+                    raise RuntimeError(self._mic_error or "Microphone capture failed.")
 
             recorder.start_recording()
 
             mic_buffer = np.empty((0,), dtype=np.int16)
+            chunk_count = 0
 
             for chunk in recorder.stream(timeout=0.25):
                 if self._stop_event.is_set():
@@ -228,8 +275,47 @@ class AudioRecorder:
                     pcm_chunk = mixed.tobytes()
                     wf.writeframes(pcm_chunk)
                 else:
+                    mic_part = np.empty((0,), dtype=np.int16)
                     pcm_chunk = chunk
                     wf.writeframes(pcm_chunk)
+
+                chunk_count += 1
+                mixed_np = np.frombuffer(pcm_chunk, dtype=np.int16)
+                sys_rms, sys_peak = _pcm_stats(sys_np)
+                mic_rms, mic_peak = _pcm_stats(mic_part)
+                mixed_rms, mixed_peak = _pcm_stats(mixed_np)
+                level_stats: AudioLevelStats = {
+                    "source": "capture",
+                    "chunk_index": chunk_count,
+                    "bytes": len(pcm_chunk),
+                    "sys_rms": sys_rms,
+                    "sys_peak": sys_peak,
+                    "mic_rms": mic_rms,
+                    "mic_peak": mic_peak,
+                    "mixed_rms": mixed_rms,
+                    "mixed_peak": mixed_peak,
+                    "mic_queue": mic_q.qsize(),
+                    "mic_buffer": int(mic_buffer.size),
+                }
+                if chunk_count == 1 or chunk_count % 50 == 0:
+                    logger.info(
+                        "Audio chunk #%d sys_rms=%d sys_peak=%d mic_rms=%d mic_peak=%d "
+                        "mixed_rms=%d mixed_peak=%d mic_queue=%d mic_buffer=%d.",
+                        chunk_count,
+                        sys_rms,
+                        sys_peak,
+                        mic_rms,
+                        mic_peak,
+                        mixed_rms,
+                        mixed_peak,
+                        mic_q.qsize(),
+                        mic_buffer.size,
+                    )
+                if self._on_level is not None and (chunk_count == 1 or chunk_count % 10 == 0):
+                    try:
+                        self._on_level(level_stats)
+                    except Exception as exc:
+                        logger.warning("Audio level callback error: %s", exc)
 
                 if self._on_chunk is not None:
                     try:
@@ -304,9 +390,14 @@ class AudioRecorder:
                     blocksize=0,
                     device=mic_device,
                 ):
+                    self._mic_started.set()
+                    logger.info("Mic capture started.")
                     while not stop_event.is_set():
                         sd.sleep(100)
             except Exception as exc:
+                self._mic_error = str(exc)
+                self._mic_failed.set()
+                self._mic_started.set()
                 logger.error("Mic capture error: %s", exc)
 
         t = threading.Thread(target=_run, daemon=True)
