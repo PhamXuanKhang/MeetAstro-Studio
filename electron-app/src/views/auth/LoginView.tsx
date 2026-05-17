@@ -25,11 +25,6 @@ export default function LoginView({ onGoRegister, onGoForgot }: Props) {
         setError('Email không hợp lệ.')
         return
       }
-      if (password.length < 8) {
-        setError('Mật khẩu phải có ít nhất 8 ký tự.')
-        return
-      }
-
       try {
         await login(email.trim(), password)
       } catch (err) {
