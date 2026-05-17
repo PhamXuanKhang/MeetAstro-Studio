@@ -61,10 +61,10 @@ jobs:
         working-directory: electron-app
 
       - name: Build Electron installer
-        run: npm run build
+        run: npm run build -- --win --publish never
         working-directory: electron-app
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Resolve installer artifact
         id: artifact
