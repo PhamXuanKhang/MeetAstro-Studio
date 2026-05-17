@@ -38,6 +38,7 @@ PITCH_DECK_PATH = PROJECT_ROOT / "pitch-deck.html"
 DOWNLOAD_DIR = Path("/app/downloads")
 INDEX_CACHE_CONTROL = "no-cache"
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+ROOT_STATIC_FILENAMES = {"banner.png", "favicon.svg", "hero-preview.png", "logo.ico"}
 EXE_MEDIA_TYPE = "application/vnd.microsoft.portable-executable"
 GITHUB_RELEASE_API_TIMEOUT_SECONDS = 5
 
@@ -186,6 +187,13 @@ def setup_website_routes(app: FastAPI) -> None:
     async def serve_website(path: str, request: Request) -> FileResponse:
         if path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not Found")
+        if path in ROOT_STATIC_FILENAMES:
+            static_path = WEB_STATIC_DIR / path
+            if static_path.is_file():
+                return FileResponse(
+                    path=str(static_path),
+                    headers={"Cache-Control": ASSET_CACHE_CONTROL},
+                )
         index_path = WEB_STATIC_DIR / "index.html"
         if not index_path.is_file():
             raise HTTPException(status_code=404, detail="Website build is not available.")
