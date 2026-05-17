@@ -22,8 +22,10 @@ export const fallbackDownloadMetadata: DownloadMetadata = {
   platform: 'Windows',
 }
 
+const publicUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
+
 export const siteMedia: SiteMedia = {
-  heroImageUrl: '/banner.png',
+  heroImageUrl: publicUrl('banner.png'),
   demoEmbedUrl: import.meta.env.VITE_DEMO_EMBED_URL || 'https://www.youtube.com/embed/P8OAuSqKbho?si=yMzhcDnSgBks1mFE',
 }
 
