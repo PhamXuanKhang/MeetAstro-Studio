@@ -269,9 +269,9 @@ def setup_cors(app: FastAPI) -> None:
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
-        title="AI Meeting Assistant API",
+        title="MeetAstro API",
         version="1.0.0",
-        description="RESTful API for AI Meeting Assistant.",
+        description="RESTful API for MeetAstro-Studio.",
         lifespan=lifespan,
     )
 

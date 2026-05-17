@@ -145,7 +145,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    title: 'AI Meeting Assistant',
+    title: 'MeetAstro-Studio',
     backgroundColor: '#f8fafc',
   })
 

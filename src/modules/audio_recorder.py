@@ -12,7 +12,7 @@ import queue
 import threading
 import time
 import wave
-from typing import Callable, Optional
+from typing import Callable, Optional, TypedDict
 
 import numpy as np
 
@@ -30,6 +30,20 @@ def _pcm_stats(samples: np.ndarray) -> tuple[int, int]:
     return rms, peak
 
 
+class AudioLevelStats(TypedDict):
+    source: str
+    chunk_index: int
+    bytes: int
+    sys_rms: int
+    sys_peak: int
+    mic_rms: int
+    mic_peak: int
+    mixed_rms: int
+    mixed_peak: int
+    mic_queue: int
+    mic_buffer: int
+
+
 class AudioRecorder:
     """Record system audio (+ optional mic) to a WAV file in a background thread."""
 
@@ -42,6 +56,7 @@ class AudioRecorder:
         sys_gain: Optional[float] = None,
         output_dir: Optional[str] = None,
         on_chunk: Optional[Callable[[bytes], None]] = None,
+        on_level: Optional[Callable[[AudioLevelStats], None]] = None,
     ) -> None:
         """
         Initialize audio recorder.
@@ -54,6 +69,7 @@ class AudioRecorder:
             sys_gain: System audio gain multiplier. If None, loads from settings.
             output_dir: Output directory for recordings. If None, loads from settings.
             on_chunk: Optional callback receiving each mixed PCM chunk.
+            on_level: Optional callback receiving per-source audio level stats.
         """
         settings = get_settings()
         self._sample_rate = sample_rate if sample_rate is not None else settings.audio_sample_rate
@@ -63,6 +79,7 @@ class AudioRecorder:
         self._sys_gain = sys_gain if sys_gain is not None else settings.audio_sys_gain
         self._output_dir = output_dir if output_dir is not None else settings.audio_output_dir
         self._on_chunk = on_chunk
+        self._on_level = on_level
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -258,15 +275,29 @@ class AudioRecorder:
                     pcm_chunk = mixed.tobytes()
                     wf.writeframes(pcm_chunk)
                 else:
+                    mic_part = np.empty((0,), dtype=np.int16)
                     pcm_chunk = chunk
                     wf.writeframes(pcm_chunk)
 
                 chunk_count += 1
+                mixed_np = np.frombuffer(pcm_chunk, dtype=np.int16)
+                sys_rms, sys_peak = _pcm_stats(sys_np)
+                mic_rms, mic_peak = _pcm_stats(mic_part)
+                mixed_rms, mixed_peak = _pcm_stats(mixed_np)
+                level_stats: AudioLevelStats = {
+                    "source": "capture",
+                    "chunk_index": chunk_count,
+                    "bytes": len(pcm_chunk),
+                    "sys_rms": sys_rms,
+                    "sys_peak": sys_peak,
+                    "mic_rms": mic_rms,
+                    "mic_peak": mic_peak,
+                    "mixed_rms": mixed_rms,
+                    "mixed_peak": mixed_peak,
+                    "mic_queue": mic_q.qsize(),
+                    "mic_buffer": int(mic_buffer.size),
+                }
                 if chunk_count == 1 or chunk_count % 50 == 0:
-                    mixed_np = np.frombuffer(pcm_chunk, dtype=np.int16)
-                    sys_rms, sys_peak = _pcm_stats(sys_np)
-                    mic_rms, mic_peak = _pcm_stats(mic_part if self._mic_enabled else np.empty((0,), dtype=np.int16))
-                    mixed_rms, mixed_peak = _pcm_stats(mixed_np)
                     logger.info(
                         "Audio chunk #%d sys_rms=%d sys_peak=%d mic_rms=%d mic_peak=%d "
                         "mixed_rms=%d mixed_peak=%d mic_queue=%d mic_buffer=%d.",
@@ -280,6 +311,11 @@ class AudioRecorder:
                         mic_q.qsize(),
                         mic_buffer.size,
                     )
+                if self._on_level is not None and (chunk_count == 1 or chunk_count % 10 == 0):
+                    try:
+                        self._on_level(level_stats)
+                    except Exception as exc:
+                        logger.warning("Audio level callback error: %s", exc)
 
                 if self._on_chunk is not None:
                     try:
